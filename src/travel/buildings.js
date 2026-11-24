@@ -391,52 +391,33 @@ function surfacesOf(p, ground) {
     const Lsoff = Math.hypot(eb[0] - ea[0], eb[1] - ea[1]);
     out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u, v, r) => (v > 0.9 && (u * Lsoff) % 0.4 < 0.12 ? [0.82, 0.78, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.15, 0.13, 0.12].map((c) => c * (0.9 + 0.2 * r))) });
   }
-  // the roof: a hip-and-gable (팔작) roof. A straight ridge runs along the long side, its length the long side less 0.6 of
-  // the short one. The long slopes curve down to the eaves (flat at the eave, steep at the ridge), the ends hip down from
-  // the ridge's ends, and only the eave corners lift. The roof stands 0.4 of the short side high. Each short end carries a
-  // triangular gable on the wall top. The roof is cut into N by N quads (each lit and dabbed like the rest).
-  // the eaves reach out 15% of the short side (T3 round 2; 1.8 m at least), and the roof's length is what it sags by
+  // the roof (T3 round 2, r50): one height function h(p, q) over the walls' rectangle grown by the eaves, on one grid, so
+  // no piece can part from its neighbour. d is the distance to the eave edge, t = d / rb (0 at the eave, 1 at the ridge),
+  // h = wall top - drop + H g(t) with g(t) = t - 0.06 sin(pi t) (the dish of 6% of the slope), and the eave corners lift
+  // by up to EAVE_LIFT, at the eave only (1 - t). Ridge and hips are where d is largest and the sides meet.
   const eaveOut = Math.max(EAVE, 0.15 * 2 * R.hv);
-  const eu = R.hu + eaveOut, ev = R.hv + eaveOut, rr = Math.max(0, R.hu - 0.6 * R.hv);
-  // the eave lift is at the corners only: the middle 60% of the eave line is level, the last 20% at each end rises as t^2
-  // to 1.8 m; the slope is dished by 6% of its length (eave to ridge), so the roof reads as one curved surface
+  const ra = R.hu + eaveOut, rb = R.hv + eaveOut;
   const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
-  const EAVE_LIFT = 1.8, slopeLen = Math.hypot(roofH, ev), dish = 0.06 * slopeLen;
-  const yRidge = yEave + roofH;
-  const curve = (t) => Math.pow(Math.min(1, Math.max(0, t)), 1.6);
-  const roofAt = (su, sv) => {
-    const a = su * eu, b = sv * ev;
-    const longH = yEave + roofH * curve(1 - Math.abs(b) / ev);
-    const hipT = 1 - Math.max(0, Math.abs(a) - rr) / Math.max(1, eu - rr);
-    const y0 = Math.min(longH, yEave + roofH * curve(hipT));
-    const ca = Math.min(1, Math.max(0, (Math.abs(a) - rr) / Math.max(1, eu - rr)));
-    const cb = Math.min(1, Math.abs(b) / ev);
-    const [x, z] = rectPt(R, a, b);
-    const e = Math.min(1, Math.abs(a) / eu), endT = Math.max(0, (e - 0.8) / 0.2);
-    const lift = EAVE_LIFT * endT * endT * cb * cb; // at the eave only (cb = 1), rising to the corner
-    const dip = dish * 4 * cb * (1 - cb); // the dish: lowest in the middle of the slope, nothing at the eave or the ridge
-    return [x, y0 + lift - dip, z];
+  const EAVE_LIFT = 1.8, DROP = 1.0, DISH = 0.06, ROOF_GRID = 1.5;
+  const hAt = (p, q) => {
+    const d = Math.min(ra - Math.abs(p), rb - Math.abs(q));
+    const t = Math.min(1, Math.max(0, d / rb));
+    const g = t - DISH * Math.sin(Math.PI * t);
+    const cx = Math.max(0, (Math.abs(p) - 0.6 * ra) / (0.4 * ra)), cz = Math.max(0, (Math.abs(q) - 0.6 * rb) / (0.4 * rb));
+    const lift = EAVE_LIFT * Math.max(cx, cz) ** 2 * (1 - t);
+    return yEave - DROP + roofH * g + lift;
   };
-  const N = ROOF_N;
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-    const s0 = -1 + (2 * i) / N, s1 = -1 + (2 * (i + 1)) / N, t0 = -1 + (2 * j) / N, t1 = -1 + (2 * (j + 1)) / N;
-    const sc = (s0 + s1) / 2 * eu; // the centre across the roof, in metres: the tile grooves run down the slope at its lines
-    const ridge = roofAt((s0 + s1) / 2, (t0 + t1) / 2)[1] > yRidge - 0.3; // the ridge's tiles are darker
-    out.push({
-      P00: roofAt(s0, t0), P10: roofAt(s1, t0), P01: roofAt(s0, t1), P11: roofAt(s1, t1), cell: [9, 9],
-      // the tile grooves: dark lines every 0.7 m down the slope, lighter between (a stronger 25% step than before)
-      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (Math.sin(sc * 9) > 0.2 ? 0.75 : 1.02) * (ridge ? 0.5 : 1)),
-    });
+  const NX = Math.max(4, Math.ceil((2 * ra) / ROOF_GRID)), NZ = Math.max(4, Math.ceil((2 * rb) / ROOF_GRID));
+  const pt = (p, q) => { const [x, z] = rectPt(R, p, q); return [x, hAt(p, q), z]; };
+  for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+    const p0 = -ra + (2 * ra * i) / NX, p1 = -ra + (2 * ra * (i + 1)) / NX;
+    const q0 = -rb + (2 * rb * j) / NZ, q1 = -rb + (2 * rb * (j + 1)) / NZ;
+    const d = Math.min(ra - Math.abs((p0 + p1) / 2), rb - Math.abs((q0 + q1) / 2));
+    const ridgeCell = d > rb - 0.6; // the ridge and the hips' top: darker and thicker
+    const groove = Math.sin((d * 2 * Math.PI) / 0.7) > 0.3; // the tile grooves, every 0.7 m down the slope
+    const colour = mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (groove ? 0.82 : 1) * (ridgeCell ? 0.5 : 1));
+    out.push({ P00: pt(p0, q0), P10: pt(p1, q0), P01: pt(p0, q1), P11: pt(p1, q1), cell: [9, 9], col: () => colour });
   }
-  // the gables: a triangle at each short end, from the wall top to the apex over the middle of the end (a degenerate quad)
-  for (const sgn of [-1, 1]) {
-    const a = sgn * R.hu;
-    const apex = yEave + roofH * curve(1 - Math.max(0, Math.abs(a) - rr) / Math.max(1, eu - rr));
-    const p0 = rectPt(R, a, -R.hv), p1 = rectPt(R, a, R.hv), pa = rectPt(R, a, 0);
-    out.push({ P00: [p0[0], yEave, p0[1]], P10: [p1[0], yEave, p1[1]], P01: [pa[0], apex, pa[1]], P11: [pa[0], apex, pa[1]], cell: [3, 1], col: () => [0.86, 0.84, 0.78] });
-  }
-  // the roof's numbers (metres), for the report: ridge length, the sag, the eave out, the height of the roof and the corner lift
-  out.roofInfo = { ridgeLen: 2 * rr, roofLen: 2 * eu, dish, eaveOut, roofH, eaveLift: EAVE_LIFT, shortSide: 2 * R.hv };
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
