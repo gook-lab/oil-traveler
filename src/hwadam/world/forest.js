@@ -283,7 +283,8 @@ export function createForest(shared) {
     const family = rand() < sw[0] ? 4 : rand() < sw[1] ? (rand() < 0.6 ? 0 : 1) : rand() < sw[2] ? 5 : 2;
     const n = 3 + Math.floor(rand() * 4);
     for (let k = 0; k < n; k++) {
-      const lx = x + (rand() - 0.5) * tall * 0.9, ly = y + tall * (0.45 + rand() * 0.6), lz = z + (rand() - 0.5) * tall * 0.9, lr = 0.38 + rand() * 0.5;
+      // the clump sits low on the ground (its leaves start a fifth of its height up), so it reads as a bush, not a ball in the air
+      const lx = x + (rand() - 0.5) * tall * 0.9, ly = y + tall * (0.2 + rand() * 0.5), lz = z + (rand() - 0.5) * tall * 0.9, lr = 0.38 + rand() * 0.5;
       for (let j = 0; j < 12; j++) {
         const d = new THREE.Vector3(rand() - 0.5, rand() - 0.3, rand() - 0.5).normalize();
         leafDabs.push(lx + d.x * lr, ly + d.y * lr, lz + d.z * lr, d.x, d.y, d.z, rand() * 1000, 0.22 + rand() * 0.2, rand() < 0.2 ? Math.floor(rand() * 7) : family, 0);
@@ -292,7 +293,12 @@ export function createForest(shared) {
       // its stem: from the foot to the middle of the leaves it holds, so the leaves hang from something
       const dir = v.set(lx - x, ly - y, lz - z).normalize();
       const len = Math.hypot(lx - x, ly - y, lz - z);
-      barkDabs.push((x + lx) / 2, (y + ly) / 2, (z + lz) / 2, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.05, MAPLE, len);
+      barkDabs.push((x + lx) / 2, (y + ly) / 2, (z + lz) / 2, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.09, MAPLE, len);
+    }
+    // the foot: a few touches of the ground's own colour (litter and earth) lie round the stems, so the clump grows out of it
+    for (let f = 0; f < 4; f++) {
+      const a = rand() * Math.PI * 2, fr = rand() * tall * 0.4;
+      leafDabs.push(x + Math.cos(a) * fr, y + 0.02, z + Math.sin(a) * fr, Math.cos(a), 0, Math.sin(a), rand() * 1000, 0.2 + rand() * 0.15, 4, 0);
     }
   }
 
