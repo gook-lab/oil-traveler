@@ -101,6 +101,12 @@ for (const p of PLACES) {
     probe.noneNear = noneNear.length;
     probe.noneNearAt = noneNear.slice(0, 12);
     probe.feetXZ = [+F.x.toFixed(2), +F.z.toFixed(2)];
+    // the start's ground, the eye, and the tops of the walls and halls within 80 m (metres above the sea level of the page)
+    const near20 = lab.buildingPlans.filter((p) => p.wall || p.trad).map((p) => {
+      const gMin = Math.min(...p.pts.map((q) => lab.heightAt(q[0], q[1])), lab.heightAt(p.c[0], p.c[1]));
+      return { kind: p.trad ? 'hall' : 'wall', d: +Math.hypot(p.c[0] - F.x, p.c[1] - F.z).toFixed(1), groundM: +gMin.toFixed(2), topM: +(gMin + p.h).toFixed(2) };
+    }).filter((q) => q.d <= 80).sort((a, b) => a.d - b.d);
+    probe.start = { groundM: +lab.heightAt(F.x, F.z).toFixed(2), eyeM: +lab.camera.position.y.toFixed(2), within20: near20.slice(0, 8) };
     probe.vantage = lab.place?.meta?.vantage ?? null;
     // the floating check: a building's base (the lowest ground under its outline, plus its raised minimum) above the ground at its centre
     probe.floating = lab.buildingPlans.filter((p) => { const gMin = Math.min(...p.pts.map((q) => lab.heightAt(q[0], q[1])), lab.heightAt(p.c[0], p.c[1])); return gMin + (p.mh ?? 0) - lab.heightAt(p.c[0], p.c[1]) > 0.5; }).length;

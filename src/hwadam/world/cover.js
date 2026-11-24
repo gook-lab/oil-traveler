@@ -219,7 +219,18 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   // the town ground: the built-up nodes drop to the low ground around them (the DSM's roofs and trees are not ground)
   // (the rock is judged on the ground before the town step, so the edge of a lowered town is not a cliff of rock)
   const natural = near.slice();
-  const town = lowerTown(near, out, N, NEAR_STEP);
+  // the palace courts: every node within 180 m of a palace point (the ring, 107 by 76 m, and 60 m beyond it) is lowered
+  // by the same rule, whatever its class, so the court's ground is not the DSM's roofs and trees (T3)
+  const force = new Uint8Array(N * N);
+  for (let h = 0; h < heritage.length; h++) {
+    if (heritageKinds[h] !== 'palace') continue;
+    const [hx, hz] = heritage[h];
+    for (let k = 0; k < N * N; k++) {
+      const x = ((k % N) - N / 2) * NEAR_STEP, z = -(Math.floor(k / N) - N / 2) * NEAR_STEP;
+      if (Math.hypot(x - hx, z - hz) <= 180) force[k] = 1;
+    }
+  }
+  const town = lowerTown(near, out, N, NEAR_STEP, { force });
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
     const k = j * N + i;

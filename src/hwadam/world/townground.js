@@ -8,13 +8,14 @@
  * @param {Float32Array} near the near square (metres, row by row from the south-west)
  * @param {Uint8Array} cls the class of each node (cover.js COVER)
  * @param {number} N the side in nodes; @param {number} STEP the node size in metres
- * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number }} [opt]
+ * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number, force?: Uint8Array }} [opt]
  * @returns {{ lowered: number, meanDrop: number, maxDrop: number }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 60, pct = 0.15, stride = 4 } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 60, pct = 0.15, stride = 4, force = null } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
-  for (let k = 0; k < N * N; k++) if (urban.includes(cls[k])) isUrban[k] = 1;
+  // the nodes of a palace court (force) take the same lowering whatever their class (a court is bare ground, not a town)
+  for (let k = 0; k < N * N; k++) if (urban.includes(cls[k]) || (force && force[k])) isUrban[k] = 1;
   const target = new Float32Array(N * N).fill(NaN);
   const vals = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {

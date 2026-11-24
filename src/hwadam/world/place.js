@@ -119,6 +119,8 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
       if (dh < 15 || dh > 25) continue;
       // 9 m or more from the ring wall, so the wall does not fill the lower frame
       if (clearance(palace, x, z).d < 9) continue;
+      // and 8 m or more from the outline of every traditional hall (the hall's base is not the start's ground)
+      if (clearance(halls, x, z).d < 8) continue;
       const score = -Math.abs(dh - 20) + 0.01 * near[j * N + i];
       if (!best || score > best.score) best = { x, z, score, h: near[j * N + i] };
     }
