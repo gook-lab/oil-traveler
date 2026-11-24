@@ -229,7 +229,7 @@ export function raySpread(vx, vz, maxR, hit) {
 
 /** The ground as the scene draws it: near heights above the entrance, at the scene's vertical scale (land.js VS). */
 const SCENE_VS = 0.5;
-function sceneGround(near, H0) {
+export function sceneGround(near, H0) {
   return (x, z) => {
     const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
     const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
@@ -288,6 +288,25 @@ export function ridgeNear(mid, near, N, STEP, x, z) { // capped at 20 degrees, a
   for (let a = 0; a < 360; a += 6) best = Math.max(best, ridgeDeg(mid, hc, x, z, a));
   return Math.min(20, best);
 }
+/**
+ * The share of the frame (elevation -23 to +23 degrees, every 2) whose line of sight from (x, z) meets the ground
+ * within maxT metres, looking along bearing a. A near hill that stands in the view hides the far ones.
+ */
+export function occludeShare(ground, x, z, a, maxT) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = ground(x, z) + 1.6;
+  let blocked = 0, n = 0;
+  for (let e = -23; e <= 23; e += 2) {
+    const slope = Math.tan((e * Math.PI) / 180);
+    n++;
+    if (e < -1) continue; // only the rays at or above the horizon can be hidden by a hill
+    for (let t = 2; t <= maxT; t += 2) {
+      if (eye + t * slope <= ground(x + sx * t, z + sz * t)) { blocked++; break; }
+    }
+  }
+  return blocked / n;
+}
+
 /** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
 export function frameNear(cover, near, H0, x, z, cls) {
   const g = sceneGround(near, H0);
@@ -320,7 +339,9 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
     if (mid) { const i = Math.round(vantage.x / NEAR_STEP + N / 2), j = Math.round(N / 2 - vantage.z / NEAR_STEP); ridge = Math.min(20, ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, a)); }
     // rock on the frame counts up to 30%; more than 60% is a cliff at hand, which hides the sky, and costs points
     const rk = frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
-    const key = layers * 100 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 60 * ridge;
+    // a near hill over the view (150 m) costs points beyond 30% of the frame: the far ridge must be what is seen
+    const occ = occludeShare(g, vantage.x, vantage.z, a, 150);
+    const key = layers * 100 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 60 * ridge - 800 * Math.max(0, occ - 0.3);
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;
@@ -335,18 +356,23 @@ export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
   const counts = {};
   const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
   const p = new THREE.Vector3(), d = new THREE.Vector3();
-  let total = 0;
+  let total = 0, occ150 = 0;
   for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
     p.set(((cx + 0.5) / cols) * 2 - 1, -(((cy + 0.5) / rows) * 2 - 1), 0.5).unproject(camera);
     d.copy(p).sub(eye).normalize();
-    let name = 'sky';
+    let name = 'sky', hitT = Infinity;
     for (let t = 0.5; t < 400; t += 0.5) {
       const x = eye.x + d.x * t, y = eye.y + d.y * t, z = eye.z + d.z * t;
-      if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; break; }
+      if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; hitT = t; break; }
     }
     counts[name] = (counts[name] || 0) + 1;
+    // a hill over the view: a ray at or above the horizon that meets ground within 150 m (the floor below the
+    // horizon is always near, and is not counted)
+    if (hitT <= 150 && d.y >= -0.02) occ150 = (occ150 || 0) + 1;
     total++;
   }
   for (const k of Object.keys(counts)) counts[k] = +(counts[k] / total).toFixed(3);
+  // occ150: the share of the frame whose ground stands within 150 m (what hides the far view)
+  counts.occ150 = +((occ150 || 0) / total).toFixed(3);
   return counts;
 }
