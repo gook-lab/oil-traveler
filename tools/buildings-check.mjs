@@ -73,7 +73,7 @@ for (const p of PLACES) {
   page.on('pageerror', (e) => step(`${p.name}: pageerror ${e.message.slice(0, 200)}`));
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') step(`${p.name}: console.${m.type()} ${m.text().slice(0, 200)}`); });
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text().slice(0, 240)}`); });
-  const q = `scene=travel&place=${p.lat},${p.lon}&name=${encodeURIComponent(p.label)}&clean`;
+  const q = `scene=travel&place=${p.lat},${p.lon}&name=${encodeURIComponent(p.label)}&clean${flag('hide', '') ? `&hide=${flag('hide', '')}` : ''}`;
   step(`${p.name}: goto`);
   await page.goto(`${base}?${q}`);
   step(`${p.name}: loaded, waiting for ready`);
@@ -87,11 +87,23 @@ for (const p of PLACES) {
     const f = lab.player.feet;
     const c = lab.clearance(f.x, f.z);
     const F = lab.player.feet;
+    lab.startFeet = { x: F.x, z: F.z };
     const trees30 = lab.trees.filter((q) => Math.hypot(q.x - F.x, q.z - F.z) < 30);
     const byClass = {};
     for (const q of trees30) { const k = lab.coverAt(q.x, q.z); byClass[k] = (byClass[k] || 0) + 1; }
     const probe = { feetClass: lab.coverAt(F.x, F.z), treesWithin30: trees30.length, treesByClass: byClass, forestCounts: lab.counts };
-    return { probe, colliders: lab.physics.colliders.len(), stats: lab.buildings, feet: [+f.x.toFixed(1), +f.z.toFixed(1)], clearance: c, coverMeta: lab.place?.meta?.cover ?? null };
+    // the bare-ground (none) nodes within 8 m of the feet: the litter of the floor is drawn on them
+    const noneNear = [];
+    for (let dx = -8; dx <= 8; dx += 2) for (let dz = -8; dz <= 8; dz += 2) if (lab.coverAt(F.x + dx, F.z + dz) === 0) noneNear.push([+(F.x + dx).toFixed(1), +(F.z + dz).toFixed(1)]);
+    probe.noneNear = noneNear.length;
+    probe.noneNearAt = noneNear.slice(0, 12);
+    probe.feetXZ = [+F.x.toFixed(2), +F.z.toFixed(2)];
+    probe.vantage = lab.place?.meta?.vantage ?? null;
+    const SYM = { 0: '.', 1: 'g', 2: 'f', 3: 'w', 4: 'T', 5: 'R', 6: 's', 7: 'i', 8: 'B', 9: '~', 10: 'P' };
+    const rowsOut = [];
+    for (let dz = 8; dz >= -8; dz -= 2) { let row = ''; for (let dx = -8; dx <= 8; dx += 2) row += (dx === 0 && dz === 0) ? '@' : SYM[lab.coverAt(F.x + dx, F.z + dz)] ?? '?'; rowsOut.push(row); }
+    probe.window = rowsOut;
+    return { probe, figure: lab.figureShown(), colliders: lab.physics.colliders.len(), stats: lab.buildings, feet: [+f.x.toFixed(1), +f.z.toFixed(1)], clearance: c, coverMeta: lab.place?.meta?.cover ?? null };
   });
   const share = await page.evaluate(frameShare);
   report.frameShare = share;
@@ -117,19 +129,24 @@ for (const p of PLACES) {
   }, tgt);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(outDir, `${p.name}-centre.png`) });
-  // the street: a clear spot 14 to 26 m from the centre, facing along the street (90 degrees from the centre)
+  // the street: a clear spot 14 to 26 m from the start (the walker's own town, so its walls are within 80 m of the start)
   const street = await page.evaluate(() => {
     const L = window.lab;
+    const O = L.startFeet ?? L.player.feet;
     // the look-ahead: the longest run of clear ground (30 m at most) in the 8 directions along the street
     const run = (x, z, dx, dz) => { let t = 0; for (; t < 30; t += 1) { const c = L.clearance(x + dx * t, z + dz * t); if (c.inBuilding || c.d < 2) break; } return t; };
     for (const R of [18, 22, 14, 26]) for (let a = 0; a < 360; a += 15) {
-      const r = (a * Math.PI) / 180, x = Math.sin(r) * R, z = Math.cos(r) * R;
+      const r = (a * Math.PI) / 180, x = O.x + Math.sin(r) * R, z = O.z + Math.cos(r) * R;
       const c = L.clearance(x, z);
       if (!c.inBuilding && c.d >= 4) {
         let best = null;
-        for (let k = 0; k < 8; k++) { const b = (k * Math.PI) / 4, dx = Math.sin(b), dz = Math.cos(b), n = run(x, z, dx, dz); if (!best || n > best.n) best = { n, dx, dz }; }
+        for (let k = 0; k < 8; k++) { const b = (k * Math.PI) / 4, dx = Math.sin(b), dz = Math.cos(b), n = run(x, z, dx, dz); const back = run(x, z, -dx, -dz); if (back >= 8 && (!best || n > best.n)) best = { n, dx, dz }; }
+        if (!best) continue;
+        // the walker's camera sits 6.4 m behind the feet: the spot must be clear that way too (back >= 8)
         L.teleport(x, L.heightAt(x, z), x + best.dx, z + best.dz);
-        return [+x.toFixed(1), +z.toFixed(1), best.n];
+        const ahead = [1, 2, 3, 4, 6, 8].map((t) => +L.clearance(x + best.dx * t, z + best.dz * t).d.toFixed(1));
+        const back = [2, 4, 6, 8].map((t) => +L.clearance(x - best.dx * t, z - best.dz * t).d.toFixed(1));
+        return [+x.toFixed(1), +z.toFixed(1), best.n, { ahead, back, dir: [+best.dx.toFixed(2), +best.dz.toFixed(2)] }];
       }
     }
     return null;

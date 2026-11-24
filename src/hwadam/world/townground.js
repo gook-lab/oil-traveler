@@ -1,7 +1,8 @@
 // The town ground (T3): the AWS Terrain heights are SRTM's surface model (DSM), so a town's roofs and trees are read as
 // ground, and the ground of a built-up node stands on them as a mound. For each built-up node (BUILT or PAVED) the ground
-// drops to the 15th percentile of the heights within 30 m (a sample every 6 m), where that is lower, and the dropped
-// nodes are then smoothed with their neighbours. The near square is changed in place, so the scene's ground, the
+// drops to the 15th percentile of the heights within 60 m (a sample every 8 m), where that is lower, and the dropped
+// nodes are then smoothed with their neighbours. (60 m, not 30: a dense block is roof all round within 30 m.) The near
+// square is changed in place, so the scene's ground, the
 // buildings' bases and the start all read the same heights.
 /**
  * @param {Float32Array} near the near square (metres, row by row from the south-west)
@@ -10,7 +11,7 @@
  * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number }} [opt]
  * @returns {{ lowered: number, meanDrop: number, maxDrop: number }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 30, pct = 0.15, stride = 3 } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 60, pct = 0.15, stride = 4 } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) if (urban.includes(cls[k])) isUrban[k] = 1;

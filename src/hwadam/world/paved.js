@@ -5,7 +5,7 @@
 // point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
-export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.05 };
+export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.02 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
 const inside = (pts, x, z) => {
@@ -78,8 +78,9 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
     if (!PLAIN.has(out[k]) && !sandCourt) continue;
     hist[Math.min(9, Math.floor(densityAt(S, N, k, h) * 10))]++;
     if (bld[k]) continue;
-    // bare ground (none) with a building within the 61 m square is town: stone, not an empty patch
-    const byDense = dense[k] === 1, byRoad = road[k] === 1, byCourt = court[k] === 1, byNone = out[k] === 0 && densityAt(S, N, k, h) >= PAVING.noneNear;
+    // bare ground (none) or grass with a building within the 61 m square is town: stone, not an empty patch or a lawn
+    // the leaves of the grass and the bare ground lie on the walker's path in town, so both go to stone
+    const byDense = dense[k] === 1, byRoad = road[k] === 1, byCourt = court[k] === 1, byNone = (out[k] === 0 || out[k] === 1) && densityAt(S, N, k, h) >= PAVING.noneNear;
     if (byDense) counts.dense++;
     if (byRoad) counts.road++;
     if (byCourt) counts.court++;

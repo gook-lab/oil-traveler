@@ -323,6 +323,8 @@ window.lab = {
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
+  /** the figure's dabs are shown while the view is third person (first < 0.5); for the shot checks */
+  figureShown: () => ({ first, shown: figure.dabs.visible, man: man.object.visible }),
   clearance: (x, z) => clearance(bld?.plans ?? [], x, z),
   /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */

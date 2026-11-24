@@ -75,5 +75,10 @@ await page.evaluate((tg) => {
 }, place.tgt);
 await page.waitForTimeout(1500);
 console.log(JSON.stringify({ view: 'centre', top: await page.evaluate(ids) }));
+if (place.name === 'myeongdong') {
+  await page.evaluate(() => { const L = window.lab; L.teleport(22, L.heightAt(22, 136), 22, 137); });
+  await page.waitForTimeout(1500);
+  console.log(JSON.stringify({ view: 'street', top: await page.evaluate(ids) }));
+}
 await browser.close();
 server.close();

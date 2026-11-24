@@ -12,7 +12,7 @@ import { SUN } from '../oilpaint/common.js';
 
 /** The most touches on the buildings of a place; the spacing of the dabs grows to keep under it. */
 export const DAB_CAP = 8000;
-export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea: 1500, wallH: 3.4 };
+export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea: 1500, wallH: 3.4, knownModernH: 20 };
 /** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
 const DAB_M = 1.5, ROOF_DAB_M = 3;
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
@@ -129,7 +129,8 @@ export function planBuildings(list, heritage) {
       }
       p.filled = true;
     } else p.h = p.h0;
-    p.trad = p.historic && p.h <= RULE.maxH && p.rect >= RULE.rect;
+    // a height from the data above 20 m is a tall block (not a hall), even near a palace; a filled height is not judged
+    p.trad = p.historic && p.h <= RULE.maxH && p.rect >= RULE.rect && (p.filled || p.h <= RULE.knownModernH);
     // a historic outline that is not a rectangle and covers 1500 m2 or more (a palace's walled court, or its ring of
     // walls) stands as a wall ring at 3.4 m: no roof plane, which would cover the court with a plate
     p.wall = p.historic && p.rect < RULE.rect && p.area >= RULE.wallArea;
@@ -162,7 +163,8 @@ function surfacesOf(p, ground) {
         col: (u, v, r) => {
           const fy = v * H, row = fy % FLOOR_H, x = u * L;
           const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
-          return win ? [0.12, 0.15, 0.18] : wallC;
+          // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
+          return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
         },
       });
     }
@@ -190,7 +192,7 @@ function surfacesOf(p, ground) {
   // the stone base, a little out from the posts
   face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
-  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8]), TRAD_WALL_CELL, () => [0.88, 0.86, 0.8]);
+  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.94 + 0.12 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.94 + 0.12 * r)));
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
   const posts = wallPts(0), eaveW = wallPts(EAVE);
   for (let k = 0; k < 4; k++) {
@@ -265,7 +267,9 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   };
   let nearSt = NEAR_STEP;
   if (near) {
-    for (let guard = 0; guard < 60 && countAt(nearSt, 'near') > NEAR_CAP; guard++) nearSt *= 1.03;
+    // near.fixed: a spacing given by the caller (the count at 3 m, for the check); else the spacing that keeps under the cap
+    if (near.fixed) nearSt = near.fixed;
+    else for (let guard = 0; guard < 60 && countAt(nearSt, 'near') > NEAR_CAP; guard++) nearSt *= 1.03;
     near.st = nearSt;
   }
   let base = Math.max(1.1, Math.sqrt(area / cap));
