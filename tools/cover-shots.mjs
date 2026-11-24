@@ -70,6 +70,8 @@ for (const p of PLACES) {
   const drop = ready ? await page.evaluate(() => window.lab.drop50()) : null;
   console.log(`  drop within 50 m along gaze (m) ${drop}`);
   const stats = ready ? await page.evaluate(() => window.lab.treeStats()) : null;
+  const mid = ready ? await page.evaluate(() => window.lab.midStats()) : null;
+  if (mid) console.log(`  midStats ${JSON.stringify(mid)}`);
   if (stats) console.log(`  treeStats ${JSON.stringify(stats)}`);
   const conifers = ready ? await page.evaluate(() => window.lab.coniferView()) : null;
   console.log(`  conifers ${JSON.stringify(conifers)}`);

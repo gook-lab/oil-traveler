@@ -311,6 +311,11 @@ export function createForest(shared) {
       barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 1.0 + rand() * 1.5) * (some ? 1.6 : 1));
     }
     t.dabs = (barkDabs.length - b0) / 13 + (leafDabs.length - l0) / 10;
+    // T2 check: the foliage's vertical extent (world y) and its dab count, for the bare stems above the leaves (lab.treeStats)
+    t.leaves = (leafDabs.length - l0) / 10;
+    let y0 = Infinity, y1 = -Infinity;
+    for (let k = l0; k < leafDabs.length; k += 10) { y0 = Math.min(y0, leafDabs[k + 1]); y1 = Math.max(y1, leafDabs[k + 1]); }
+    t.leafY0 = t.leaves ? y0 : t.y; t.leafY1 = t.leaves ? y1 : t.y;
   }
 
   // --- the understorey: saplings and bushes that hold their leaves at eye height, of the colours of their part ---

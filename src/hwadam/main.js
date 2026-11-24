@@ -341,7 +341,21 @@ window.lab = {
       const band = L < 50 ? '0-50' : L < 120 ? '50-120' : '120+';
       bands[band].n++; bands[band].dabs += t.dabs ?? 0; dabs += t.dabs ?? 0; tiers[t.tier]++;
     }
-    return { bands, tiers, dabs: Math.round(dabs) };
+    // the stems that stand above their leaves: a tree in frame whose foliage tops out well under its trunk top
+    const stems = { n: 0, byKind: {}, sample: [] };
+    for (const t of forest.trees) {
+      const v = new THREE.Vector3(t.x - eye.x, t.y + t.h * 0.5 - eye.y, t.z - eye.z);
+      const d = v.dot(fwd);
+      if (d <= 0 || v.length() > 300) continue;
+      if (!(Math.abs(Math.atan2(v.dot(right), d)) < (36.5 * Math.PI) / 180 && Math.abs(Math.atan2(v.dot(up), d)) < (23 * Math.PI) / 180)) continue;
+      // the bare part is the trunk under the first leaf (the crown's foot), as a share of the tree's height
+      const bare = t.leafY0 - t.y, ratio = bare / t.h;
+      if (ratio < 0.5 && t.leaves >= 40) continue;
+      const kind = t.nearPine ? 'nearPine' : t.conifer ? 'conifer' : ['beech', 'birch', 'oak', 'maple'][t.type] ?? String(t.type);
+      stems.n++; stems.byKind[kind] = (stems.byKind[kind] ?? 0) + 1;
+      if (stems.sample.length < 6) stems.sample.push({ kind, h: +t.h.toFixed(1), bareBelowLeaves: +bare.toFixed(1), crownH: +(t.leafY1 - t.leafY0).toFixed(1), leaves: t.leaves });
+    }
+    return { bands, tiers, dabs: Math.round(dabs), stems };
   },
   /** T2 check: the trees in the frame within 40 m by tier (0 full, 1 some, 2 far), by the mid of each trunk. */
   treeTiers: () => {
@@ -396,6 +410,14 @@ window.lab = {
     const eye = camera.position.y; let worst = 0;
     for (let t = 0; t <= 50; t += 1) worst = Math.max(worst, eye - heightAt(camera.position.x + f.x * t, camera.position.z + f.z * t));
     return +worst.toFixed(1);
+  },
+  /** T2 check: the midground's heights (absolute m): the cells at sea level (<= 0.5, 1, 3 m), the range, and the entrance height. */
+  midStats: () => {
+    const m = place.mid;
+    if (!m) return null;
+    const c = { le05: 0, le1: 0, le3: 0 }; let lo = Infinity, hi = -Infinity;
+    for (const v of m.h) { if (v <= 0.5) c.le05++; if (v <= 1) c.le1++; if (v <= 3) c.le3++; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    return { n: m.n, ...c, min: +lo.toFixed(1), max: +hi.toFixed(1), H0: +place.way.startHeight.toFixed(1) };
   },
   /** T2 check: the feet's ground position, for the walk test (tools/cover-shots.mjs). */
   feet: () => ({ x: player.feet.x, z: player.feet.z }),
