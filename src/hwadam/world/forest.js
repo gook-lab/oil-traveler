@@ -232,6 +232,9 @@ export function createForest(shared) {
     };
     if (full && wayDist(t.x, t.z) < 60) colliders.push({ x: t.x, z: t.z, y: t.y, r: t.r * 1.15 });
 
+    // travel only: a tree in the first view (within 300 m and 40 degrees either side of the gaze) gets the denser
+    // crown; the others keep the old density. Only these have bare trunks in the picture (Bukhansan, Hwadam)
+    const seen = CLEAR.fan && Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) < 300 && (((t.x - CLEAR.x) * CLEAR.fx + (t.z - CLEAR.z) * CLEAR.fz) / Math.max(1e-6, Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z))) > Math.cos((40 * Math.PI) / 180);
     // --- crown: limbs, and the lobes of leaves they hold up ---
     const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
     const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
@@ -289,11 +292,11 @@ export function createForest(shared) {
       }
       // travel broadleaves: two lobes low on the trunk (0.42 to 0.62 of the height), so the crown reaches down and the
       // bare lower trunk does not read as a stick (the Bukhansan beech at 0.62 of its height)
-      if (CLEAR.fan && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, 2.2 + rand() * 1.0]);
+      if (seen && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, 2.2 + rand() * 1.0]);
     }
     // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
     // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
-    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : CLEAR.fan && t.type !== BIRCH ? 26 : 11;
+    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);
