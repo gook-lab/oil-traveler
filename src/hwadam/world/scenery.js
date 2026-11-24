@@ -42,12 +42,16 @@ const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes,
 const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-/** How high ring k stands at bearing az (0 north, + east): noise along the ring, and lower away from the north. */
-function crest(k, az) {
-  const o = RINGS[k], c = Math.cos(az), s = Math.sin(az);
-  const n = 0.45 + 0.55 * noise(c * 2.2 + o.seed, s * 2.2) + 0.28 * noise(c * 6.5, s * 6.5 + o.seed) + 0.12 * noise(c * 17 + o.seed, s * 17);
-  const north = 0.3 + 0.7 * sstep(-0.2, 0.9, c);
-  return o.top * north * Math.min(1.4, Math.max(0.1, n));
+/**
+ * The skyline of ring k at bearing az (0 north, clockwise, as the baked horizon): the real elevation angle seen from
+ * the view (src/hwadam/world/horizon.js), carried out to the ring's radius. The angle is real; the ring's distance is
+ * the picture's, so the skyline's shape is the real one and its height is the real angle at that distance.
+ */
+function crest(k, az, horizon, eyeY) {
+  const deg = (((az * 180) / Math.PI) % 360 + 360) % 360;
+  const i0 = Math.floor(deg) % 360, i1 = (i0 + 1) % 360, f = deg - Math.floor(deg);
+  const th = horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
+  return Math.max(-15, eyeY + RINGS[k].r * Math.tan(th));
 }
 
 const RANGE = /* glsl */ `
@@ -55,7 +59,7 @@ ${RING_COL}
 const float RING_AIR[3] = float[3](0.25, 0.45, 0.65);
 `;
 
-export function createScenery(shared) {
+export function createScenery(shared, horizon, eyeY) {
   const rand = rng(8831);
 
   // --- stones: pos 3, data 4 (seed, size, height, unused) ---
@@ -96,7 +100,7 @@ export function createScenery(shared) {
     const p = new Float32Array((SEG + 1) * 2 * 3), index = [];
     for (let i = 0; i <= SEG; i++) {
       const az = (i / SEG) * Math.PI * 2, x = CLEARING.x + Math.sin(az) * o.r, z = CLEARING.z - Math.cos(az) * o.r;
-      p.set([x, -20, z, x, crest(k, az), z], i * 6);
+      p.set([x, -20, z, x, crest(k, az, horizon, eyeY), z], i * 6);
       if (i < SEG) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     }
     wall.setAttribute('position', new THREE.BufferAttribute(p, 3));
@@ -125,7 +129,7 @@ export function createScenery(shared) {
     // strokes laid over the wall: the lower part is darker and sparser, the skyline is painted over the wall's top
     const pos = new Float32Array(o.count * 3), dat = new Float32Array(o.count * 4);
     for (let i = 0; i < o.count; i++) {
-      const az = rand() * Math.PI * 2, top = crest(k, az), t = Math.pow(rand(), 0.8);
+      const az = rand() * Math.PI * 2, top = crest(k, az, horizon, eyeY), t = Math.pow(rand(), 0.8);
       const rr = o.r - 12 - 30 * rand();
       pos.set([CLEARING.x + Math.sin(az) * rr, -20 + (top + 20) * t, CLEARING.z - Math.cos(az) * rr], i * 3);
       dat.set([rand() * 1000, o.size * (0.7 + 0.6 * rand()), t, k], i * 4);

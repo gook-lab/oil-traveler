@@ -3,11 +3,48 @@
     "lat": 37.3419823,
     "lon": 127.2885772
   },
+  "view": {
+    "x": -192,
+    "z": -190
+  },
   "nearM": 512,
   "nearStep": 2,
   "nearN": 256,
-  "source": "AWS Terrain Tiles (terrarium, Tilezen/Mapzen), zoom 13",
-  "sources": [
-    "srtm/N37E127.tif"
-  ]
+  "bands": [
+    2000,
+    5000,
+    15000
+  ],
+  "eye": 377.6,
+  "source": "AWS Terrain Tiles (terrarium, Tilezen/Mapzen), zoom 13 for the near square and every band",
+  "sources": {
+    "near": [
+      "srtm/N37E127.tif"
+    ],
+    "bands": [
+      {
+        "maxM": 2000,
+        "zoom": 13,
+        "sources": [
+          "srtm/N37E127.tif"
+        ]
+      },
+      {
+        "maxM": 5000,
+        "zoom": 13,
+        "sources": [
+          "gmted/30N120E_20101117_gmted_mea075.tif",
+          "srtm/N37E127.tif"
+        ]
+      },
+      {
+        "maxM": 15000,
+        "zoom": 13,
+        "sources": [
+          "gmted/30N120E_20101117_gmted_mea075.tif",
+          "srtm/N37E127.tif"
+        ]
+      }
+    ]
+  }
 }

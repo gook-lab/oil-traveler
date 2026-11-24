@@ -9,7 +9,8 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, createLand, heightAt, wayDist, noise, way, START } from './world/land.js';
+import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
+import { loadHorizon } from './world/horizon.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -98,7 +99,8 @@ lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
 const kick = createKick(shared);
-const scenery = createScenery(shared);
+const horizon = await loadHorizon(); // the real skyline round the viewpoint (see tools/fetch-dem.mjs)
+const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
 
 // --- the ground and the trunks, for his feet ---

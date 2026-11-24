@@ -4,7 +4,7 @@ Code MIT. Art CC0 1.0. Checked 2026-11-11.
 
 | Part | Where it came from | Licence | In this repo? |
 |---|---|---|---|
-| `src/hwadam/data/` (the ground's heights: near.bin, 512 m square) | Terrain Tiles on AWS Open Data (Tilezen / Mapzen), baked by `tools/fetch-dem.mjs`. Source data SRTM (each tile's header is checked; `meta.json` lists them). Credit: "SRTM terrain data courtesy of the U.S. Geological Survey" | Public domain (SRTM, U.S. Government work) | Yes |
+| `src/hwadam/data/` (the ground's heights `near.bin` and the real skyline `horizon.bin`) | Terrain Tiles on AWS Open Data (Tilezen / Mapzen), baked by `tools/fetch-dem.mjs`. Source data SRTM and GMTED2010 (each tile's header is checked; `meta.json` lists them per band). Credit: "global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey" | Public domain (SRTM and GMTED2010, U.S. Government work) | Yes |
 | `src/oilpaint/` (dabs, brush, ground, pins, shade, canvas) | Written by Patch for this block | MIT | Yes |
 | `src/world/` (land, floor, trees, sky, leaves) | Written by Patch for this demo. Every tree, leaf and brush mark is made in code; no picture or model is loaded for them | MIT; what it draws CC0 | Yes |
 | `src/night/` (the ridge, snow, spruces, sky and aurora, water and ranges, the cabin and all in it, the lantern, tracks, snow in the air) | Written by Patch for this demo. Every stroke of it is made in code; no picture, model or sound is loaded for it | MIT; what it draws CC0 | Yes |
