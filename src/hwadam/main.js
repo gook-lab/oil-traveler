@@ -155,6 +155,8 @@ const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.w
 if (midMesh) scene.add(midMesh);
 // travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
 const rangesMesh = travel && place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, VS) : null;
+// check only (?keyranges): the ranges in pure green, so that the picture counts how much of them stays
+if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide }); });
 if (rangesMesh) scene.add(rangesMesh);
 // travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
 // their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
