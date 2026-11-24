@@ -73,14 +73,15 @@ export function createScenery(shared) {
   // --- the far ridge: pos 3, data 4 (seed, size, how high up the ridge, unused) ---
   // two layers: the near ridge, and a paler one behind it, both past the last trunks of the wood
   const rp = [], rd = [];
-  for (const [zBase, zSpan, height, count, size] of [[-430, 60, 110, 1100, 26], [-640, 80, 170, 700, 40]]) {
+  for (const [zBase, zSpan, height, count, size] of [[-238, 8, 62, 900, 14], [-252, 3, 90, 600, 22]]) {
     for (let i = 0; i < count; i++) {
-      const x = -520 + 1040 * rand();
+      const x = -240 + 480 * rand();
       const z = zBase - zSpan * rand();
-      const top = height + height * 0.4 * noise(x / 200, 4.1) + height * 0.15 * noise(x / 60, 8.3);
-      const y = 4 + (top - 4) * (0.25 + 0.75 * rand());
+      const y0 = heightAt(x, z);
+      const top = y0 + height + height * 0.4 * noise(x / 200, 4.1) + height * 0.15 * noise(x / 60, 8.3);
+      const y = y0 + (top - y0) * (0.25 + 0.75 * rand());
       rp.push(x, y, z);
-      rd.push(rand() * 1000, size * (0.6 + 0.8 * rand()), (y - 4) / (top - 4 + 1e-3), 0);
+      rd.push(rand() * 1000, size * (0.6 + 0.8 * rand()), (y - y0) / (top - y0 + 1e-3), 0);
     }
   }
 

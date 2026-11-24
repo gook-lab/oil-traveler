@@ -3,7 +3,7 @@
 // JS side, the ground, the litter and the undergrowth in the shaders (SEG_GLSL). The boundaries blend over SOFT on
 // each side, so one part gives way to the next by mixing, never by a line.
 //   0 이끼원 (moss garden)   1 단풍 오르막 (maple climb)   2 자작나무숲 (birch wood)   3 능선 전망 (ridge view)
-export const CUTS = [0.3, 0.6, 0.8];
+export const CUTS = [0.42, 0.6, 0.8];
 export const SOFT = 0.035;
 
 const ramp = (a, b, x) => {
