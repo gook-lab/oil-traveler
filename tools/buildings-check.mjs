@@ -124,7 +124,7 @@ for (const p of PLACES) {
       if (!c.inBuilding && c.d >= 3.5 && (!best || z > best.z)) best = { x, z };
     }
     if (!best) return null;
-    L.teleport(best.x, L.heightAt(best.x, best.z), tg[0], tg[1]);
+    L.teleport(best.x, best.z, tg[0], tg[1]);
     return [+best.x.toFixed(1), +best.z.toFixed(1)];
   }, tgt);
   await page.waitForTimeout(1500);
@@ -143,7 +143,7 @@ for (const p of PLACES) {
         for (let k = 0; k < 8; k++) { const b = (k * Math.PI) / 4, dx = Math.sin(b), dz = Math.cos(b), n = run(x, z, dx, dz); const back = run(x, z, -dx, -dz); if (back >= 8 && (!best || n > best.n)) best = { n, dx, dz }; }
         if (!best) continue;
         // the walker's camera sits 6.4 m behind the feet: the spot must be clear that way too (back >= 8)
-        L.teleport(x, L.heightAt(x, z), x + best.dx, z + best.dz);
+        L.teleport(x, z, x + best.dx, z + best.dz);
         const ahead = [1, 2, 3, 4, 6, 8].map((t) => +L.clearance(x + best.dx * t, z + best.dz * t).d.toFixed(1));
         const back = [2, 4, 6, 8].map((t) => +L.clearance(x - best.dx * t, z - best.dz * t).d.toFixed(1));
         return [+x.toFixed(1), +z.toFixed(1), best.n, { ahead, back, dir: [+best.dx.toFixed(2), +best.dz.toFixed(2)] }];

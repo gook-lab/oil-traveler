@@ -70,13 +70,13 @@ await page.evaluate((tg) => {
   for (let a = 0; a < 360; a += 10) {
     const r = (a * Math.PI) / 180, x = tg[0] + Math.sin(r) * 40, z = tg[1] + Math.cos(r) * 40;
     const c = L.clearance(x, z);
-    if (!c.inBuilding && c.d >= 3.5) { L.teleport(x, L.heightAt(x, z), tg[0], tg[1]); return; }
+    if (!c.inBuilding && c.d >= 3.5) { L.teleport(x, z, tg[0], tg[1]); return; }
   }
 }, place.tgt);
 await page.waitForTimeout(1500);
 console.log(JSON.stringify({ view: 'centre', top: await page.evaluate(ids) }));
 if (place.name === 'myeongdong') {
-  await page.evaluate(() => { const L = window.lab; L.teleport(22, L.heightAt(22, 136), 22, 137); });
+  await page.evaluate(() => { const L = window.lab; L.teleport(22, 136, 22, 137); });
   await page.waitForTimeout(1500);
   console.log(JSON.stringify({ view: 'street', top: await page.evaluate(ids) }));
 }

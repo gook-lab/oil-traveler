@@ -233,7 +233,7 @@ function dabStep(s, base, near) {
 /** True for a surface whose centre lies within NEAR_M of the start. */
 function isNear(s, near) {
   const c = s.poly ? polyCentre(s.poly) : [bil(s, 0.5, 0.5)[0], bil(s, 0.5, 0.5)[2]];
-  return Math.hypot(c[0] - near.x, c[1] - near.z) < NEAR_M;
+  return Math.hypot(c[0] - near.x, c[1] - near.z) < (near.radius ?? NEAR_M);
 }
 
 
