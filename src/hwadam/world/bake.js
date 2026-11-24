@@ -238,3 +238,20 @@ export function findWay(H, N, STEP) {
     points: world,
   };
 }
+
+/**
+ * The first view's bearing (degrees, 0 north, clockwise) from the skyline: the bearing with the most ridge layers
+ * (the same count as tools/horizon-layers.mjs: a band counts when it rises 0.4 degree over the nearer ones), and
+ * among those the highest far ridge. A place's own shape is what the first frame then shows.
+ */
+export function gazeBearing(horizon) {
+  const deg = (r) => (r * 180) / Math.PI, margin = 0.4;
+  let best = 0, bestKey = -Infinity;
+  for (let a = 0; a < 360; a++) {
+    const a2 = deg(horizon[a]), a5 = deg(horizon[360 + a]), a15 = deg(horizon[720 + a]);
+    const layers = 1 + (a5 > a2 + margin ? 1 : 0) + (a15 > Math.max(a2, a5) + margin ? 1 : 0);
+    const key = layers * 100 + a15;
+    if (key > bestKey) { bestKey = key; best = a; }
+  }
+  return best;
+}

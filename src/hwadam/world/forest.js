@@ -152,8 +152,12 @@ function plant() {
     const px = ex + ux * along, pz = ez + uz * along;
     return Math.hypot(t.x - px, t.z - pz) < t.r + 2.2;
   });
-  // no trunk within CLEAR.r of the start (travel: the pin), so the first view is open
-  return trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r));
+  // no trunk within CLEAR.r of the start (travel: the pin), nor in the fan of the first view (CLEAR.fan), so it is open
+  const inFirstFan = (t) => {
+    const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
+    return d > 0 && d <= CLEAR.fanR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= CLEAR.fanCos;
+  };
+  return trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)))));
 }
 
 export function createForest(shared) {

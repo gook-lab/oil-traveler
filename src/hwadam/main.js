@@ -11,6 +11,7 @@ import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
+import { gazeBearing } from './world/bake.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -120,8 +121,14 @@ const land = createLand(shared);
 lap('land');
 say(0.1, 'Growing the wood');
 await turn();
-// travel: the start is the pin (the centre of the square), with no trunk within 12 m of it
-Object.assign(CLEAR, { x: 0, z: 0, r: travel ? 12 : 0 });
+// travel: the start is the pin (the centre of the square). The first view looks along the skyline's most layered
+// bearing (src/hwadam/world/bake.js gazeBearing), and no trunk stands within 15 m of the pin nor in the 25 degree fan
+// out to 40 m along that view. The baked Hwadam walk keeps its own start and view (no clearing).
+const gazeDeg = travel ? gazeBearing(place.horizon) : null;
+const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
+Object.assign(CLEAR, {
+  x: 0, z: 0, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
+});
 const forest = createForest(shared);
 lap('forest');
 const floor = createFloor(shared);
@@ -156,7 +163,7 @@ const animator = new Animator(man);
 // the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
 const spawnX = travel ? 0 : START.x, spawnZ = travel ? 0 : START.z;
 const spawn = new THREE.Vector3(spawnX, heightAt(spawnX, spawnZ), spawnZ);
-const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
+const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // travel: the skyline's view; else along the way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
 follow.yaw = faceYaw;
@@ -215,7 +222,9 @@ addEventListener('keydown', (e) => {
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
   time += dt;
-  const inp = input.read(dt);
+  const raw = input.read(dt);
+  // the map is open: the keys are for its search box, so the wanderer stands still
+  const inp = mapOpen() ? { ...raw, move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, look: { x: 0, y: 0 } } : raw;
   player.update(dt, inp, follow.yaw);
   // the wood has no wall: far from the way he is turned gently back, and under the world he starts again
   if (player.feet.y < heightAt(player.feet.x, player.feet.z) - 6 || (!travel && wayDist(player.feet.x, player.feet.z) > 78)) respawn();

@@ -12,6 +12,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { gazeBearing } from '../src/hwadam/world/bake.js';
 
 const here = resolve(fileURLToPath(import.meta.url), '..', '..');
 const args = process.argv.slice(2);
@@ -64,7 +65,7 @@ const failures = [];
 const report = {};
 
 /** Opens the page on a query, waits for the first frame or a shown error; returns what it found. */
-async function openPlace(query, { shot } = {}) {
+async function openPlace(query, { shot, coverage = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 });
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -80,6 +81,54 @@ async function openPlace(query, { shot } = {}) {
       const p = window.lab.place;
       return { name: p.name, source: p.source, near: Array.from(p.near), horizon: Array.from(p.horizon), way: p.way, meta: p.meta };
     });
+    if (coverage) {
+      // what the first frame shows: the trunks' share of the frame's width (each trunk's width against the view), and
+      // the nearest trunk that is in view. The eye is brought to its first-person height first (the walk does it in
+      // about two seconds of frames).
+      out.coverage = await page.evaluate(() => {
+        const L = window.lab, T = L.THREE;
+        L.step(1 / 60, 120);
+        const cam = L.camera;
+        cam.updateMatrixWorld(true);
+        // horizontal projection: a trunk is a vertical cylinder, seen as an angle of asin(r / its horizontal distance)
+        const fwd3 = cam.getWorldDirection(new T.Vector3());
+        const fwd = new T.Vector3(fwd3.x, 0, fwd3.z).normalize();
+        const right = new T.Vector3().crossVectors(fwd, new T.Vector3(0, 1, 0)).normalize();
+        const half = (2 * Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect)) / 2;
+        const iv = [], ivNear = [];
+        let nearest = Infinity;
+        for (const t of L.trees) {
+          if (t.hero) continue;
+          const vx = t.x - cam.position.x, vz = t.z - cam.position.z;
+          const dist = Math.hypot(vx, vz);
+          if (dist <= t.r) continue; // the camera is inside it (never in the walk's clearing)
+          const v = new T.Vector3(vx, 0, vz);
+          const depth = v.dot(fwd), lateral = v.dot(right);
+          if (depth <= 0) continue;
+          const off = Math.atan2(lateral, depth), w = Math.asin(Math.min(1, t.r / dist));
+          if (off + w < -half || off - w > half) continue;
+          const seg = [Math.max(-half, off - w), Math.min(half, off + w)];
+          iv.push(seg);
+          if (dist <= 15) ivNear.push(seg);
+          nearest = Math.min(nearest, dist);
+        }
+        const union = (list) => {
+          list.sort((a, b) => a[0] - b[0]);
+          let total = 0, cur = null;
+          for (const [a, b] of list) {
+            if (!cur || a > cur[1]) { if (cur) total += cur[1] - cur[0]; cur = [a, b]; } else cur[1] = Math.max(cur[1], b);
+          }
+          if (cur) total += cur[1] - cur[0];
+          return total / (2 * half);
+        };
+        return {
+          nearShare: +union(ivNear).toFixed(4), // trunks within 15 m: the ones that block the first view
+          allShare: +union(iv).toFixed(4), // every trunk in view, the far wood included
+          trunksInView: iv.length, trunksWithin15m: ivNear.length,
+          nearestInViewM: Number.isFinite(nearest) ? +nearest.toFixed(2) : null,
+        };
+      });
+    }
     out.minTrunkM = await page.evaluate(() => {
       // the nearest trunk to the start (the pin in travel): heroes (the old oak) are not counted
       const ts = window.lab.trees.filter((t) => !t.hero);
@@ -132,9 +181,14 @@ for (const q of ['북한산 국립공원', '제주 협재해수욕장']) {
 }
 report.places = [];
 for (const [i, g] of named.entries()) {
-  const r = await openPlace(`scene=travel&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: i === 0 ? 'place-bukhansan' : 'place-jeju' });
+  const r = await openPlace(`scene=travel&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: i === 0 ? 'place-bukhansan' : 'place-jeju', coverage: true });
   const row = { name: g.q, lat: g.lat, lon: g.lon, ready: r.ready, ms: r.ms, status: r.status, problems: r.problems.slice(0, 3) };
   row.minTrunkFromStartM = r.minTrunkM == null ? null : +r.minTrunkM.toFixed(2);
+  if (r.ready) {
+    row.gazeDeg = gazeBearing(r.place.horizon);
+    row.firstFrame = r.coverage;
+    if (r.coverage.nearShare > 0.05) failures.push(`${g.q}: trunks within 15 m cover ${(r.coverage.nearShare * 100).toFixed(1)}% of the first frame's width (limit 5%)`);
+  }
   if (r.ready && r.minTrunkM != null && r.minTrunkM <= 12) failures.push(`${g.q}: a trunk stands ${r.minTrunkM.toFixed(2)} m from the start (need > 12)`);
   if (r.ready) row.way = { length: r.place.way.length, gain: r.place.way.gain, slopeMean: r.place.way.slopeMean, slopeMax: r.place.way.slopeMax, startH: r.place.way.startHeight, goalH: r.place.way.goalHeight };
   report.places.push(row);
