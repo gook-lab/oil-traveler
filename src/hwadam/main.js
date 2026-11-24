@@ -121,11 +121,12 @@ const { man } = figure;
 figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no cloak
 scene.add(man.object, figure.dabs);
 // a small pack on his upper back: an invisible box on the spine carries its own paint (pins follow the box)
-const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.24), new THREE.MeshBasicMaterial());
-pack.visible = false;
+const pack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.18), new THREE.MeshBasicMaterial());
+pack.visible = q.has('packdbg'); // ?packdbg shows the box in magenta, to check where the pack hangs
 man.bones.spine_03.add(pack);
-pack.position.set(0, 0.02, 0.26);
-const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 420, style: () => ({ pal: 0, size: [0.07, 0.12], dir: new THREE.Vector3(0, 1, 0) }) }]);
+pack.position.set(0, -0.02, -0.2); // his back is the -z side of the spine (the +z side is the chest)
+// the paint goes on the back face and its sides: the chest side of the box is hidden inside his shirt
+const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 520, accept: (p) => p.z < -0.1, style: () => ({ pal: 0, size: [0.08, 0.13], dir: new THREE.Vector3(0, 1, 0) }) }]);
 scene.add(packDabs.mesh);
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);

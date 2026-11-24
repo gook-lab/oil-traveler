@@ -120,6 +120,19 @@ function plant() {
     near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
     if (type === MAPLE) near.h *= 0.32; // low trees: their crowns meet over the path, not far above it
   }
+  // the birch stretch is close set: a second pass of birches, 3.5 to 12 m off the way where its weight is high
+  for (let i = 0; i < 700; i++) {
+    const k = 60 + Math.floor(rand() * 90);
+    const [wx, wz] = way[k];
+    const [nx, nz] = way[k + 1];
+    const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
+    const off = (3.5 + rand() * 8.5) * (rand() < 0.5 ? -1 : 1);
+    const x = wx + (-dz / len) * off, z = wz + (dx / len) * off;
+    if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
+    const sw = segW(pathT(x, z));
+    if (sw[2] < 0.4 || rand() < 0.3) continue;
+    add(x, z, BIRCH, wayDist(x, z) < 22 ? 0 : wayDist(x, z) < 60 ? 1 : 2);
+  }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
   trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });

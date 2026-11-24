@@ -14,7 +14,7 @@ void makeDab(inout Dab d) {
   float lit = sunAt(aPos + vec3(0.0, 0.5, 0.0));
   vec3 c = paint3(vec3(0.5, 0.5, 0.46), vec3(0.33, 0.35, 0.32), vec3(0.14, 0.17, 0.16), lit, r.x);
   // moss on the top of some of them, more where the sun falls
-  float mossy = step(0.3, r.y) * (0.5 + 0.5 * step(0.3, lit));
+  float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);
   c = jitter(c, r.zxy, 0.5);
   float a = r.w * TAU;
@@ -85,7 +85,7 @@ export function createScenery(shared, horizon, eyeY) {
     if (wayDist(x, z) < 2.2) continue;
     placed++;
     const y = heightAt(x, z);
-    const size = 0.3 + rand() * 0.45;
+    const size = (rand() < 0.4 ? 0.7 : 0.3) + rand() * 0.5;
     const n = 3 + Math.floor(rand() * 3);
     for (let j = 0; j < n; j++) {
       const ox = (rand() - 0.5) * size * 0.8, oz = (rand() - 0.5) * size * 0.8;

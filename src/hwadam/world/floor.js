@@ -87,7 +87,7 @@ void makeDab(inout Dab d) {
   float drift = smoothstep(0.46, 0.7, texture(tNoise, foot / 37.0).a);
   float chance = max(0.05 + 0.8 * drift, m.g) * (1.0 - m.r) * (1.0 - 0.8 * sw.x);
   if (q.x > chance) { d.alive = 0.0; return; }
-  float grass = step(q.z, max(m.g * 1.1, 0.22));           // a tuft of grass rather than a fern
+  float grass = step(q.z, max(m.g * 1.1, 0.22)) * (1.0 - sw.x); // a tuft of grass rather than a fern; none in the moss garden
   float big = min(pow(lod, 0.6), 2.2);
   float a = (sub + f.x) / 6.0 * TAU + r.z * TAU;
   vec2 fan = vec2(cos(a), sin(a));
@@ -108,7 +108,7 @@ void makeDab(inout Dab d) {
   vec2 lean = fan * mix(0.9 + 1.3 * f.y, 0.12 + 0.4 * f.y, grass) + uWind.xy * (0.08 + 0.6 * gust + sway);
   d.dir = normalize(vec3(lean.x, 1.0, lean.y));
   d.pos = P - vec3(0.0, 0.02, 0.0);
-  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass);
+  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass) * mix(1.0, 0.4, sw.x);
   // a frond is a broad curved stroke that arches over; a blade of grass a thin straight one
   d.size = vec2(mix(0.17, 0.04, grass) * big * (0.8 + 0.5 * f.x), tall);
   d.cell = grass > 0.5 ? floor(f.y * 2.99) : (f.x > 0.5 ? 3.0 : 7.0);

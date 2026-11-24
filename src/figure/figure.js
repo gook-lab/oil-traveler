@@ -35,6 +35,39 @@ void main() {
 }
 `;
 
+// The arms of a long-sleeved wearer: the triangles of the skin mesh that lie on the upper or lower arm (most of their
+// weight on those bones) get the jacket's paint, drawn just in front of the skin under them.
+function sleeveOf(mesh, shared, shirt) {
+  const onArm = mesh.skeleton.bones.map((b) => /upperarm|lowerarm/.test(b.name));
+  const g0 = mesh.geometry, si = g0.attributes.skinIndex, sw = g0.attributes.skinWeight;
+  const arm = new Uint8Array(si.count);
+  for (let v = 0; v < si.count; v++) {
+    let w = 0;
+    for (let k = 0; k < 4; k++) if (onArm[si.getComponent(v, k)]) w += sw.getComponent(v, k);
+    arm[v] = w > 0.5 ? 1 : 0;
+  }
+  const index = g0.index, tris = index ? index.count / 3 : si.count / 3;
+  const keep = [];
+  for (let t = 0; t < tris; t++) {
+    const ids = [0, 1, 2].map((k) => (index ? index.getX(t * 3 + k) : t * 3 + k));
+    if (arm[ids[0]] + arm[ids[1]] + arm[ids[2]] >= 2) keep.push(...ids);
+  }
+  if (!keep.length) return null;
+  const g = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal', 'uv', 'skinIndex', 'skinWeight']) if (g0.attributes[name]) g.setAttribute(name, g0.attributes[name]);
+  g.setIndex(keep);
+  const m = new THREE.SkinnedMesh(g, paint(shared, shirt, { skinned: true }));
+  m.material.polygonOffset = true;
+  m.material.polygonOffsetFactor = -2;
+  m.material.polygonOffsetUnits = -2;
+  m.bind(mesh.skeleton, mesh.bindMatrix);
+  m.name = 'sleeve';
+  m.layers.enable(1);
+  m.frustumCulled = false;
+  mesh.parent.add(m);
+  return m;
+}
+
 // A palette is [light, half-tone, shade] and, where a lamp is carried, the thing's own colour for its light to fall on.
 function paint(shared, [L, M, S, A = L], { skinned = false, lower = null, split = -10, grain = 2.2 } = {}) {
   const col = (c) => ({ value: new THREE.Color(...c) });
@@ -99,6 +132,7 @@ export async function createFigure(shared, onProgress, palettes = {}, look = {})
     mesh.layers.enable(1);
     mesh.frustumCulled = false;
   }
+  const sleeves = look.longSleeves ? sleeveOf(man.meshes.find((m) => /generic/.test(m.name)), shared, SHIRT) : null;
   const dabs = new THREE.Group();
 
   // --- the hat: a low crown and a wide brim, set on while he still stands in the pose he was made in ---
@@ -204,6 +238,7 @@ export async function createFigure(shared, onProgress, palettes = {}, look = {})
       ? { pal: look.longSleeves ? 0 : 2, size: Math.abs(p.x) > 0.78 ? [0.022, 0.04] : [0.034, 0.08], dir: OUT }
       : { pal: 2, size: [0.028, 0.05], dir: new THREE.Vector3().crossVectors(UP, n).add(new THREE.Vector3(0, 0.3, 0)) }),
   });
+  if (sleeves) parts.push({ mesh: sleeves, count: 260, style: () => ({ pal: 0, size: [0.05, 0.11], dir: OUT }) });
   if (shoes) parts.push({ mesh: shoes, count: 70, style: () => ({ pal: 3, size: [0.045, 0.085], dir: FWD }) });
   if (hair) parts.push({ mesh: hair, count: 50, style: () => ({ pal: 4, size: [0.035, 0.07], dir: UP }) });
   const bodyDabs = pinDabs(shared, [SHIRT, TROUSERS, SKIN, BOOTS, HAIR], parts);
@@ -229,5 +264,5 @@ export async function createFigure(shared, onProgress, palettes = {}, look = {})
     cloakGeometry.attributes.normal.needsUpdate = true;
   }
 
-  return { man, hat, cloak, cloakMesh, dabs, updateCloak, cloakDabs, bodyDabs };
+  return { man, hat, cloak, cloakMesh, dabs, updateCloak, cloakDabs, bodyDabs, sleeves };
 }
