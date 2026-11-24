@@ -75,6 +75,12 @@ await page.evaluate((tg) => {
 }, place.tgt);
 await page.waitForTimeout(1500);
 console.log(JSON.stringify({ view: 'centre', top: await page.evaluate(ids) }));
+if (place.name === 'gyeongbokgung') {
+  // the street view: from the street spot (24.7, -75.4) facing south (the same spot and bearing as buildings-check)
+  await page.evaluate(() => { const L = window.lab; L.teleport(24.7, -75.4, 24.7, -74.4); });
+  await page.waitForTimeout(1500);
+  console.log(JSON.stringify({ view: 'street', top: await page.evaluate(ids) }));
+}
 if (place.name === 'myeongdong') {
   await page.evaluate(() => { const L = window.lab; L.teleport(22, 136, 22, 137); });
   await page.waitForTimeout(1500);
