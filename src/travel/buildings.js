@@ -146,9 +146,52 @@ export function planBuildings(list, heritage) {
     p.wall = p.historic && p.rect < RULE.rect && p.area >= RULE.wallArea;
     if (p.wall) p.h = RULE.wallH;
   }
+  // the ring is cut where a traditional outline stands on it (a gate or a hall on the wall): see wallCuts
+  const trads = plans.filter((p) => p.trad);
+  for (const w of plans) if (w.wall) w.cuts = wallCuts(w, trads);
   return plans;
 }
 
+/** Within d metres of an outline, or inside it. */
+function nearOutline(pts, x, z, d) {
+  if (inside(pts, x, z)) return true;
+  for (let i = 0; i < pts.length; i++) if (segDist(x, z, pts[i], pts[(i + 1) % pts.length]) < d) return true;
+  return false;
+}
+/**
+ * The cut stretches of a wall ring's edges: where an edge runs inside a traditional outline or within CUT_M of one,
+ * that is the gate or hall standing on the wall, and no wall is built there. Sampled every 0.5 m. Per edge:
+ * { L, runs: [[s, e], ...] } with s and e in metres from the edge's start.
+ */
+const CUT_M = 1.0;
+function wallCuts(w, trads) {
+  const cuts = [], n = w.pts.length;
+  for (let k = 0; k < n; k++) {
+    const a = w.pts[k], b = w.pts[(k + 1) % n];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const runs = [];
+    if (L >= 0.2) {
+      let open = null;
+      for (let s = 0; s <= L + 1e-9; s += 0.5) {
+        const x = a[0] + ((b[0] - a[0]) * s) / L, z = a[1] + ((b[1] - a[1]) * s) / L;
+        const hit = trads.some((t) => nearOutline(t.pts, x, z, CUT_M));
+        if (hit && open === null) open = s;
+        if (!hit && open !== null) { runs.push([open, s]); open = null; }
+      }
+      if (open !== null) runs.push([open, L]);
+    }
+    cuts.push({ L, runs });
+  }
+  return cuts;
+}
+/** The stretches of an edge of length L that are not cut, from its cut runs. */
+function keptRuns(cut, L) {
+  const out = [];
+  let at = 0;
+  for (const [s, e] of cut.runs) { if (s > at) out.push([at, s]); at = Math.max(at, e); }
+  if (at < L) out.push([at, L]);
+  return out;
+}
 /** The share of the smaller outline inside the other, sampled on a 12 by 12 grid over its bounding box. */
 function overlapShare(a, b) {
   const sm = Math.abs(a.area) <= Math.abs(b.area) ? a : b, big = sm === a ? b : a;
@@ -197,18 +240,25 @@ function surfacesOf(p, ground) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       if (L < 0.2) continue;
-      const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L];
       const H = yt - yb;
-      out.push({
-        P00: [a[0], yb, a[1]], P10: [b[0], yb, b[1]], P01: [a[0], yt, a[1]], P11: [b[0], yt, b[1]], n, cell: WALL_CELL,
-        col: (u, v, r) => {
-          const fy = v * H, row = fy % FLOOR_H, x = u * L;
-          const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
-          if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
-          // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
-          return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
-        },
-      });
+      // the stretches of this edge that are not cut (see wallCuts): a quad for each
+      const kept = p.cuts ? keptRuns(p.cuts[k], L) : [[0, L]];
+      for (const [s0, s1] of kept) {
+        const Lk = s1 - s0;
+        if (Lk < 0.25) continue;
+        const A = [a[0] + (ex * s0) / L, a[1] + (ez * s0) / L], B = [a[0] + (ex * s1) / L, a[1] + (ez * s1) / L];
+        const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L];
+        out.push({
+          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: WALL_CELL,
+          col: (u, v, r) => {
+            const fy = v * H, row = fy % FLOOR_H, x = s0 + u * Lk;
+            const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
+            if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
+            // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
+            return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
+          },
+        });
+      }
     }
     if (!p.wall) out.push({ poly: p.pts, y: yt, n: [0, 1, 0], col: () => roofC });
     return { out, yb, yt, kind: p.wall ? 'wall' : 'modern' };
@@ -418,7 +468,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
-    overlapDropped: plans.overlapDropped ?? 0, walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    overlapDropped: plans.overlapDropped ?? 0, wallCutRuns: plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.length, 0) : 0), 0), wallCutM: +plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.reduce((q, [s, e]) => q + (e - s), 0), 0) : 0), 0).toFixed(1), walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
     nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
     msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),
