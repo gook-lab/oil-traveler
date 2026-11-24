@@ -34,9 +34,9 @@ void makeDab(inout Dab d) {
 
 // the rings: r = radius of the wall (m), top = how high its skyline stands in the north (m), col = its colour
 const RINGS = [
-  { r: 330, top: 95, seed: 3.1, col: [0.2, 0.24, 0.38], count: 2600, size: 40 },
-  { r: 480, top: 160, seed: 11.7, col: [0.34, 0.38, 0.52], count: 2600, size: 55 },
-  { r: 640, top: 230, seed: 23.9, col: [0.5, 0.54, 0.64], count: 2000, size: 70 },
+  { r: 330, top: 95, seed: 3.1, col: [0.17, 0.23, 0.26], count: 2600, size: 40 },
+  { r: 480, top: 160, seed: 11.7, col: [0.27, 0.36, 0.44], count: 2600, size: 55 },
+  { r: 640, top: 230, seed: 23.9, col: [0.42, 0.5, 0.62], count: 2000, size: 70 },
 ];
 const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes, near to far
 const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
@@ -52,6 +52,16 @@ function crest(k, az, horizon, eyeY) {
   const i0 = Math.floor(deg) % 360, i1 = (i0 + 1) % 360, f = deg - Math.floor(deg);
   const th = horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
   return Math.max(-15, eyeY + RINGS[k].r * Math.tan(th));
+}
+
+// the stroke direction on the skyline: its tangent along the wall, tilted by the skyline's slope, pointing downhill
+function slopeDir(k, az, horizon, eyeY, r) {
+  const d = 0.01;
+  const s = (crest(k, az + d, horizon, eyeY) - crest(k, az - d, horizon, eyeY)) / (2 * d * r);
+  let v = [Math.cos(az), s, Math.sin(az)];
+  if (v[1] > 0) v = v.map((c) => -c);
+  const L = Math.hypot(v[0], v[1], v[2]) || 1;
+  return v.map((c) => c / L);
 }
 
 const RANGE = /* glsl */ `
@@ -120,30 +130,31 @@ export function createScenery(shared, horizon, eyeY) {
         uniform float uAir;
         in vec3 vWorld;
         layout(location = 0) out vec4 outC;
-        void main() { outC = vec4(mix(uCol * mix(0.78, 1.12, smoothstep(-20.0, 90.0, vWorld.y)), uHaze, uAir), 1.0); }`,
+        void main() { outC = vec4(mix(uCol * mix(1.06, 0.84, smoothstep(-20.0, 90.0, vWorld.y)), uHaze, uAir), 1.0); }`,
     }));
     wallMesh.frustumCulled = false;
     wallMesh.renderOrder = order;
     group.add(wallMesh);
 
-    // strokes laid over the wall: the lower part is darker and sparser, the skyline is painted over the wall's top
-    const pos = new Float32Array(o.count * 3), dat = new Float32Array(o.count * 4);
+    // strokes laid over the wall, each run down the skyline's slope (not level), so the wall reads as a mountain's
+    // outline and not as a band of cloud. The lower part is darker and sparser, as before.
+    const pos = new Float32Array(o.count * 3), dat = new Float32Array(o.count * 4), dir = new Float32Array(o.count * 3);
     for (let i = 0; i < o.count; i++) {
       const az = rand() * Math.PI * 2, top = crest(k, az, horizon, eyeY), t = Math.pow(rand(), 0.8);
       const rr = o.r - 12 - 30 * rand();
       pos.set([CLEARING.x + Math.sin(az) * rr, -20 + (top + 20) * t, CLEARING.z - Math.cos(az) * rr], i * 3);
       dat.set([rand() * 1000, o.size * (0.7 + 0.6 * rand()), t, k], i * 4);
+      dir.set(slopeDir(k, az, horizon, eyeY, o.r), i * 3);
     }
-    const strokes = dabMesh(dabGeometry(o.count, { aPos: [pos, 3], aData: [dat, 4] }), dabMaterial(shared, {
-      head: RANGE + /* glsl */ `in vec3 aPos; in vec4 aData;`,
+    const strokes = dabMesh(dabGeometry(o.count, { aPos: [pos, 3], aDir: [dir, 3], aData: [dat, 4] }), dabMaterial(shared, {
+      head: RANGE + /* glsl */ `in vec3 aPos; in vec3 aDir; in vec4 aData;`,
       body: /* glsl */ `
         void makeDab(inout Dab d) {
           vec4 r = hash4(aData.x);
-          vec3 c = RING_COL[int(aData.w + 0.5)] * (0.82 + 0.36 * r.x) * mix(0.8, 1.15, aData.z);
+          vec3 c = RING_COL[int(aData.w + 0.5)] * (0.82 + 0.36 * r.x) * mix(1.0, 0.86, aData.z);
           c = jitter(c, r.yzw, 0.16);
           c = mix(c, uHaze, RING_AIR[int(aData.w + 0.5)]);
-          // strokes run long along the skyline, level, and are laid over the wall in a fixed order
-          d.dir = normalize(vec3(-aPos.z, 0.0, aPos.x));
+          d.dir = aDir;
           d.pos = aPos;
           d.size = vec2(aData.y * 0.3, aData.y);
           d.c1 = c;
@@ -156,6 +167,39 @@ export function createScenery(shared, horizon, eyeY) {
       depthTest: false, depthWrite: false,
     }), order + 0.1);
     group.add(strokes);
+
+    // the crest: short dabs hang just under the skyline, like the tips of a wood on the ridge, so the top edge breaks up
+    const sn = Math.round(o.count * 0.6);
+    const cp = new Float32Array(sn * 3), cd = new Float32Array(sn * 3), cx = new Float32Array(sn * 4);
+    for (let i = 0; i < sn; i++) {
+      const az = rand() * Math.PI * 2, top = crest(k, az, horizon, eyeY);
+      const rr = o.r - 3 - 8 * rand();
+      cp.set([CLEARING.x + Math.sin(az) * rr, top - o.size * 0.1 * rand(), CLEARING.z - Math.cos(az) * rr], i * 3);
+      cd.set(slopeDir(k, az, horizon, eyeY, o.r), i * 3);
+      cx.set([rand() * 1000, o.size * (0.2 + 0.14 * rand()), 1, k], i * 4);
+    }
+    const crestMesh = dabMesh(dabGeometry(sn, { aPos: [cp, 3], aDir: [cd, 3], aData: [cx, 4] }), dabMaterial(shared, {
+      head: RANGE + /* glsl */ `in vec3 aPos; in vec3 aDir; in vec4 aData;`,
+      body: /* glsl */ `
+        void makeDab(inout Dab d) {
+          vec4 r = hash4(aData.x);
+          int kk = int(aData.w + 0.5);
+          vec3 c = RING_COL[kk] * vec3(0.8, 0.98, 0.9) * (0.72 + 0.4 * r.x);
+          c = jitter(c, r.yzw, 0.2);
+          c = mix(c, uHaze, RING_AIR[kk]);
+          d.dir = aDir;
+          d.pos = aPos;
+          d.size = vec2(aData.y * 0.35, aData.y);
+          d.c1 = c;
+          d.c2 = c * 1.1;
+          d.seed = aData.x;
+          d.lift = 0.0;
+          d.turnabout = 1.0;
+        }`,
+      minPx: [3, 6], maxPx: [500, 800], cells: [0, 8],
+      depthTest: false, depthWrite: false,
+    }), order + 0.15);
+    group.add(crestMesh);
   });
 
   return { group, stones: placed };

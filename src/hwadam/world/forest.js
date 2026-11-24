@@ -319,7 +319,13 @@ export function createForest(shared) {
         vec3 c = bark(k, aPos, Nn, r.x, foot);
         d.dir = aDir;
         // a birch is banded across; here and there one of its black scars
-        if (k == 1) { d.dir = cross(aDir, Nn); if (r.y < 0.16) c = vec3(0.13, 0.11, 0.15); }
+        if (k == 1) {
+          d.dir = cross(aDir, Nn);
+          // the birch's white bark is cut across by dark lenticel rows, and a few black scars
+          float row = fract(aPos.y * 3.1 + r.x * 0.2);
+          if (row < 0.12 && r.y < 0.55) c = vec3(0.15, 0.12, 0.14);
+          else if (r.y < 0.16) c = vec3(0.13, 0.11, 0.15);
+        }
         // moss on the cold side, low down
         if (k != 1 && foot < 2.2 && r.z < 0.3 * (1.0 - foot / 2.2) + 0.1 * max(-dot(Nn, uSunDir), 0.0)) c = mix(c, vec3(0.34, 0.4, 0.14) * (0.5 + 0.9 * sunAt(aPos + Nn * 0.3)), 0.8);
         // lichen, and the cold light of the sky on the shaded side
