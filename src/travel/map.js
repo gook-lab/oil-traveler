@@ -117,6 +117,7 @@ async function ensureMap() {
   overlay.setAttribute('aria-label', '지도에서 걸을 곳 고르기');
   overlay.innerHTML = `
     <div class="tm-canvas" id="tm-canvas"></div>
+    <div class="tm-top">
     <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
@@ -126,7 +127,9 @@ async function ensureMap() {
       <button type="submit">찾기</button>
     </form>
     <section class="tm-results" hidden aria-label="검색 결과"></section>
+    <button type="button" class="tm-back" hidden>걷기로 돌아가기</button>
     <p class="tm-status" role="status" aria-live="polite"></p>
+    </div>
     <div class="tm-bar">
       <div class="tm-card" hidden>
         <div class="tm-name"><p class="tm-label"></p><p class="tm-sub"></p></div>
@@ -134,7 +137,6 @@ async function ensureMap() {
       </div>
       <p class="tm-recommend"><span>추천 장소</span> <button type="button" class="tm-hwadam">화담숲 그대로 걷기</button></p>
     </div>
-    <button type="button" class="tm-back" hidden>걷기로 돌아가기</button>
     <p class="tm-credit">© OpenStreetMap contributors · <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">지형 Terrain Tiles</a></p>`;
   document.body.append(overlay);
   maplibre = await import('maplibre-gl');

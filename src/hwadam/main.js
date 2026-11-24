@@ -4,6 +4,7 @@
 //   ?quality=low   fewer leaves in the air, no sun in the mist
 //   ?shafts=0 ?canvas=0 ?impasto=0..2    parts of the finish, for comparing
 import * as THREE from 'three';
+import { SCENE } from '../scenes.js';
 import { patchBlock } from 'patch-block';
 import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
@@ -37,8 +38,9 @@ import { playMusic } from '../music.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
-// ?scene=travel: the map is the start (no place named), the walk is first person, and M goes back to the map
-const travel = q.get('scene') === 'travel';
+// the traveller (?scene=travel, or no scene named): the map is the start (no place named), the walk is first person,
+// and M goes back to the map. src/scenes.js decides it, so a bare address and ?scene=travel are the same page.
+const travel = SCENE === 'travel';
 // ?quality wins; otherwise Patch's performance mode, where there is one
 const lowQuality = () => (q.get('quality') ?? window.patch?.quality ?? 'high') === 'low';
 
