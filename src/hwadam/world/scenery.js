@@ -21,7 +21,7 @@ void makeDab(inout Dab d) {
   d.pos = aPos;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.size = vec2(aData.y, aData.y * 0.6);
-  d.lie = 1.0;
+  d.lie = 0.0;
   d.nrm = vec3(0.0, 1.0, 0.0);
   d.height = aData.z;
   d.c1 = hazed(c, aPos);
