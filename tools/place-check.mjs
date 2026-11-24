@@ -85,7 +85,7 @@ async function openPlace(query, { shot, coverage = false } = {}) {
       // what the first frame shows: the trunks' share of the frame's width (each trunk's width against the view), and
       // the nearest trunk that is in view. The eye is brought to its first-person height first (the walk does it in
       // about two seconds of frames).
-      out.coverage = await page.evaluate(() => {
+      out.coverage = await page.evaluate((hz) => {
         const L = window.lab, T = L.THREE;
         L.step(1 / 60, 120);
         const cam = L.camera;
@@ -96,6 +96,7 @@ async function openPlace(query, { shot, coverage = false } = {}) {
         const right = new T.Vector3().crossVectors(fwd, new T.Vector3(0, 1, 0)).normalize();
         const half = (2 * Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect)) / 2;
         const iv = [], ivNear = [];
+        const C = 320, occ = new Float64Array(C).fill(-Infinity);
         let nearest = Infinity;
         for (const t of L.trees) {
           if (t.hero) continue;
@@ -107,6 +108,12 @@ async function openPlace(query, { shot, coverage = false } = {}) {
           if (depth <= 0) continue;
           const off = Math.atan2(lateral, depth), w = Math.asin(Math.min(1, t.r / dist));
           if (off + w < -half || off - w > half) continue;
+          // the tree's top, as an angle from the eye, over every column it covers (the skyline shows where no tree rises above it)
+          const top = Math.atan2(t.y + t.h * 0.9 - cam.position.y, dist);
+          for (let c = 0; c < C; c++) {
+            const th = -half + ((c + 0.5) / C) * 2 * half;
+            if (Math.abs(th - off) <= w && top > occ[c]) occ[c] = top;
+          }
           const seg = [Math.max(-half, off - w), Math.min(half, off + w)];
           iv.push(seg);
           if (dist <= 15) ivNear.push(seg);
@@ -121,13 +128,23 @@ async function openPlace(query, { shot, coverage = false } = {}) {
           if (cur) total += cur[1] - cur[0];
           return total / (2 * half);
         };
+        // the skyline: the 15 km ridge at each column's bearing (the baked horizon, 0 north clockwise) against the wood
+        const bearingFwd = (Math.atan2(fwd.x, -fwd.z) * 180) / Math.PI;
+        let visible = 0;
+        for (let c = 0; c < C; c++) {
+          const th = (-half + ((c + 0.5) / C) * 2 * half) * (180 / Math.PI);
+          const b = (((Math.round(bearingFwd + th) % 360) + 360) % 360);
+          const ridge = hz[720 + b];
+          if (occ[c] < ridge) visible++;
+        }
         return {
+          skylineShare: +(visible / C).toFixed(4), // share of the frame width where the far ridge shows above the wood
           nearShare: +union(ivNear).toFixed(4), // trunks within 15 m: the ones that block the first view
           allShare: +union(iv).toFixed(4), // every trunk in view, the far wood included
           trunksInView: iv.length, trunksWithin15m: ivNear.length,
           nearestInViewM: Number.isFinite(nearest) ? +nearest.toFixed(2) : null,
         };
-      });
+      }, out.place.horizon);
     }
     out.minTrunkM = await page.evaluate(() => {
       // the nearest trunk to the start (the pin in travel): heroes (the old oak) are not counted
@@ -187,6 +204,7 @@ for (const [i, g] of named.entries()) {
   if (r.ready) {
     row.gazeDeg = gazeBearing(r.place.horizon);
     row.firstFrame = r.coverage;
+    row.skylineShare = r.coverage.skylineShare;
     if (r.coverage.nearShare > 0.05) failures.push(`${g.q}: trunks within 15 m cover ${(r.coverage.nearShare * 100).toFixed(1)}% of the first frame's width (limit 5%)`);
   }
   if (r.ready && r.minTrunkM != null && r.minTrunkM <= 12) failures.push(`${g.q}: a trunk stands ${r.minTrunkM.toFixed(2)} m from the start (need > 12)`);

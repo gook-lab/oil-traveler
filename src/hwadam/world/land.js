@@ -21,7 +21,7 @@ export const CLEARING = { x: 0, z: 0, r: 21 };
  * Where no trunk stands at the travel start: a ring of r metres about the pin, and a fan of half-angle fanCos (cosine)
  * out to fanR metres along (fx, fz), the first view. fan false, r 0: none (the baked Hwadam walk).
  */
-export const CLEAR = { x: 0, z: 0, r: 0, fan: false, fx: 0, fz: -1, fanR: 40, fanCos: 1 };
+export const CLEAR = { x: 0, z: 0, r: 0, fan: false, fx: 0, fz: -1, fanR: 40, fanCos: 1, laneR: 300, laneCos: 1, sightCos: 1, lowH: 1 };
 /** The walk as dense samples (world metres, x east, z south), a Catmull-Rom curve through the control points. */
 export const way = [];
 let NEAR_N = 0, NEAR_STEP = 1, near = null, H0 = 0;

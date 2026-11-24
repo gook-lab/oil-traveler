@@ -157,7 +157,15 @@ function plant() {
     const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
     return d > 0 && d <= CLEAR.fanR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= CLEAR.fanCos;
   };
-  return trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)))));
+  // the sight line of the first view: a lane of 20 degrees is cleared out to laneR; the 35 degree band beside it is
+  // lowered (its trunks to lowH of their height), so the skyline shows over the wood. Beyond laneR nothing changes.
+  const inSight = (t, cosMin) => {
+    const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
+    return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
+  };
+  const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
+  for (const t of kept) if (inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  return kept;
 }
 
 export function createForest(shared) {

@@ -128,6 +128,7 @@ const gazeDeg = travel ? gazeBearing(place.horizon) : null;
 const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
 Object.assign(CLEAR, {
   x: 0, z: 0, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
+  laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
 const forest = createForest(shared);
 lap('forest');
