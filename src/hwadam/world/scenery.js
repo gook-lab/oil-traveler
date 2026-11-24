@@ -38,13 +38,17 @@ void makeDab(inout Dab d) {
 `;
 
 // the rings: r = radius of the wall (m), top = how high its skyline stands in the north (m), col = its colour
+// five ranges, near to far; the baked horizon has three bands, so two ranges share a band at a different radius
+// (band: which horizon band gives the skyline). Each farther range is lighter and less saturated than the one before.
 const RINGS = [
-  { r: 330, top: 95, seed: 3.1, col: [0.24, 0.3, 0.33], count: 3600, size: 40 },
-  { r: 480, top: 160, seed: 11.7, col: [0.27, 0.36, 0.44], count: 1800, size: 55 },
-  { r: 640, top: 230, seed: 23.9, col: [0.3, 0.37, 0.48], count: 700, size: 70 },
+  { r: 330, band: 0, col: [0.24, 0.3, 0.33], count: 3000, size: 40 },
+  { r: 410, band: 0, col: [0.29, 0.35, 0.39], count: 1400, size: 46 },
+  { r: 480, band: 1, col: [0.34, 0.4, 0.45], count: 1000, size: 52 },
+  { r: 560, band: 1, col: [0.4, 0.45, 0.5], count: 700, size: 60 },
+  { r: 640, band: 2, col: [0.46, 0.5, 0.55], count: 500, size: 68 },
 ];
-const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes, near to far
-const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
+const AIR = [0.22, 0.32, 0.42, 0.5, 0.58]; // how much of the sky's colour each ring takes, near to far
+const RING_COL = /* glsl */ `const vec3 RING_COL[5] = vec3[5](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
@@ -58,7 +62,7 @@ function crest(k, az, horizon, eyeY) {
   // skyline), so the skyline is a triangle-weighted mean over three degrees either side
   const sample = (d) => {
     const i0 = Math.floor(d) % 360, i1 = (i0 + 1) % 360, f = d - Math.floor(d);
-    return horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
+    return horizon[RINGS[k].band * 360 + i0] * (1 - f) + horizon[RINGS[k].band * 360 + i1] * f;
   };
   let th = 0, wsum = 0;
   for (let j = -3; j <= 3; j++) {
@@ -83,7 +87,7 @@ function slopeDir(k, az, horizon, eyeY, r) {
 const RANGE = /* glsl */ `
 ${RING_COL}
 // air perspective per ring: the farther ring fades toward the sky, but keeps a step darker than it (0.65 made it vanish)
-const float RING_AIR[3] = float[3](0.25, 0.4, 0.55);
+const float RING_AIR[5] = float[5](0.22, 0.32, 0.42, 0.5, 0.58);
 `;
 
 export function createScenery(shared, horizon, eyeY) {
@@ -115,7 +119,7 @@ export function createScenery(shared, horizon, eyeY) {
   const mossCam = [-8, 98], mossAt = [-26, 82];
   const fl = Math.hypot(mossAt[0] - mossCam[0], mossAt[1] - mossCam[1]);
   const fwd = [(mossAt[0] - mossCam[0]) / fl, (mossAt[1] - mossCam[1]) / fl];
-  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8]]) {
+  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8], [5.8, 0.5, 0.7], [12.5, -1.0, 1.2]]) {
     const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
     // one brush mark shows only a sliver of its card, so each stone is a cluster of marks like the rest of the garden's stones
     // six marks per stone: the lower ones stone-grey, the top one (flag 1 in data.w) the moss cap

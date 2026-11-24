@@ -63,7 +63,7 @@ void makeDab(inout Dab d) {
   // round mounds of moss in the garden, 1 to 2 m across
   float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
   // the moss garden carries no leaves: its carpet is moss, dark green in the hollows to light green on the crowns
-  vec3 mossC = mix(vec3(0.14, 0.26, 0.1), vec3(0.5, 0.74, 0.26), max(hump, q.w * 0.6)) * (0.55 + 0.6 * lit);
+  vec3 mossC = mix(vec3(0.08, 0.2, 0.18), vec3(0.46, 0.7, 0.28), max(hump, q.w * 0.6)) * (0.55 + 0.6 * lit);
   c1 = mix(c1, mossC, sw.x);
   c2 = mix(c2, mossC * 0.92, sw.x);
   c1 = jitter(c1, r.wzy, 0.5);
@@ -78,7 +78,7 @@ void makeDab(inout Dab d) {
   // the moss touches are as wide as they are long: round, not blades
   // the moss touches vary in width and length more (0.7x to 1.3x of the base), so no two read as one stamp
   // in the garden the touches are about twice as wide as before (0.8 to 1.0 of the cell), so 3 per cell cover the ground
-  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.8 * (0.85 + 0.3 * r.y), sw.x);
+  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.6 * (0.85 + 0.3 * r.y), sw.x);
   d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 0.8 + 0.7 * r.w, sw.x) * shrink, wide * (0.85 + 0.3 * r.w), sw.x)) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);

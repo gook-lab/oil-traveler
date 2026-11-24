@@ -76,7 +76,7 @@ function plant() {
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
     if (inFan(x, z)) return;
-    const r = (type === BIRCH ? 0.13 + rand() * 0.08 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
+    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
       : type === MAPLE ? MAPLE_LEAVES[Math.floor(rand() * MAPLE_LEAVES.length)]
@@ -139,7 +139,10 @@ function plant() {
     if ((row * 5 + lane * 3) % 4 === 0) continue;
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
-    add(x, z, BIRCH, 2, 1.25 - 0.45 * (dist - 12) / 28);
+    // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
+    let sc = 1.0 - 0.5 * (dist - 12) / 28;
+    if (dist < 20 && rand() < 0.2) sc *= 1.6;
+    add(x, z, BIRCH, 2, sc);
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
@@ -176,7 +179,7 @@ export function createForest(shared) {
     const rings = full ? 9 : some ? 5 : 3;
     const pts = [], radii = [];
     for (let i = 0; i < rings; i++) {
-      const u = i / (rings - 1), y = u * u * 0.4 + u * 0.6;
+      const u = i / (rings - 1), y = i === 0 ? -0.6 / (top + 0.3) : u * u * 0.4 + u * 0.6; // the first ring sinks 0.6 m under the ground: no flat cut
       const bend = Math.sin(u * 2.4 + t.seed) * 0.25 * (t.type === BIRCH ? 1.6 : 1);
       pts.push(new THREE.Vector3(t.x + t.lean[0] * y * top + bend * t.lean[1] * 8, t.y - 0.3 + y * (top + 0.3), t.z + t.lean[1] * y * top - bend * t.lean[0] * 8));
       radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))));
@@ -325,7 +328,9 @@ export function createForest(shared) {
           float stroke = texture(tNoise, vec2(ang * 5.0 + vData.y, vWorld.y * 0.22)).r;
           vec3 c = white * (0.86 + 0.2 * stroke);
           float band = texture(tNoise, vec2(ang * 1.7 + vData.y * 0.5, vWorld.y * 0.12)).g;
-          float mark = step(0.8, fract(vWorld.y * 1.7 + stroke * 0.7)) * step(0.66, band);
+          // the dashes are not one spacing: each row's height varies round the trunk, and some dashes are missing
+          float rowy = vWorld.y * (1.3 + 0.9 * band) + stroke * 0.9 + texture(tNoise, vec2(ang * 0.9, vWorld.y * 0.3)).b * 2.0;
+          float mark = step(0.84, fract(rowy)) * step(0.62, band) * step(0.35, texture(tNoise, vec2(ang * 3.1, vWorld.y * 0.7)).g);
           c = mix(c, vec3(0.14, 0.12, 0.16), mark * 0.9);
           float far = smoothstep(18.0, 80.0, length(vWorld.xz - cameraPosition.xz));
           c = mix(c, vec3(0.8, 0.84, 0.92), far * 0.35);
