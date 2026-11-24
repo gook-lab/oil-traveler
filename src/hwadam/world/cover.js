@@ -6,9 +6,10 @@
 // The node layout matches land.js groundAt(): node (i, j) is east (i - N/2)*STEP, north (j - N/2)*STEP.
 import * as THREE from 'three';
 import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
+import { applyPaving } from './paved.js';
 
-export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9 };
-export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water'];
+export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10 };
+export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved'];
 /** Higher wins where two features overlap (water over everything, buildings over the land under them). */
 const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
 const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
@@ -28,7 +29,7 @@ export function hasCover() { return grid !== null; }
 /** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
 export function coniferChance() { return conifer; }
 /** Classes where no tree stands: water, sand, rock and built-up ground. */
-export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT]);
+export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED]);
 /** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
 export function coverTexture() {
   // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
@@ -64,7 +65,7 @@ bool wetCover(vec2 xz) {
   return false;
 }
 bool bareCover(float c) {
-  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5;
+  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5;
 }
 `;
 /** Class at world (x, z), nearest node (x east, z south as in land.js). NONE when no place is set. */
@@ -125,6 +126,8 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   const Pbf = (await import('pbf')).default;
   const template = await tileUrlTemplate();
   const out = new Uint8Array(N * N);
+  // the building outlines and the heritage points (T3), kept for buildings.js: metres from the centre
+  const buildings = [], heritage = [], roads = [];
   const m0 = mPerDegLon(lat);
   const radius = NEAR_M / 2 + 50;
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
@@ -155,6 +158,41 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     paint('landcover', (p) => LANDCOVER[p.class] ?? COVER.GRASS);
     paint('building', () => COVER.BUILT);
     paint('water', (p) => (WATER_CLASSES.has(p.class) || !p.class ? COVER.WATER : 0));
+    // the outlines (outer rings only; a courtyard hole is left out) and the heritage points of this tile
+    const B = vt.layers.building;
+    for (let f = 0; B && f < B.length; f++) {
+      const feat = B.feature(f);
+      if (feat.type !== 3) continue;
+      const raw = feat.loadGeometry();
+      const big = raw.reduce((m, r) => (Math.abs(ringArea(r)) > Math.abs(ringArea(m)) ? r : m), raw[0]);
+      const sign = Math.sign(ringArea(big));
+      const p = feat.properties;
+      for (const r of raw) {
+        if (r.length < 3 || Math.sign(ringArea(r)) !== sign) continue;
+        const cx = r.reduce((s, q) => s + q.x, 0) / r.length, cy = r.reduce((s, q) => s + q.y, 0) / r.length;
+        if (cx < 0 || cy < 0 || cx >= B.extent || cy >= B.extent) continue; // the piece belongs to the tile it lies in
+        const pts = r.map((q) => { const m = toMetres(x, y, n, B.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; });
+        buildings.push({ pts, h: p.render_height ?? 6, mh: p.render_min_height ?? 0, colour: p.colour ?? null, hide3d: !!p.hide_3d });
+      }
+    }
+    const P = vt.layers.poi;
+    for (let f = 0; P && f < P.length; f++) {
+      const feat = P.feature(f);
+      const p = feat.properties;
+      const heritagePoint = HERITAGE_POI.has(p.class) || (p.class === 'place_of_worship' && p.subclass === 'buddhist');
+      if (feat.type !== 1 || !heritagePoint) continue;
+      const q = feat.loadGeometry()[0][0];
+      const m = toMetres(x, y, n, P.extent, q.x, q.y, lat, lon, m0);
+      heritage.push([m.x, m.z]);
+    }
+    // the roads (the lines of the transportation layer, with a width by class): paved ground (paved.js)
+    const T = vt.layers.transportation;
+    for (let f = 0; T && f < T.length; f++) {
+      const feat = T.feature(f);
+      const w = ROAD_WIDTH[feat.properties.class];
+      if (feat.type !== 2 || !w) continue;
+      for (const line of feat.loadGeometry()) roads.push({ w, pts: line.map((q) => { const m = toMetres(x, y, n, T.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; }) });
+    }
     done++;
     onProgress(0.1 + (0.8 * done) / tiles.length, 'cover');
   }
@@ -180,12 +218,30 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
   }
+  applyPaving(out, { buildings, heritage, roads, N, STEP: NEAR_STEP });
   onProgress(1, 'cover');
   const counts = {};
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts };
+  return { grid: out, depth: dep, counts, buildings, heritage };
+}
+
+/** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
+const HERITAGE_POI = new Set(['castle']);
+/** The width (m) of a road by its class, as the transportation layer names them; paths and tracks are not paved. */
+const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 6, service: 4, pedestrian: 6 };
+/** Signed area of a tile ring (tile units); the outer rings of a feature share its sign. */
+function ringArea(r) {
+  let a = 0;
+  for (let k = 0; k < r.length; k++) { const p = r[k], q = r[(k + 1) % r.length]; a += p.x * q.y - q.x * p.y; }
+  return a / 2;
+}
+/** Tile pixel to metres from the place's centre: x east, z south (the frame of land.js). */
+function toMetres(tx, ty, n, ext, px, py, lat0, lon0, m0) {
+  const lon = ((tx + px / ext) / n) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + py / ext)) / n))) * 180) / Math.PI;
+  return { x: (lon - lon0) * m0, z: -(lat - lat0) * M_LAT };
 }
 
 function nearWater(sea, i, j, r) {

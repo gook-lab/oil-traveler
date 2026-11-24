@@ -3,6 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
+import { planBuildings, clearGrid } from '../../travel/buildings.js';
 import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
@@ -100,12 +101,14 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   const bonus = !focus ? null : focus === 5
     ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z)) - 800 * Math.max(0, minOcclusion(sceneGround(near, way.startHeight), x, z) - 0.3)
     : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
-  let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus);
+  // the start stands 3 m clear of the buildings' outlines and walls (T3, buildings.js)
+  const clear = cover ? clearGrid(planBuildings(cover.buildings ?? [], cover.heritage ?? []), N, NEAR_STEP) : null;
+  let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 0, clear);
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
   // 30% of the frame hidden within 150 m gets 300 points (the bands and drawn heights are the ones ranges.js draws)
   if (focus === 5 && bonus) {
     const ground = sceneGround(near, way.startHeight);
-    const top = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 8);
+    const top = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 8, clear);
     let bestScore = -Infinity;
     for (const c of top) {
       await prefetchSkyline(terrain, lat, lon, { x: c.x, z: c.z }, zooms, bands);

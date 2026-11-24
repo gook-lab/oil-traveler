@@ -1,0 +1,391 @@
+// The buildings of a place (T3): the outlines the cover fetch keeps (world metres, x east, z south), stood up at their
+// real heights. Two layers: a solid mesh of the walls, roofs and bases, one flat colour a cell (the silhouette, the
+// columns and the window rows), and oil dabs laid over it (src/oilpaint/dabs.js) for the texture. Within 80 m of the
+// start the dabs are half as far apart. A building under 30 m with a near-rectangular outline (0.9 or more of its
+// bounding box) and a historic point (a castle, or a Buddhist temple) within 250 m is a traditional hall: a hip roof of
+// tiles with the eaves 1.2 m out and the corners lifted, white walls with red columns, a pale stone base, and a band of
+// green and red under the eaves. Every other is a modern block: a flat roof and the walls in their colour, lowered.
+// The base sits on the lowest ground under the outline; heights are real metres and are not scaled (land.js VS).
+import * as THREE from 'three';
+import { dabMaterial, dabGeometry, dabMesh } from '../oilpaint/dabs.js';
+import { SUN } from '../oilpaint/common.js';
+
+/** The most touches on the buildings of a place; the spacing of the dabs grows to keep under it. */
+export const DAB_CAP = 8000;
+export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250 };
+/** The walker keeps this far from any outline (the start, and the test of the walls). */
+export const CLEAR_M = 3;
+const NEAR_M = 80;
+const EAVE = 1.2, LIFT = 0.9, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
+// the cells of the solid mesh, in metres: along a wall, and up it
+const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
+
+// one touch per instance: the attributes below fill in its Dab
+const HEAD = /* glsl */ `
+in vec3 blPos; in vec3 blDir; in vec2 blSize; in vec3 blNrm; in vec3 blC1; in vec3 blC2; in float blH; in float blSeed;
+`;
+const BODY = /* glsl */ `
+void makeDab(inout Dab d) {
+  d.pos = blPos; d.dir = blDir; d.size = blSize; d.nrm = blNrm;
+  d.c1 = blC1; d.c2 = blC2; d.height = blH; d.seed = blSeed;
+  d.lie = 1.0; d.turnabout = 1.0; d.alive = 1.0; d.glaze = 0.0; d.base = 0.0; d.cell = -1.0;
+}
+`;
+
+// ---- plane geometry, on the ground as [x, z] ----
+const area2 = (pts) => { let a = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+const centroid = (pts) => [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+/** Drops repeated and closing points. */
+function clean(pts) {
+  const out = [];
+  for (const p of pts) { const q = out[out.length - 1]; if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.05) out.push(p); }
+  if (out.length > 1 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= 0.05) out.pop();
+  return out;
+}
+function inside(pts, x, z) {
+  let c = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, zi] = pts[i], [xj, zj] = pts[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+function segDist(x, z, a, b) {
+  const ex = b[0] - a[0], ez = b[1] - a[1], L2 = ex * ex + ez * ez;
+  const t = L2 ? Math.min(1, Math.max(0, ((x - a[0]) * ex + (z - a[1]) * ez) / L2)) : 0;
+  return Math.hypot(x - a[0] - t * ex, z - a[1] - t * ez);
+}
+/**
+ * The smallest bounding rectangle of an outline: its centre, the axes u (the longer side) and v, and half sizes.
+ * Tried along every edge; the rectangle of least area wins.
+ */
+function minRect(pts) {
+  let best = null;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 1e-6) continue;
+    const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L, vx = -uz, vz = ux;
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+    for (const p of pts) {
+      const u = p[0] * ux + p[1] * uz, v = p[0] * vx + p[1] * vz;
+      u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v);
+    }
+    const area = (u1 - u0) * (v1 - v0);
+    if (!best || area < best.area) best = { area, cu: (u0 + u1) / 2, cv: (v0 + v1) / 2, hu: (u1 - u0) / 2, hv: (v1 - v0) / 2, ux, uz, vx, vz };
+  }
+  if (best.hv > best.hu) { // the longer side is u
+    [best.hu, best.hv] = [best.hv, best.hu];
+    [best.ux, best.vx] = [best.vx, best.ux];
+    [best.uz, best.vz] = [best.vz, best.uz];
+    [best.cu, best.cv] = [best.cv, best.cu];
+  }
+  return best;
+}
+/** The point at local (u, v) of a rectangle, u and v measured from its centre. */
+const rectPt = (R, u, v) => [(R.cu + u) * R.ux + (R.cv + v) * R.vx, (R.cu + u) * R.uz + (R.cv + v) * R.vz];
+
+// ---- colour ----
+const hexRGB = (s) => { const m = /^#([0-9a-f]{6})$/i.exec(s ?? ''); if (!m) return null; const v = parseInt(m[1], 16); return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]; };
+const mixc = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+/** A fixed hash in 0..1 for a building and a touch, so the picture does not change between frames. */
+const rnd = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
+/** The light on a face: the sun's lambert over a dim ambient. */
+const lightOf = (n) => 0.66 + 0.34 * Math.max(0, n[0] * SUN.x + n[1] * SUN.y + n[2] * SUN.z);
+
+/** Classifies each outline: traditional or modern, and the measures the rule uses. Outlines out of range are dropped. */
+export function planBuildings(list, heritage) {
+  const plans = [];
+  for (const b of list) {
+    if (b.hide3d) continue; // the outer outline of a building with parts: its parts stand, not this
+    const pts = clean(b.pts);
+    if (pts.length < 3) continue;
+    const A = Math.abs(area2(pts));
+    if (A < 4) continue;
+    const c = centroid(pts);
+    if (Math.abs(c[0]) > RULE.range || Math.abs(c[1]) > RULE.range) continue;
+    const R = minRect(pts);
+    const rect = A / R.area;
+    const h = b.h > 0 ? b.h : 6;
+    const historic = heritage.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) <= RULE.heritageM);
+    const trad = historic && h <= RULE.maxH && rect >= RULE.rect;
+    plans.push({ pts, R, rect: +rect.toFixed(3), h, mh: b.mh ?? 0, colour: b.colour, c, trad, historic, ccw: area2(pts) > 0 });
+  }
+  return plans;
+}
+
+/**
+ * The surfaces of one building: quads (P00, P10, P01, P11: bilinear, u along P10, v along P01), each with its outward
+ * normal, its cell size for the solid mesh and its colour function (u, v, r) -> [r, g, b]; and the flat polygons (roofs).
+ */
+function surfacesOf(p, ground) {
+  const out = [];
+  const gMin = Math.min(...p.pts.map((q) => ground(q[0], q[1])), ground(p.c[0], p.c[1]));
+  if (!p.trad) {
+    const yb = gMin + p.mh, yt = gMin + p.h;
+    const base = hexRGB(p.colour);
+    const bh = rnd(p.c[0], p.c[1]);
+    const wallC = base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
+    const roofC = [0.3, 0.3, 0.31];
+    for (let k = 0; k < p.pts.length; k++) {
+      const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
+      const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+      if (L < 0.2) continue;
+      const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L];
+      const H = yt - yb;
+      out.push({
+        P00: [a[0], yb, a[1]], P10: [b[0], yb, b[1]], P01: [a[0], yt, a[1]], P11: [b[0], yt, b[1]], n, cell: WALL_CELL,
+        col: (u, v, r) => {
+          const fy = v * H, row = fy % FLOOR_H, x = u * L;
+          const win = row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
+          return win ? [0.12, 0.15, 0.18] : wallC;
+        },
+      });
+    }
+    out.push({ poly: p.pts, y: yt, n: [0, 1, 0], col: () => roofC });
+    return { out, yb, yt, kind: 'modern' };
+  }
+  // traditional: the wall box, the stone base, the eaves, and the hip roof of tiles
+  const R = p.R;
+  const yb = gMin;
+  const stone = Math.min(STONE_MAX, 0.25 * p.h);
+  const roofH = Math.min(Math.max(0.3 * 2 * R.hv, 1.2), 0.4 * p.h);
+  const yEave = Math.max(yb + stone + 0.3, yb + p.h - roofH);
+  const yTop = yb + p.h;
+  const wallPts = (pad) => [rectPt(R, -R.hu - pad, -R.hv - pad), rectPt(R, R.hu + pad, -R.hv - pad), rectPt(R, R.hu + pad, R.hv + pad), rectPt(R, -R.hu - pad, R.hv + pad)];
+  // four faces of a box with the given corners, from y0 to y1, each coloured by col(u, v, r, L, k)
+  const face = (ptsA, y0, y1, col, cell) => {
+    for (let k = 0; k < 4; k++) {
+      const a = ptsA[k], b = ptsA[(k + 1) % 4];
+      const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+      const n = [ez / L, 0, -ex / L];
+      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k) });
+    }
+  };
+  // the stone base, a little out from the posts
+  face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
+  // the white walls, with a red post every 3.2 m (a column half a metre wide)
+  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8]), TRAD_WALL_CELL);
+  // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
+  const posts = wallPts(0), eaveW = wallPts(EAVE);
+  for (let k = 0; k < 4; k++) {
+    const a = posts[k], b = posts[(k + 1) % 4], ea = eaveW[k], eb = eaveW[(k + 1) % 4];
+    const P00 = [a[0], yEave - 0.05, a[1]], P10 = [b[0], yEave - 0.05, b[1]], P01 = [ea[0], yEave - 0.05, ea[1]], P11 = [eb[0], yEave - 0.05, eb[1]];
+    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u) => (Math.floor(u * 8) % 2 ? [0.2, 0.42, 0.38] : [0.62, 0.2, 0.14]) });
+  }
+  // the hip roof: long planes along u, hip ends, the corners lifted by LIFT
+  const eu = R.hu + EAVE, ev = R.hv + EAVE, ru = Math.max(0, eu - ev);
+  const E = (su, sv) => [(R.cu + su * eu) * R.ux + (R.cv + sv * ev) * R.vx, yEave + LIFT, (R.cu + su * eu) * R.uz + (R.cv + sv * ev) * R.vz];
+  const Rg = (su) => [(R.cu + su * ru) * R.ux + R.cv * R.vx, yTop, (R.cu + su * ru) * R.uz + R.cv * R.vz];
+  const tileC = (u, v, r) => (v > 0.85 ? [0.2, 0.22, 0.27] : mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], r));
+  out.push({ P00: E(-1, -1), P10: E(1, -1), P01: Rg(-1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
+  out.push({ P00: E(-1, 1), P10: E(1, 1), P01: Rg(-1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
+  out.push({ P00: E(-1, 1), P10: E(-1, -1), P01: Rg(-1), P11: Rg(-1), cell: ROOF_CELL, col: tileC });
+  out.push({ P00: E(1, -1), P10: E(1, 1), P01: Rg(1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
+  return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
+}
+
+const bil = (s, u, v) => [0, 1, 2].map((k) => (1 - v) * ((1 - u) * s.P00[k] + u * s.P10[k]) + v * ((1 - u) * s.P01[k] + u * s.P11[k]));
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const len3 = (a) => Math.hypot(a[0], a[1], a[2]);
+const norm3 = (a) => { const l = len3(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+/** The normal of a roof quad, turned to point up. */
+const quadNormal = (s) => { const n = norm3(cross3(sub3(s.P10, s.P00), sub3(s.P01, s.P00))); return n[1] < 0 ? [-n[0], -n[1], -n[2]] : n; };
+const polyCentre = (pts) => centroid(pts.map((q) => [q[0], q[1]]));
+
+/** The spacing of the dabs for a surface: half as far apart within NEAR_M of the start. */
+function dabStep(s, base, near) {
+  if (!near) return base;
+  const c = s.poly ? polyCentre(s.poly) : [bil(s, 0.5, 0.5)[0], bil(s, 0.5, 0.5)[2]];
+  return Math.hypot(c[0] - near.x, c[1] - near.z) < NEAR_M ? base * 0.5 : base;
+}
+
+/**
+ * The buildings of the cover as a group: the solid mesh and the dabs laid over it; plus the collision boxes, one on
+ * every edge of each outline. Returns null when there is nothing to show. `ground(x, z)` is the scene's ground
+ * (land.js heightAt); `cover` is the object fetchCover returned; `near` is the start ({ x, z }) for the denser dabs.
+ */
+export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
+  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? []);
+  const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
+  // the spacing: the touches cover the area of the walls and roofs, at most `cap` of them
+  let area = 0;
+  for (const b of built) for (const s of b.out) area += s.poly ? Math.abs(area2(s.poly)) : len3(sub3(s.P10, s.P00)) * len3(sub3(s.P01, s.P00));
+  // the exact count of touches at a base spacing: widen it until the count is under the cap
+  const countAt = (st) => {
+    let n = 0;
+    for (const b of built) for (const s of b.out) {
+      const d = dabStep(s, st, near);
+      if (s.poly) {
+        const xs = s.poly.map((q) => q[0]), zs = s.poly.map((q) => q[1]);
+        for (let x = Math.min(...xs) + d / 2; x < Math.max(...xs); x += d) for (let z = Math.min(...zs) + d / 2; z < Math.max(...zs); z += d) if (inside(s.poly, x, z)) n++;
+      } else {
+        n += Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / d)) * Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / d));
+      }
+    }
+    return n;
+  };
+  let base = Math.max(1.1, Math.sqrt(area / cap));
+  for (let guard = 0; guard < 60 && countAt(base) > cap; guard++) base *= 1.03;
+
+  // ---- the solid mesh: each surface cut into cells of one colour, the roofs as triangles ----
+  const spos = [], scol = [];
+  const vert = (p, c) => { spos.push(p[0], p[1], p[2]); scol.push(c[0], c[1], c[2]); };
+  for (const b of built) for (const s of b.out) {
+    if (s.poly) {
+      const c = s.col(0, 0, 0.5).map((x) => x * lightOf(s.n));
+      const tris = THREE.ShapeUtils.triangulateShape(s.poly.map((q) => new THREE.Vector2(q[0], q[1])), []);
+      for (const [i0, i1, i2] of tris) for (const i of [i0, i1, i2]) vert([s.poly[i][0], s.y, s.poly[i][1]], c);
+      continue;
+    }
+    const [cu, cv] = s.cell;
+    const nu = Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
+    const N0 = s.n;
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const u0 = i / nu, u1 = (i + 1) / nu, v0 = j / nv, v1 = (j + 1) / nv;
+      const off = (P) => P.map((x, k) => x + N0[k] * 0.02);
+      const c = s.col((u0 + u1) / 2, (v0 + v1) / 2, 0.5).map((x) => x * lightOf(N0));
+      const A = off(bil(s, u0, v0)), B = off(bil(s, u1, v0)), C = off(bil(s, u1, v1)), D = off(bil(s, u0, v1));
+      vert(A, c); vert(B, c); vert(C, c); vert(A, c); vert(C, c); vert(D, c);
+    }
+  }
+  const solidGeo = new THREE.BufferGeometry();
+  solidGeo.setAttribute('position', new THREE.Float32BufferAttribute(spos, 3));
+  solidGeo.setAttribute('color', new THREE.Float32BufferAttribute(scol, 3));
+  const solid = new THREE.Mesh(solidGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+
+  // ---- the dabs: laid over the faces, a little off them ----
+  const pos = [], dir = [], size = [], nrm = [], c1 = [], c2 = [], hh = [], seed = [];
+  const push = (P, D, S, N, C, lift, id) => {
+    pos.push(...P); dir.push(...D); size.push(...S); nrm.push(...N); c1.push(...C[0]); c2.push(...C[1]); hh.push(lift); seed.push(id);
+  };
+  for (const b of built) {
+    b.out.forEach((s, si) => {
+      const id = b.i * 97 + si;
+      const st = dabStep(s, base, near);
+      if (s.poly) {
+        // a flat roof: a grid of touches inside the outline
+        const xs = s.poly.map((q) => q[0]), zs = s.poly.map((q) => q[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+        let k = 0;
+        for (let x = x0 + st / 2; x < x1; x += st, k++) for (let z = z0 + st / 2; z < z1; z += st) {
+          if (!inside(s.poly, x, z)) continue;
+          const r = rnd(id, k * 13 + z);
+          const col = s.col(0, 0, r).map((c) => c * lightOf(s.n) * (0.92 + 0.16 * r));
+          push([x, s.y + 0.03, z], [1, 0, 0], [st * 1.25, st * 1.25], s.n, [col, col.map((c) => c * 0.9)], 0.03, id + r);
+        }
+        return;
+      }
+      const L1 = len3(sub3(s.P10, s.P00)), L2 = len3(sub3(s.P01, s.P00));
+      const nu = Math.max(1, Math.round(L1 / st)), nv = Math.max(1, Math.round(L2 / st));
+      const D = norm3(sub3(s.P10, s.P00)), N0 = s.n ?? quadNormal(s);
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+        const u = (i + 0.5) / nu, v = (j + 0.5) / nv;
+        const r = rnd(id + i * 0.31, j * 0.77 + 1.3);
+        const P = bil(s, u, v);
+        const col = s.col(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
+        const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
+        push(P.map((x, k) => x + N0[k] * 0.04), D, [(L2 / nv) * 1.25, (L1 / nu) * 1.25], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
+      }
+    });
+  }
+  const count = hh.length;
+  const dabMeshObj = (() => {
+    if (!count) return null;
+    const geo = dabGeometry(count, {
+      blPos: [new Float32Array(pos), 3], blDir: [new Float32Array(dir), 3], blSize: [new Float32Array(size), 2],
+      blNrm: [new Float32Array(nrm), 3], blC1: [new Float32Array(c1), 3], blC2: [new Float32Array(c2), 3],
+      blH: [new Float32Array(hh), 1], blSeed: [new Float32Array(seed), 1],
+    });
+    const mat = dabMaterial(shared, { head: HEAD, body: BODY, minPx: [5, 9], maxPx: [400, 700] });
+    return dabMesh(geo, mat, 0);
+  })();
+
+  // ---- collision: a thin wall (0.4 m thick, from the floor to the top) on every edge of each outline. Bent outlines keep
+  // their courtyards open, and nothing inside is reachable. The wall reaches under the lowest ground and 2.5 m above the
+  // highest, so that the walker cannot step onto an eave on a slope ----
+  const boxes = [];
+  for (const b of built) {
+    const top = b.kind === 'traditional' ? b.hullTop : b.yt;
+    const ring = (b.kind === 'traditional' ? b.hullRect : b.p.pts).map((q) => [q[0], q[1]]);
+    const floor = Math.min(b.yb, ringGroundMin(ring, ground)) - 0.6;
+    const ceil = Math.max(top, ringGroundMax(ring, ground) + 2.5);
+    for (let k = 0; k < ring.length; k++) {
+      const p0 = ring[k], p1 = ring[(k + 1) % ring.length];
+      const ex = p1[0] - p0[0], ez = p1[1] - p0[1], L = Math.hypot(ex, ez);
+      if (L < 0.05) continue;
+      const phi = Math.atan2(-ez, ex); // the box runs along the edge: its x axis is the edge, turned about y
+      boxes.push({ c: [(p0[0] + p1[0]) / 2, (floor + ceil) / 2, (p0[1] + p1[1]) / 2], h: [L / 2 + 0.2, (ceil - floor) / 2, 0.2], q: [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)] });
+    }
+  }
+  const stats = {
+    buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
+    historic: plans.filter((p) => p.historic).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
+    nearStep: +(base * 0.5).toFixed(2), paintedArea: Math.round(area),
+  };
+  const group = new THREE.Group();
+  group.add(solid);
+  if (dabMeshObj) group.add(dabMeshObj);
+  return { group, boxes, stats, plans };
+}
+
+/** The lowest and the highest ground on rings of 2 m round each point of an outline. */
+function ringGroundMin(pts, ground) { return ringGround(pts, ground, Math.min, Infinity); }
+function ringGroundMax(pts, ground) { return ringGround(pts, ground, Math.max, -Infinity); }
+function ringGround(pts, ground, pick, m) {
+  for (const q of pts) for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; m = pick(m, ground(q[0] + 2 * Math.cos(a), q[1] + 2 * Math.sin(a))); }
+  return m;
+}
+
+/** True when (x, z) is CLEAR_M or more from every outline and outside them all: a place a walker may start in. */
+export function clearOfBuildings(plans, x, z) {
+  for (const p of plans) {
+    if (inside(p.pts, x, z)) return false;
+    for (let k = 0; k < p.pts.length; k++) if (segDist(x, z, p.pts[k], p.pts[(k + 1) % p.pts.length]) < CLEAR_M) return false;
+  }
+  return true;
+}
+
+/**
+ * The same test on the grid of a place's near square (node order as near.bin: node (i, j) east (i - N/2) * STEP, north
+ * (j - N/2) * STEP): one byte a node, 1 where clear. Each outline is walked every half metre, and the nodes within
+ * CLEAR_M of it are marked; then the nodes inside. Used by pickVantage (bake.js).
+ */
+export function clearGrid(plans, N, STEP) {
+  const g = new Uint8Array(N * N).fill(1);
+  const R = Math.ceil(CLEAR_M / STEP) + 1;
+  const nodeOf = (x, z) => [Math.round(x / STEP + N / 2), Math.round(N / 2 - z / STEP)];
+  for (const p of plans) {
+    for (let k = 0; k < p.pts.length; k++) {
+      const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let t = 0; t <= L; t += 0.5) {
+        const x = a[0] + ((b[0] - a[0]) * t) / L, z = a[1] + ((b[1] - a[1]) * t) / L;
+        const [ci, cj] = nodeOf(x, z);
+        for (let j = cj - R; j <= cj + R; j++) for (let i = ci - R; i <= ci + R; i++) {
+          if (i < 0 || j < 0 || i >= N || j >= N) continue;
+          const nx = (i - N / 2) * STEP, nz = -(j - N / 2) * STEP;
+          if (Math.hypot(nx - x, nz - z) < CLEAR_M) g[j * N + i] = 0;
+        }
+      }
+    }
+    const xs = p.pts.map((q) => q[0]), zs = p.pts.map((q) => q[1]);
+    const [i0, j1] = nodeOf(Math.min(...xs), Math.min(...zs)), [i1, j0] = nodeOf(Math.max(...xs), Math.max(...zs));
+    for (let j = Math.max(0, j0); j <= Math.min(N - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(N - 1, i1); i++) {
+      if (inside(p.pts, (i - N / 2) * STEP, -(j - N / 2) * STEP)) g[j * N + i] = 0;
+    }
+  }
+  return g;
+}
+
+/** Distance (m) from (x, z) to the nearest outline, and whether it lies in one. */
+export function clearance(plans, x, z) {
+  let d = Infinity, inBuilding = false;
+  for (const p of plans) {
+    for (let k = 0; k < p.pts.length; k++) d = Math.min(d, segDist(x, z, p.pts[k], p.pts[(k + 1) % p.pts.length]));
+    if (inside(p.pts, x, z)) inBuilding = true;
+  }
+  return { d: +d.toFixed(2), inBuilding };
+}

@@ -161,8 +161,8 @@ void makeDab(inout Dab d) {
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
   float cls = coverClass(xz);
-  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5;
-  if (!(sand || rock || built)) { d.alive = 0.0; return; }
+  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, paved = abs(cls - 10.0) < 0.5;
+  if (!(sand || rock || built || paved)) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
@@ -179,6 +179,8 @@ void makeDab(inout Dab d) {
   if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
   else if (rock && wet > 0.5) c = paint3(vec3(0.3, 0.3, 0.32), vec3(0.2, 0.2, 0.22), vec3(0.12, 0.12, 0.14), lit, q.y);
   else if (rock) c = paint3(vec3(0.86, 0.82, 0.78), vec3(0.66, 0.62, 0.58), vec3(0.42, 0.4, 0.38), lit, q.y);
+  // paved ground (T4, paved.js): grey stone and gravel, with no tree or litter on it
+  else if (paved) c = paint3(vec3(0.66, 0.64, 0.6), vec3(0.52, 0.5, 0.47), vec3(0.36, 0.34, 0.32), lit, q.y);
   else c = paint3(vec3(0.7, 0.62, 0.52), vec3(0.52, 0.45, 0.38), vec3(0.34, 0.3, 0.26), lit, q.y);
   c = jitter(c, r.wzy, 0.4);
   // the strokes run down the slope: along the horizontal part of the normal (rock and sand alike), with a little

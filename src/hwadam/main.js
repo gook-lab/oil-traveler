@@ -19,6 +19,7 @@ import { mountHud } from '../travel/hud.js';
 import { createMidground } from '../travel/midground.js';
 import { createRanges } from '../travel/ranges.js';
 import { createFloor } from './world/floor.js';
+import { createBuildings, clearance } from '../travel/buildings.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
 import { createLeaves } from '../world/leaves.js';
@@ -117,7 +118,7 @@ try {
 }
 setPlace(place);
 panel.done(place.name);
-const hud = travel ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도' }) : null;
+const hud = travel && !q.has('clean') ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도' }) : null;
 if (travel) { const h = document.getElementById('hint'); if (h) h.textContent = 'Click to look · WASD move · Shift sprint · Space jump · V first / third person · M map'; }
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
 const land = createLand(shared);
@@ -153,6 +154,10 @@ const kick = createKick(shared);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// travel with a land cover (T3): the buildings of the near square, stood up at their heights and painted; their walls are
+// colliders below (src/travel/buildings.js)
+const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
+if (bld) scene.add(bld.group);
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
 const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
 if (midMesh) scene.add(midMesh);
@@ -164,7 +169,7 @@ if (rangesMesh) scene.add(rangesMesh);
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, buildings: bld?.group };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -176,6 +181,8 @@ const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   const f = travel ? land.heightField(480, 250) : land.heightField();
   physics.createCollider(RAPIER.ColliderDesc.heightfield(f.cells, f.cells, f.heights, { x: 2 * f.half, y: 1, z: 2 * f.half }));
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
+  // the walls of the buildings: a thin box on every edge of each outline (T3, src/travel/buildings.js)
+  for (const w of bld?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
 }
 lap('physics');
 
@@ -258,7 +265,7 @@ function tick(dt) {
   // travel: the baked square is the world. Near its edge the mist comes in; past it he is set down at the pin again
   if (travel) {
     const edge = Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z));
-    hud.setEdge(Math.min(1, Math.max(0, (edge - 200) / 40)));
+    hud?.setEdge(Math.min(1, Math.max(0, (edge - 200) / 40)));
     if (edge > 250) respawn();
   }
   const root = player.visualRoot(dt);
@@ -313,6 +320,10 @@ window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
   /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
   coverView: () => viewShares(camera, THREE, heightAt),
+  /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
+  buildings: bld?.stats ?? null,
+  buildingPlans: bld?.plans ?? [], physics,
+  clearance: (x, z) => clearance(bld?.plans ?? [], x, z),
   /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */
   crownView: () => {
