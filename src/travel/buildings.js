@@ -16,7 +16,9 @@ export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea:
 /** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
 const DAB_M = 1.5, ROOF_DAB_M = 3;
 // the dense wall touches (T3 round 2): 1.2 m spacing within 60 m of the start, each mark 1.5 times its cell (overlapping)
-const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 1.6, DENSE_OVERLAP = 1.5, FAR_WALL_ST = 4.5;
+const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 2.6, DENSE_OVERLAP = 2.2, FAR_WALL_ST = 4.5;
+// the sign colours of a block's band (T3 round 2)
+const SIGN_C = [[0.95, 0.78, 0.35], [0.7, 0.2, 0.15], [0.92, 0.9, 0.86]];
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
 // the near zone: within 120 m of the start, touches 3 m apart; the cap is 16000 (r20: 14807 touches at 120 m)
@@ -293,14 +295,16 @@ function surfacesOf(p, ground) {
         out.push({
           P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: WALL_CELL,
           col: (u, v, r) => {
-            const fy = v * H, row = fy % FLOOR_H, x = s0 + u * Lk;
-            const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5; // rows of windows, on every touch
+            const fy = v * H, x = s0 + u * Lk;
+            // the bands are set by the world height (yb + fy) and the facade's run, not by the cell: every building's
+            // windows fall on the same storeys, and a column strip (2.6 m rhythm, 0.4 m wide) stays wall
+            const yAbs = yb + fy, row = ((yAbs % 3.5) + 3.5) % 3.5;
+            const win = !p.wall && row >= 1.0 && row <= 2.3 && !(((x % 2.6) + 2.6) % 2.6 < 0.4);
             if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
             if (!p.wall) {
-              if (fy < FLOOR_H && fy > 0.8 && fy < 2.8) { // the shopfront: dark glass, with warm lights here and there
-                if (r > 0.82 && x % 4.6 > 1.2 && x % 4.6 < 2.2) return [0.95, 0.78, 0.45];
-                return [0.18, 0.24, 0.28];
-              }
+              if (fy < FLOOR_H && fy > 0.8 && fy < 2.8) return [0.18, 0.24, 0.28]; // the shopfront: a dark glass band
+              // the sign: one thin band above the glass, in one colour a building carries (yellow, red or white)
+              if (fy >= 2.9 && fy <= 3.5) return SIGN_C[Math.floor(rnd(p.c[0] * 0.13, p.c[1] * 0.17) * SIGN_C.length)];
               if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
             }
             // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
