@@ -137,8 +137,30 @@ async function openPlace(query, { shot, coverage = false } = {}) {
           const ridge = hz[720 + b];
           if (occ[c] < ridge) visible++;
         }
+        // the mid-ground (2 km, src/travel/midground.js): the share of the frame's width where its ground rises above the eye
+        let midRiseShare = null;
+        if (L.place.mid) {
+          const mid = L.place.mid, H0 = L.place.way.startHeight, VS = 0.5;
+          const top = new Float64Array(C).fill(-Infinity);
+          for (let j = 0; j < mid.n; j++) for (let i = 0; i < mid.n; i++) {
+            const x = -mid.half + i * mid.step, z = -mid.half + j * mid.step;
+            const dx = x - cam.position.x, dz = z - cam.position.z, d = Math.hypot(dx, dz);
+            if (d < 300 || d > mid.half) continue; // the land's square (up to 256 m) is drawn by the land
+            const depth = dx * fwd.x + dz * fwd.z;
+            if (depth <= 0) continue;
+            const off = Math.atan2(dx * right.x + dz * right.z, depth);
+            if (Math.abs(off) > half) continue;
+            const col = Math.min(C - 1, Math.max(0, Math.floor(((off + half) / (2 * half)) * C)));
+            const ang = Math.atan2((mid.h[j * mid.n + i] - H0) * VS - cam.position.y, d);
+            if (ang > top[col]) top[col] = ang;
+          }
+          let up = 0;
+          for (let c = 0; c < C; c++) if (top[c] > 0) up++;
+          midRiseShare = +(up / C).toFixed(4);
+        }
         const feet = L.player.feet;
         return {
+          midRiseShare,
           spawn: { x: +feet.x.toFixed(1), z: +feet.z.toFixed(1), y: +feet.y.toFixed(2) }, // where he starts (from the pin)
           skylineShare: +(visible / C).toFixed(4), // share of the frame width where the far ridge shows above the wood
           nearShare: +union(ivNear).toFixed(4), // trunks within 15 m: the ones that block the first view
@@ -209,6 +231,7 @@ for (const [i, g] of named.entries()) {
     row.gazeDeg = gazeBearing(r.place.horizon);
     row.firstFrame = r.coverage;
     row.skylineShare = r.coverage.skylineShare;
+    row.midRiseShare = r.coverage.midRiseShare;
     row.spawnFromPin = r.coverage.spawn;
     // the skyline gate: 30% for the places with relief; the flat coast is recorded only (its skyline is one layer)
     if (g.q !== '제주 협재해수욕장' && r.coverage.skylineShare < 0.3) failures.push(`${g.q}: the far ridge shows over ${(r.coverage.skylineShare * 100).toFixed(1)}% of the first frame (target 30%)`);

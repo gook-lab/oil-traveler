@@ -87,16 +87,22 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'van
   return { source: 'runtime', name, near, horizon, way, mid, meta: meta2 };
 }
 
+/** The region a person knows a place by: the county or city, else the province (Nominatim's address parts). */
+const regionOf = (a = {}) => a.county || a.city || a.town || a.state || a.province || '';
+/** What kind of place a Nominatim result is, in a word a visitor reads. */
+const KIND = { peak: '봉우리', mountain: '산', park: '공원', nature_reserve: '자연보호구역', water: '물', forest: '숲', river: '강', beach: '해변', island: '섬', city: '도시', town: '읍·면', village: '마을', hamlet: '마을', suburb: '동네', residential: '동네', viewpoint: '전망', attraction: '명소', administrative: '행정구역' };
+const kindOf = (r) => KIND[r.type] || KIND[r.addresstype] || KIND[r.category] || '장소';
 /** A short label for a Nominatim result: its first two parts, the rest cut (the full name is long). */
 // (a distance or a time that OpenStreetMap stores in the name, such as "1.1Km 00:27", is left out)
 const shortName = (display) => String(display ?? '').split(',').map((s) => s.trim()).filter((s) => s && !/\bkm\b|\d+:\d+/i.test(s)).slice(0, 2).join(', ');
+const subOf = (r) => [regionOf(r.address), kindOf(r)].filter(Boolean).join(' · ');
 
 /**
  * Up to `limit` matches for a typed name, in OpenStreetMap search (Nominatim, one request). Each is { lat, lon, label,
  * box } where box is the result's own bounding box ([[west, south], [east, north]]) when it has one.
  */
 export async function geocodeMany(query, limit = 5) {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${limit}&accept-language=ko&q=${encodeURIComponent(query)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&accept-language=ko&q=${encodeURIComponent(query)}`;
   let res;
   try { res = await fetch(url); } catch { throw new PlaceError('net', 'geocode'); }
   if (!res.ok) throw new PlaceError('net', `geocode HTTP ${res.status}`);
@@ -104,20 +110,21 @@ export async function geocodeMany(query, limit = 5) {
   return list.map((r) => {
     const b = Array.isArray(r.boundingbox) ? r.boundingbox.map(Number) : null; // [south, north, west, east]
     return {
-      lat: Number(r.lat), lon: Number(r.lon), label: shortName(r.display_name) || query,
+      lat: Number(r.lat), lon: Number(r.lon), label: (r.name && !/\bkm\b/i.test(r.name) ? r.name : shortName(r.display_name)) || query, sub: subOf(r),
       box: b && b.every(Number.isFinite) && b[1] - b[0] > 0.0005 ? [[b[2], b[0]], [b[3], b[1]]] : null,
     };
   });
 }
 
-/** The name of the place at (lat, lon) (Nominatim reverse, one request). Null when there is none. */
+/** The name, region and kind of the place at (lat, lon) (Nominatim reverse, one request). Null when there is none. */
 export async function reverseName(lat, lon) {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=ko&lat=${lat}&lon=${lon}`;
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=14&accept-language=ko&lat=${lat}&lon=${lon}`;
   let res;
   try { res = await fetch(url); } catch { throw new PlaceError('net', 'reverse'); }
   if (!res.ok) throw new PlaceError('net', `reverse HTTP ${res.status}`);
   const r = await res.json();
-  return r && r.display_name ? shortName(r.display_name) : null;
+  if (!r || !r.display_name) return null;
+  return { label: (r.name && !/\bkm\b/i.test(r.name) ? r.name : shortName(r.display_name)), sub: subOf(r) };
 }
 
 /** Looks a typed address up in OpenStreetMap search (Nominatim). Returns null when nothing matches. */
