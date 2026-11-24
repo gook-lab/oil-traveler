@@ -37,7 +37,7 @@ export const VIEWS = {
   maple: [4, 14, 4, -20, { run: 0, pitch: 0.2 }],
   birch: [-1, -30, 1, -60, { run: 0 }],
   ridge: [8, -74, 10, -110, { run: 0 }],
-  ridgeUp: [6, -104, 8, -160, { run: 0, pitch: -0.1, dist: 6 }],
+  ridgeUp: [8, -74, 10, -110, { run: 0, pitch: 0.14, dist: 6 }],
 };
 
 // --view "x,z,fx,fz,run,dist,pitch,yaw" --name n: a view given on the command line

@@ -10,6 +10,8 @@ import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START 
 import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
+// where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
+const SIGHTS = [[4, 14, 4, -20], [-1, 56, 2, 30], [-1, -30, 1, -60], [8, -74, 10, -110], [6, -104, 8, -160]];
 
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
@@ -83,7 +85,7 @@ function plant() {
       const sw = segW(pathT(x, z));
       if (corridor > 185 || (z < -100 && sw[3] > 0.3) || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
       const wd = corridor < 60 ? wayDist(x, z) : 99;
-      if (wd < 2.7 || clearingAt(x, z) > 0.25) continue;
+      if (wd < 3.5 || clearingAt(x, z) > 0.25) continue;
       // the kind of tree is drawn by the part of the walk it stands in: the weights of the four parts mixed into
       // the chance of each kind (beech is what is left over)
       const pBirch = 0.95 * sw[2] + 0.1 * sw[3];
@@ -96,14 +98,14 @@ function plant() {
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 700; i++) {
     const k = 40 + Math.floor(rand() * 120);
     const [wx, wz] = way[k];
     const [nx, nz] = way[k + 1];
     const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
     const off = (3 + rand() * 8) * (rand() < 0.5 ? -1 : 1);
     const x = wx + (-dz / len) * off, z = wz + (dx / len) * off;
-    if (wayDist(x, z) < 2.5 || clearingAt(x, z) > 0.25 || (z < -100)) continue;
+    if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25 || (z < -100)) continue;
     const sw = segW(pathT(x, z));
     if (rand() > 0.25 + 0.75 * (sw[1] + sw[2])) continue;
     const pBirch = 0.95 * sw[2] + 0.1 * sw[3];
@@ -111,14 +113,28 @@ function plant() {
     const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
     const u = rand();
     const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
-    add(x, z, type, 1);
-    if (type === MAPLE) trees[trees.length - 1].h *= 0.6;
+    add(x, z, type, type === MAPLE ? 0 : 1);
+    const near = trees[trees.length - 1];
+    near.toward = Math.atan2(wz - z, wx - x);
+    near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
+    if (type === MAPLE) near.h *= 0.6;
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
   trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });
   for (const [x, z, s] of [[START.x - 5.5, START.z - 13, 1.9], [START.x + 6.2, START.z - 19, 1.6]]) add(x, z, BEECH, 0, s);
-  return trees;
+  // no trunk stands in front of a view the picture is taken from (the walk's stills, src/hwadam/main.js's views):
+  // the 12 m ahead of the camera, 6.4 m behind the wanderer, stay clear
+  const blocks = (t) => SIGHTS.some(([x, z, fx, fz]) => {
+    const dx = fx - x, dz = fz - z, len = Math.hypot(dx, dz);
+    const ux = dx / len, uz = dz / len;
+    const ex = x - ux * 6.4, ez = z - uz * 6.4;
+    const along = (t.x - ex) * ux + (t.z - ez) * uz;
+    if (along < -t.r - 1 || along > 12) return false;
+    const px = ex + ux * along, pz = ez + uz * along;
+    return Math.hypot(t.x - px, t.z - pz) < t.r + 2.2;
+  });
+  return trees.filter((t) => !blocks(t));
 }
 
 export function createForest(shared) {
@@ -161,7 +177,7 @@ export function createForest(shared) {
     if (full) {
       const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
-        const a = (i / limbs) * Math.PI * 2 + rand() * 1.2;
+        const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
         const from = top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
         const p0 = new THREE.Vector3();
         const r0 = trunkAt(from, p0);
@@ -236,7 +252,7 @@ export function createForest(shared) {
   for (let i = 0; i < 620; i++) {
     const x = (rand() - 0.5) * 150, z = -125 + rand() * 235;
     const wd = wayDist(x, z);
-    if (wd < 2.3 || wd > 62 || clearingAt(x, z) > 0.6) continue;
+    if (wd < 3.5 || wd > 62 || clearingAt(x, z) > 0.6) continue;
     const y = heightAt(x, z), garden = segW(pathT(x, z))[0], tall = (1.1 + rand() * rand() * 3.4) * (1 - 0.75 * garden);
     const sw = segW(pathT(x, z));
     const family = rand() < sw[0] ? 4 : rand() < sw[1] ? (rand() < 0.6 ? 0 : 1) : rand() < sw[2] ? 5 : 2;
@@ -350,7 +366,7 @@ export function createForest(shared) {
         int k = int(aData.z + 0.5);
         vec3 c;
         if (aData.w > 0.5) {
-          c = mix(LEAF_S[k] * 0.6, vec3(0.12, 0.1, 0.17), 0.3);
+          c = mix(LEAF_S[k] * 0.6, vec3(0.14, 0.08, 0.05), 0.3);
         } else {
           // a crown is never wholly dark: light comes down through all the leaves above it
           float sun = mix(0.5, 1.0, sunAt(P + Nn * 0.9));
@@ -359,7 +375,7 @@ export function createForest(shared) {
           float x = sun * clamp(0.55 + 0.45 * dot(Nn, uSunDir) + 0.6 * through, 0.0, 1.0);
           x *= mix(0.6, 1.0, smoothstep(-0.7, 0.1, Nn.y));
           c = paint3(LEAF_L[k], LEAF_M[k], LEAF_S[k], x, r.x);
-          c = mix(c, vec3(0.2, 0.16, 0.25), (1.0 - smoothstep(0.1, 0.4, x)) * 0.14);
+          c = mix(c, vec3(0.3, 0.14, 0.1), (1.0 - smoothstep(0.1, 0.4, x)) * 0.12);
           // turned in a gust, the pale back of the leaf
           if (q.x < gust * 0.3) c = mix(c, vec3(1.0, 0.92, 0.6), 0.4 * sun);
         }
