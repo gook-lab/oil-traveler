@@ -351,7 +351,23 @@ function surfacesOf(p, ground) {
   }
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
   // the white walls: the touches vary by 3% and lie upright (long strokes), so they do not read as a row of windows
-  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r)), true);
+  // the front (the long side, toward the court) has its bays as dark timber doors with bright lattice (문살); the other
+  // sides stay white (the back and the ends are plain walls)
+  const frontPts = wallPts(0);
+  const edgeLen = (k) => Math.hypot(frontPts[(k + 1) % 4][0] - frontPts[k][0], frontPts[(k + 1) % 4][1] - frontPts[k][1]);
+  // the long side that faces the court to the south (the larger z, toward the start): the long sides are 0 and 2 or 1 and 3
+  const midZ = (k) => (frontPts[k][1] + frontPts[(k + 1) % 4][1]) / 2;
+  const longK = [0, 1, 2, 3].filter((k) => Math.abs(edgeLen(k) - Math.max(...[0, 1, 2, 3].map(edgeLen))) < 1e-6);
+  const frontK = longK.reduce((m, k) => (midZ(k) > midZ(m) ? k : m), longK[0]);
+  const bayCol = (u, v, r, L, k) => {
+    const x = u * L;
+    if (x % 3.2 < 0.5) return [0.5, 0.17, 0.12]; // the column
+    if (k === frontK) return x % 0.6 < 0.07 || v % 0.25 < 0.04 ? [0.85, 0.8, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
+    return [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r));
+  };
+  // the touches on the front bays are dark timber (the lattice is in the solid cells only, so the bright lines stay thin)
+  const bayDab = (u, v, r, L, k) => (k === frontK && u * L % 3.2 >= 0.5 ? [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
+  face(frontPts, yb + stone, yEave, bayCol, TRAD_WALL_CELL, bayDab, true);
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
   const posts = wallPts(0), eaveW = wallPts(EAVE);
   for (let k = 0; k < 4; k++) {
@@ -541,7 +557,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
           Dk = norm3([D[0] + perp[0] * t, D[1] + perp[1] * t, D[2] + perp[2] * t]);
         }
         const P = bil(s, uu, vv);
-        const colFn = s.col;
+        const colFn = s.dabCol ?? s.col;
         const tone = s.jit ? 0.86 + 0.28 * rnd(id * 0.7 + i, j * 1.1 + 0.3) : 1;
         const col = colFn(uu, vv, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r) * tone);
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
