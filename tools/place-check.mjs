@@ -80,6 +80,11 @@ async function openPlace(query, { shot } = {}) {
       const p = window.lab.place;
       return { name: p.name, source: p.source, near: Array.from(p.near), horizon: Array.from(p.horizon), way: p.way, meta: p.meta };
     });
+    out.minTrunkM = await page.evaluate(() => {
+      // the nearest trunk to the start (the pin in travel): heroes (the old oak) are not counted
+      const ts = window.lab.trees.filter((t) => !t.hero);
+      return ts.length ? Math.min(...ts.map((t) => Math.hypot(t.x, t.z))) : null;
+    });
     await page.waitForTimeout(500);
   }
   if (shot) await page.screenshot({ path: join(shotDir, `${shot}.png`) });
@@ -127,8 +132,10 @@ for (const q of ['북한산 국립공원', '제주 협재해수욕장']) {
 }
 report.places = [];
 for (const [i, g] of named.entries()) {
-  const r = await openPlace(`scene=hwadam&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: i === 0 ? 'place-bukhansan' : 'place-jeju' });
+  const r = await openPlace(`scene=travel&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: i === 0 ? 'place-bukhansan' : 'place-jeju' });
   const row = { name: g.q, lat: g.lat, lon: g.lon, ready: r.ready, ms: r.ms, status: r.status, problems: r.problems.slice(0, 3) };
+  row.minTrunkFromStartM = r.minTrunkM == null ? null : +r.minTrunkM.toFixed(2);
+  if (r.ready && r.minTrunkM != null && r.minTrunkM <= 12) failures.push(`${g.q}: a trunk stands ${r.minTrunkM.toFixed(2)} m from the start (need > 12)`);
   if (r.ready) row.way = { length: r.place.way.length, gain: r.place.way.gain, slopeMean: r.place.way.slopeMean, slopeMax: r.place.way.slopeMax, startH: r.place.way.startHeight, goalH: r.place.way.goalHeight };
   report.places.push(row);
   if (!r.ready) failures.push(`${g.q} did not reach a frame: ${r.status}`);

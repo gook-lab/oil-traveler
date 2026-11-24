@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
-import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START } from './land.js';
+import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
@@ -152,7 +152,8 @@ function plant() {
     const px = ex + ux * along, pz = ez + uz * along;
     return Math.hypot(t.x - px, t.z - pz) < t.r + 2.2;
   });
-  return trees.filter((t) => !blocks(t));
+  // no trunk within CLEAR.r of the start (travel: the pin), so the first view is open
+  return trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r));
 }
 
 export function createForest(shared) {

@@ -9,7 +9,7 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
@@ -120,6 +120,8 @@ const land = createLand(shared);
 lap('land');
 say(0.1, 'Growing the wood');
 await turn();
+// travel: the start is the pin (the centre of the square), with no trunk within 12 m of it
+Object.assign(CLEAR, { x: 0, z: 0, r: travel ? 12 : 0 });
 const forest = createForest(shared);
 lap('forest');
 const floor = createFloor(shared);
