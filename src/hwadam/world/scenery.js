@@ -121,14 +121,15 @@ export function createScenery(shared, horizon, eyeY) {
   const mossCam = [-8, 98], mossAt = [-26, 82];
   const fl = Math.hypot(mossAt[0] - mossCam[0], mossAt[1] - mossCam[1]);
   const fwd = [(mossAt[0] - mossCam[0]) / fl, (mossAt[1] - mossCam[1]) / fl];
-  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8], [5.8, 0.5, 0.7], [12.5, -1.0, 1.2]]) {
+  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8], [5.8, 0.5, 0.7], [12.5, -1.0, 1.2], [3.2, 0.3, 0.9], [8.5, -0.6, 1.4], [14.5, 2.2, 1.5]]) {
     const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
     // one brush mark shows only a sliver of its card, so each stone is a cluster of marks like the rest of the garden's stones
     // six marks per stone: the lower ones stone-grey, the top one (flag 1 in data.w) the moss cap
     for (let j = 0; j < 6; j++) {
       const ox = (rand() - 0.5) * size * 0.6, oz = (rand() - 0.5) * size * 0.6;
       const cap = j === 5 ? 1 : 0;
-      sp.push(x + ox, heightAt(x, z) + (cap ? 0.12 : 0), z + oz);
+      // the grey marks sink a little into the moss (a stone lies in the ground, it does not sit on it)
+      sp.push(x + ox, heightAt(x, z) + (cap ? 0.12 : -0.08 * size), z + oz);
       // the grey marks are wider than the cap, so the stone keeps its grey rim under the moss
       sd.push(rand() * 1000, cap ? size * 0.7 : size * (1.1 + 0.4 * rand()), cap ? 0.62 : 0.3 + 0.15 * j / 5, cap);
     }

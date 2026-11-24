@@ -347,7 +347,10 @@ export function createForest(shared) {
           c = mix(c, vec3(0.14, 0.12, 0.16), mark * 0.9);
           float far = smoothstep(18.0, 80.0, length(vWorld.xz - cameraPosition.xz));
           // the blue-lavender cast is for the shade only; the sunlit bark stays warm white
+          // the far trunks take the wood's warm light (they melt into the background); the near shade side is darkened
           c = mix(c, vec3(0.8, 0.84, 0.92), far * 0.35 * (1.0 - lit));
+          c = mix(c, vec3(0.9, 0.82, 0.56), far * 0.4);
+          c *= mix(1.0, 0.78, (1.0 - lit) * (1.0 - far));
           outC = vec4(c, 1.0);
           return;
         }
