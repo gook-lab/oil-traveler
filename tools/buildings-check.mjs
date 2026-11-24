@@ -114,14 +114,14 @@ for (const p of PLACES) {
   await page.screenshot({ path: join(outDir, `${p.name}.png`) });
   step(`${p.name}: shot 1`);
   // the courtyard view: from the start toward the place's centre (the palace's throne hall for Gyeongbokgung)
-  // the centre view: 40 m from the target, facing it, on the side toward the courtyard (the south) where the ground is clear.
+  // the centre view: 22 m from the target (the throne hall fills the frame), facing it, on the side toward the courtyard (the south) where the ground is clear.
   // Gyeongbokgung's target is the largest hall footprint (Geunjeongjeon in the data, about 0.8, -51 m); elsewhere the pin
   const tgt = p.name === 'gyeongbokgung' ? [2.2, -80.9] : [0, 0];
   const spot = await page.evaluate((tg) => {
     const L = window.lab;
     let best = null;
     for (let a = 0; a < 360; a += 10) {
-      const r = (a * Math.PI) / 180, x = tg[0] + Math.sin(r) * 40, z = tg[1] + Math.cos(r) * 40;
+      const r = (a * Math.PI) / 180, x = tg[0] + Math.sin(r) * 22, z = tg[1] + Math.cos(r) * 22;
       const c = L.clearance(x, z);
       if (!c.inBuilding && c.d >= 3.5 && (!best || z > best.z)) best = { x, z };
     }

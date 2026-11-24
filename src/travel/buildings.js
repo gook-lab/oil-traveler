@@ -25,10 +25,12 @@ const EAVE = 1.8, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
 const WALL_MAX = 5, WALL_FRAC = 0.4, BIG_SIDE = 15, BIG_STONE = 1.2;
 // the cells of the solid mesh, in metres: along a wall, and up it
 const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
+/** The cells of a wall in the near zone: about 1.2 m along and 0.6 m up. */
+const FINE_CELL = [1.2, 0.6];
 /** The thickness of a palace wall (m). */
 const WALL_T = 0.9;
 /** The roof of a traditional hall: N by N quads, and the lift of its eave corners (m). */
-const ROOF_N = 10, CORNER_LIFT = 1.5;
+const ROOF_N = 18, CORNER_LIFT = 1.5;
 
 // one touch per instance: the attributes below fill in its Dab
 const HEAD = /* glsl */ `
@@ -168,6 +170,13 @@ export function planBuildings(list, heritage, kinds = null) {
   return plans;
 }
 
+/** The lowest ground along the segment A to B (sampled every 0.5 m). */
+function lowestAlong(A, B, ground) {
+  const L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+  let m = Infinity;
+  for (let t = 0; t <= L + 1e-9; t += 0.5) m = Math.min(m, ground(A[0] + ((B[0] - A[0]) * t) / (L || 1), A[1] + ((B[1] - A[1]) * t) / (L || 1)));
+  return Number.isFinite(m) ? m : ground(A[0], A[1]);
+}
 /** Within d metres of an outline, or inside it. */
 function nearOutline(pts, x, z, d) {
   if (inside(pts, x, z)) return true;
@@ -249,7 +258,7 @@ function surfacesOf(p, ground) {
   const out = [];
   const gMin = Math.min(...p.pts.map((q) => ground(q[0], q[1])), ground(p.c[0], p.c[1]));
   if (!p.trad) {
-    const yb = gMin + p.mh, yt = gMin + p.h;
+    const ybAll = gMin + p.mh, ytAll = gMin + p.h;
     const base = hexRGB(p.colour);
     const bh = rnd(p.c[0], p.c[1]);
     // a palace wall (a walled court's ring): ochre-grey, with a band of red tiles along its top (the coping)
@@ -263,7 +272,6 @@ function surfacesOf(p, ground) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       if (L < 0.2) continue;
-      const H = yt - yb;
       // the stretches of this edge that are not cut (see wallCuts): a quad for each
       const kept = p.cuts ? keptRuns(p.cuts[k], L) : [[0, L]];
       for (const [s0, s1] of kept) {
@@ -271,6 +279,9 @@ function surfacesOf(p, ground) {
         if (Lk < 0.25) continue;
         const A = [a[0] + (ex * s0) / L, a[1] + (ez * s0) / L], B = [a[0] + (ex * s1) / L, a[1] + (ez * s1) / L];
         const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L];
+        // a palace wall stands on the lowest ground along its own run, so it rises above the ground there (a run on a
+        // slope is not buried, nor a stretch of 3.4 m left at the height of the eye)
+        const yb = p.wall ? lowestAlong(A, B, ground) + p.mh : ybAll, yt = p.wall ? yb + p.h : ytAll, H = yt - yb;
         if (p.wall) {
           // the wall has a thickness of 0.9 m: its inner face and a coping of red tiles on top (so it is not a sheet)
           const T = WALL_T, Ai = [A[0] - n[0] * T, A[1] - n[2] * T], Bi = [B[0] - n[0] * T, B[1] - n[2] * T];
@@ -281,7 +292,7 @@ function surfacesOf(p, ground) {
           P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: WALL_CELL,
           col: (u, v, r) => {
             const fy = v * H, row = fy % FLOOR_H, x = s0 + u * Lk;
-            const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
+            const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5; // rows of windows, on every touch
             if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
             if (!p.wall) {
               if (fy < FLOOR_H && fy > 0.8 && fy < 2.8) { // the shopfront: dark glass, with warm lights here and there
@@ -291,13 +302,13 @@ function surfacesOf(p, ground) {
               if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
             }
             // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
-            return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
+            return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.95 + 0.1 * r));
           },
         });
       }
     }
-    if (!p.wall) out.push({ poly: p.pts, y: yt, n: [0, 1, 0], col: () => roofC });
-    return { out, yb, yt, kind: p.wall ? 'wall' : 'modern' };
+    if (!p.wall) out.push({ poly: p.pts, y: ytAll, n: [0, 1, 0], col: () => roofC });
+    return { out, yb: ybAll, yt: ytAll, kind: p.wall ? 'wall' : 'modern' };
   }
   // traditional: the wall box, the stone base, the eaves, and the hip roof of tiles
   const R = p.R;
@@ -335,9 +346,14 @@ function surfacesOf(p, ground) {
   const eu = R.hu + EAVE, ev = R.hv + EAVE, rr = Math.max(0, eu - ev);
   const roofAt = (su, sv) => {
     const a = su * eu, b = sv * ev;
-    const dist = ev - Math.max(Math.abs(b), Math.max(0, Math.abs(a) - rr)); // 0 at the eave, ev at the ridge
-    const t = Math.min(1, Math.max(0, dist / ev));
-    const cornerF = Math.min(1, Math.max(0, (Math.abs(a) - rr) / ev)) * Math.min(1, Math.abs(b) / ev);
+    // the distance in from the eave, 0 at the eave and 1 on the ridge: flat along the ridge (the ridge is a straight line,
+    // not a V), and falling off as a curve toward the eave
+    const q = Math.min(1, Math.max(Math.abs(b), Math.max(0, Math.abs(a) - rr)) / ev);
+    const t = Math.max(0, 1 - Math.pow(q, 2.2));
+    // the eave corners alone lift (the upturned ends); the eave's middle stays on the wall top
+    const ca = Math.min(1, Math.max(0, (Math.abs(a) - rr) / Math.max(1, eu - rr)));
+    const cb = Math.min(1, Math.abs(b) / ev);
+    const cornerF = ca * ca * Math.pow(cb, 4);
     const y = yEave + (yTop - yEave) * Math.pow(t, 1.6) + CORNER_LIFT * cornerF;
     const [x, z] = rectPt(R, a, b);
     return [x, y, z];
@@ -425,13 +441,19 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
       for (const [i0, i1, i2] of tris) for (const i of [i0, i1, i2]) vert([s.poly[i][0], s.y, s.poly[i][1]], c);
       continue;
     }
-    const [cu, cv] = s.cell;
+    // a wall within the near zone is cut finer (FINE_CELL), so its tone can vary across the face like a brush's
+    let [cu, cv] = s.cell;
+    if (near && s.cell === WALL_CELL && isNear(s, near)) [cu, cv] = FINE_CELL;
     const nu = Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
     const N0 = s.n ?? quadNormal(s);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
-      const u0 = i / nu, u1 = (i + 1) / nu, v0 = j / nv, v1 = (j + 1) / nv;
+      // each row's joints are staggered (no straight joints across the face), and each cell takes its own tone
+      const sh = (rnd(j * 0.61 + 0.2, nu * 0.37 + 1.1) - 0.5) * 0.6 / nu;
+      const ub = (k) => (k === 0 ? 0 : k === nu ? 1 : Math.min(1, Math.max(0, k / nu + sh)));
+      const u0 = ub(i), u1 = ub(i + 1), v0 = j / nv, v1 = (j + 1) / nv;
       const off = (P) => P.map((x, k) => x + N0[k] * 0.02);
-      const c = s.col((u0 + u1) / 2, (v0 + v1) / 2, 0.5).map((x) => x * lightOf(N0));
+      const rc = rnd(i * 1.73 + j * 0.31 + s.P00[0] * 0.37, j * 1.3 + i * 0.21 + s.P00[2] * 0.11);
+      const c = s.col((u0 + u1) / 2, (v0 + v1) / 2, rc).map((x) => x * lightOf(N0));
       const A = off(bil(s, u0, v0)), B = off(bil(s, u1, v0)), C = off(bil(s, u1, v1)), D = off(bil(s, u0, v1));
       vert(A, c); vert(B, c); vert(C, c); vert(A, c); vert(C, c); vert(D, c);
     }
