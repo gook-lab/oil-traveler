@@ -18,6 +18,8 @@ const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], 
 const TIER_TRAVEL = [50, 120];
 
 export const BARK = /* glsl */ `
+uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
+vec3 hazedW(vec3 c, vec3 w) { return mix(c, airColour(normalize(w - cameraPosition)), uForestHaze * mistBetween(w)); }
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
 const vec3 BARK_M[4] = vec3[4](vec3(0.37, 0.3, 0.31), vec3(0.76, 0.71, 0.68), vec3(0.3, 0.22, 0.2), vec3(0.5, 0.42, 0.36));
 const vec3 BARK_S[4] = vec3[4](vec3(0.15, 0.12, 0.19), vec3(0.4, 0.4, 0.53), vec3(0.12, 0.09, 0.14), vec3(0.26, 0.2, 0.18));
@@ -32,6 +34,8 @@ vec3 bark(int k, vec3 P, vec3 Nn, float r, float foot) {
 
 // seven kinds of leaf: 0 crimson, 1 vermilion, 2 yellow, 3 orange-gold, 4 moss green, 5 birch yellow, 6 maroon
 const LEAF = /* glsl */ `
+uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
+vec3 hazedW(vec3 c, vec3 w) { return mix(c, airColour(normalize(w - cameraPosition)), uForestHaze * mistBetween(w)); }
 const vec3 LEAF_L[7] = vec3[7](vec3(0.8, 0.14, 0.16), vec3(0.98, 0.42, 0.12), vec3(1.0, 0.86, 0.26), vec3(0.98, 0.64, 0.2), vec3(0.56, 0.7, 0.28), vec3(0.98, 0.9, 0.44), vec3(0.56, 0.16, 0.2));
 const vec3 LEAF_M[7] = vec3[7](vec3(0.52, 0.08, 0.11), vec3(0.74, 0.22, 0.09), vec3(0.78, 0.6, 0.18), vec3(0.74, 0.4, 0.13), vec3(0.32, 0.46, 0.2), vec3(0.8, 0.7, 0.26), vec3(0.34, 0.09, 0.14));
 const vec3 LEAF_S[7] = vec3[7](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec3(0.42, 0.3, 0.14), vec3(0.4, 0.2, 0.11), vec3(0.16, 0.26, 0.16), vec3(0.44, 0.38, 0.2), vec3(0.2, 0.05, 0.1));
@@ -194,6 +198,7 @@ function plant() {
 }
 
 export function createForest(shared) {
+  shared.uForestHaze = shared.uForestHaze ?? { value: CLEAR.fan ? 0.5 : 1.0 };
   const trees = plant();
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
@@ -283,7 +288,8 @@ export function createForest(shared) {
         treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, (some ? 2.3 : 3.4) + rand() * 1.2]);
       }
     }
-    const perLobe = full ? (t.hero ? 150 : 54) : some ? (t.type === BIRCH ? 36 : 20) : 11;
+    // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
+    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);
@@ -368,7 +374,7 @@ export function createForest(shared) {
         vec3 Nn = normalize(vN);
         float grain = texture(tNoise, vec2(atan(Nn.z, Nn.x) * 1.3 + vData.y, vWorld.y * 0.07)).r;
         vec3 c = bark(int(vData.x + 0.5), vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
-        outC = vec4(hazed(c, vWorld), 1.0);
+        outC = vec4(hazedW(c, vWorld), 1.0);
       }`,
   });
   const woodMesh = new THREE.Mesh(woodGeometry, woodMaterial);
@@ -409,8 +415,8 @@ export function createForest(shared) {
         d.pos = aPos;
         d.size = vec2(aData.y, aData.w);
         // the birch stand is not hazed: its trunks read white against the wood
-        d.c1 = k == 1 ? c : hazed(c, aPos);
-        d.c2 = k == 1 ? c * 1.08 : hazed(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
+        d.c1 = k == 1 ? c : hazedW(c, aPos);
+        d.c2 = k == 1 ? c * 1.08 : hazedW(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
         d.seed = aData.x;
         d.lift = 0.5;
       }`,
@@ -468,8 +474,8 @@ export function createForest(shared) {
         d.pos = P;
         float s = aData.y / sqrt(aData.w > 0.5 ? 1.0 : keep);
         d.size = vec2(s, s * (aData.w > 0.5 ? 1.2 : 1.5 + 0.5 * q.z));
-        d.c1 = hazed(c, P);
-        d.c2 = hazed(jitter(c * 1.16, q.zxy, 0.7), P);
+        d.c1 = hazedW(c, P);
+        d.c2 = hazedW(jitter(c * 1.16, q.zxy, 0.7), P);
         d.seed = aData.x;
         d.lift = aData.w > 0.5 ? -0.2 : 0.5;
         d.turnabout = 1.0;
