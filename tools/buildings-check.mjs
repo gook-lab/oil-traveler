@@ -102,7 +102,7 @@ for (const p of PLACES) {
   // the courtyard view: from the start toward the place's centre (the palace's throne hall for Gyeongbokgung)
   // the centre view: 40 m from the target, facing it, on the side toward the courtyard (the south) where the ground is clear.
   // Gyeongbokgung's target is the largest hall footprint (Geunjeongjeon in the data, about 0.8, -51 m); elsewhere the pin
-  const tgt = p.name === 'gyeongbokgung' ? [0.8, -51.4] : [0, 0];
+  const tgt = p.name === 'gyeongbokgung' ? [2.2, -80.9] : [0, 0];
   const spot = await page.evaluate((tg) => {
     const L = window.lab;
     let best = null;

@@ -230,7 +230,7 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
 const HERITAGE_POI = new Set(['castle']);
 /** The width (m) of a road by its class, as the transportation layer names them; paths and tracks are not paved. */
-const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 6, service: 4, pedestrian: 6 };
+const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 10, service: 8, pedestrian: 10 };
 /** Signed area of a tile ring (tile units); the outer rings of a feature share its sign. */
 function ringArea(r) {
   let a = 0;

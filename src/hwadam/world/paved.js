@@ -1,11 +1,11 @@
 // Paved ground of a place (T4): the ground that bore trees and litter becomes stone, gravel and asphalt (class PAVED,
 // cover.js) where the city is built up, along its roads, and in the courtyards of a palace or a temple. Three rules,
-// each a fixed number: a node is dense when the buildings cover at least 0.2 of the 61 m square about it; a road is
+// each a fixed number: a node is dense when the buildings cover at least 0.1 of the 61 m square about it; a road is
 // its width (cover.js ROAD_WIDTH) about its centreline; a courtyard is within 120 m of a castle or Buddhist temple point
 // point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
-export const PAVING = { dense: 0.2, half: 15, courtM: 120 };
+export const PAVING = { dense: 0.1, half: 15, courtM: 120 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
 const inside = (pts, x, z) => {

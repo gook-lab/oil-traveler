@@ -178,10 +178,14 @@ function surfacesOf(p, ground) {
   const E = (su, sv) => [(R.cu + su * eu) * R.ux + (R.cv + sv * ev) * R.vx, yEave + LIFT, (R.cu + su * eu) * R.uz + (R.cv + sv * ev) * R.vz];
   const Rg = (su) => [(R.cu + su * ru) * R.ux + R.cv * R.vx, yTop, (R.cu + su * ru) * R.uz + R.cv * R.vz];
   const tileC = (u, v, r) => (v > 0.85 ? [0.2, 0.22, 0.27] : mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], r));
-  out.push({ P00: E(-1, -1), P10: E(1, -1), P01: Rg(-1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
-  out.push({ P00: E(-1, 1), P10: E(1, 1), P01: Rg(-1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
-  out.push({ P00: E(-1, 1), P10: E(-1, -1), P01: Rg(-1), P11: Rg(-1), cell: ROOF_CELL, col: tileC });
-  out.push({ P00: E(1, -1), P10: E(1, 1), P01: Rg(1), P11: Rg(1), cell: ROOF_CELL, col: tileC });
+  // each plane is split at the middle of its eave, which sits on the wall top (no gap), so the corners alone lift
+  const Mu = (sv) => [R.cu * R.ux + (R.cv + sv * ev) * R.vx, yEave, R.cu * R.uz + (R.cv + sv * ev) * R.vz];
+  const Mv = (su) => [(R.cu + su * eu) * R.ux + R.cv * R.vx, yEave, (R.cu + su * eu) * R.uz + R.cv * R.vz];
+  const plane = (p0, p1, p2, p3) => out.push({ P00: p0, P10: p1, P01: p2, P11: p3, cell: ROOF_CELL, col: tileC });
+  plane(E(-1, -1), Mu(-1), Rg(-1), Rg(0)); plane(Mu(-1), E(1, -1), Rg(0), Rg(1));
+  plane(E(-1, 1), Mu(1), Rg(-1), Rg(0)); plane(Mu(1), E(1, 1), Rg(0), Rg(1));
+  plane(E(-1, -1), Mv(-1), Rg(-1), Rg(-1)); plane(Mv(-1), E(-1, 1), Rg(-1), Rg(-1));
+  plane(E(1, -1), Mv(1), Rg(1), Rg(1)); plane(Mv(1), E(1, 1), Rg(1), Rg(1));
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
