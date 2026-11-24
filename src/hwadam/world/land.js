@@ -131,8 +131,8 @@ export function createLand(shared) {
         vec4 sw = segW(m.a);
         // the underpainting by the part of the walk: dark moss in the garden, plum and rust on the climb,
         // ochre among the birches, gold on the rise
-        vec3 deep = sw.x * vec3(0.2, 0.25, 0.12) + sw.y * vec3(0.34, 0.13, 0.11) + sw.z * vec3(0.4, 0.33, 0.18) + sw.w * vec3(0.5, 0.34, 0.12);
-        vec3 bright = sw.x * vec3(0.42, 0.52, 0.22) + sw.y * vec3(0.64, 0.2, 0.12) + sw.z * vec3(0.7, 0.6, 0.3) + sw.w * vec3(0.8, 0.6, 0.22);
+        vec3 deep = sw.x * vec3(0.16, 0.2, 0.12) + sw.y * vec3(0.34, 0.13, 0.11) + sw.z * vec3(0.4, 0.33, 0.18) + sw.w * vec3(0.5, 0.34, 0.12);
+        vec3 bright = sw.x * vec3(0.28, 0.34, 0.2) + sw.y * vec3(0.64, 0.2, 0.12) + sw.z * vec3(0.7, 0.6, 0.3) + sw.w * vec3(0.8, 0.6, 0.22);
         // laid in broadly first: bright where the sun falls, deep where it doesn't
         // asked square by ragged square, so that what shows between the dabs is itself in touches
         vec2 sq = floor(vWorld.xz / 0.32 + (texture(tNoise, vWorld.xz / 2.3).rg - 0.5) * 1.8) * 0.32;

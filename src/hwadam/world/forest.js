@@ -11,12 +11,12 @@ import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
-const SIGHTS = [[4, 14, 4, -20], [-1, 56, 2, 30], [-1, -30, 1, -60], [8, -74, 10, -110], [6, -104, 8, -160]];
+const SIGHTS = [[4, 14, 4, -20], [-1, 56, 2, 30], [-1, -30, 1, -60], [8, -74, 10, -110], [10, -100, 10, -160]];
 
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
-const vec3 BARK_M[4] = vec3[4](vec3(0.37, 0.3, 0.31), vec3(0.76, 0.71, 0.68), vec3(0.3, 0.22, 0.2), vec3(0.33, 0.25, 0.25));
-const vec3 BARK_S[4] = vec3[4](vec3(0.15, 0.12, 0.19), vec3(0.4, 0.4, 0.53), vec3(0.12, 0.09, 0.14), vec3(0.14, 0.1, 0.16));
+const vec3 BARK_M[4] = vec3[4](vec3(0.37, 0.3, 0.31), vec3(0.76, 0.71, 0.68), vec3(0.3, 0.22, 0.2), vec3(0.5, 0.42, 0.36));
+const vec3 BARK_S[4] = vec3[4](vec3(0.15, 0.12, 0.19), vec3(0.4, 0.4, 0.53), vec3(0.12, 0.09, 0.14), vec3(0.26, 0.2, 0.18));
 vec3 bark(int k, vec3 P, vec3 Nn, float r, float foot) {
   // a trunk is lit as a round thing by a low sun, and from below by the bright leaves on the ground
   float lit = sunAt(P + Nn * 0.35) * clamp(dot(Nn, uSunDir) * 1.2 + 0.25, 0.0, 1.0);
@@ -178,7 +178,7 @@ export function createForest(shared) {
       const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
-        const from = top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
+        const from = t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
         const p0 = new THREE.Vector3();
         const r0 = trunkAt(from, p0);
         const tilt = t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
@@ -217,7 +217,7 @@ export function createForest(shared) {
         treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, (some ? 2.3 : 3.4) + rand() * 1.2]);
       }
     }
-    const perLobe = full ? (t.hero ? 150 : 54) : some ? 20 : 11;
+    const perLobe = full ? (t.hero ? 150 : 54) : some ? (t.type === BIRCH ? 36 : 20) : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);

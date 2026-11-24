@@ -34,10 +34,11 @@ void makeDab(inout Dab d) {
 
 // the rings: r = radius of the wall (m), top = how high its skyline stands in the north (m), col = its colour
 const RINGS = [
-  { r: 330, top: 62, seed: 3.1, col: [0.2, 0.24, 0.38], count: 2600, size: 16 },
-  { r: 480, top: 105, seed: 11.7, col: [0.34, 0.38, 0.52], count: 2600, size: 24 },
-  { r: 640, top: 150, seed: 23.9, col: [0.5, 0.54, 0.64], count: 2000, size: 32 },
+  { r: 330, top: 95, seed: 3.1, col: [0.2, 0.24, 0.38], count: 2600, size: 40 },
+  { r: 480, top: 160, seed: 11.7, col: [0.34, 0.38, 0.52], count: 2600, size: 55 },
+  { r: 640, top: 230, seed: 23.9, col: [0.5, 0.54, 0.64], count: 2000, size: 70 },
 ];
+const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes, near to far
 const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -51,6 +52,7 @@ function crest(k, az) {
 
 const RANGE = /* glsl */ `
 ${RING_COL}
+const float RING_AIR[3] = float[3](0.25, 0.45, 0.65);
 `;
 
 export function createScenery(shared) {
@@ -101,7 +103,7 @@ export function createScenery(shared) {
     wall.setIndex(index);
     const wallMesh = new THREE.Mesh(wall, new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
-      uniforms: { ...shared, uCol: { value: new THREE.Vector3(...o.col) } },
+      uniforms: { ...shared, uCol: { value: new THREE.Vector3(...o.col) }, uAir: { value: AIR[k] } },
       side: THREE.DoubleSide,
       depthTest: false,
       depthWrite: false,
@@ -111,9 +113,10 @@ export function createScenery(shared) {
       fragmentShader: /* glsl */ `
         ${COMMON}
         uniform vec3 uCol;
+        uniform float uAir;
         in vec3 vWorld;
         layout(location = 0) out vec4 outC;
-        void main() { outC = vec4(hazed(uCol * mix(0.78, 1.12, smoothstep(-20.0, 90.0, vWorld.y)), vWorld), 1.0); }`,
+        void main() { outC = vec4(mix(uCol * mix(0.78, 1.12, smoothstep(-20.0, 90.0, vWorld.y)), uHaze, uAir), 1.0); }`,
     }));
     wallMesh.frustumCulled = false;
     wallMesh.renderOrder = order;
@@ -134,12 +137,13 @@ export function createScenery(shared) {
           vec4 r = hash4(aData.x);
           vec3 c = RING_COL[int(aData.w + 0.5)] * (0.82 + 0.36 * r.x) * mix(0.8, 1.15, aData.z);
           c = jitter(c, r.yzw, 0.16);
-          // strokes run along the skyline
+          c = mix(c, uHaze, RING_AIR[int(aData.w + 0.5)]);
+          // strokes run long along the skyline, level, and are laid over the wall in a fixed order
           d.dir = normalize(vec3(-aPos.z, 0.0, aPos.x));
           d.pos = aPos;
-          d.size = vec2(aData.y, aData.y * 0.5);
-          d.c1 = hazed(c, aPos);
-          d.c2 = hazed(c * 1.08, aPos);
+          d.size = vec2(aData.y * 0.3, aData.y);
+          d.c1 = c;
+          d.c2 = c * 1.08;
           d.seed = aData.x;
           d.lift = 0.0;
           d.turnabout = 1.0;

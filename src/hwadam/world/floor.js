@@ -7,13 +7,13 @@ import { segW, SEG_GLSL } from './segments.js';
 
 // leaf litter by kind: 0 moss-green, 1 crimson, 2 vermilion, 3 birch yellow, 4 the bare way, 5 gold grass gone down
 export const LITTER = /* glsl */ `
-const vec3 LIT_L[6] = vec3[6](vec3(0.6, 0.72, 0.3), vec3(0.8, 0.16, 0.16), vec3(0.96, 0.44, 0.14), vec3(0.96, 0.84, 0.42), vec3(0.74, 0.58, 0.42), vec3(0.97, 0.8, 0.36));
-const vec3 LIT_M[6] = vec3[6](vec3(0.38, 0.5, 0.2), vec3(0.52, 0.1, 0.1), vec3(0.72, 0.24, 0.09), vec3(0.76, 0.6, 0.26), vec3(0.5, 0.38, 0.3), vec3(0.74, 0.52, 0.2));
-const vec3 LIT_S[6] = vec3[6](vec3(0.16, 0.25, 0.15), vec3(0.3, 0.06, 0.09), vec3(0.4, 0.1, 0.1), vec3(0.42, 0.36, 0.2), vec3(0.27, 0.22, 0.27), vec3(0.4, 0.26, 0.13));
+const vec3 LIT_L[6] = vec3[6](vec3(0.36, 0.44, 0.24), vec3(0.8, 0.16, 0.16), vec3(0.96, 0.44, 0.14), vec3(0.96, 0.84, 0.42), vec3(0.74, 0.58, 0.42), vec3(0.97, 0.8, 0.36));
+const vec3 LIT_M[6] = vec3[6](vec3(0.24, 0.31, 0.18), vec3(0.52, 0.1, 0.1), vec3(0.72, 0.24, 0.09), vec3(0.76, 0.6, 0.26), vec3(0.5, 0.38, 0.3), vec3(0.74, 0.52, 0.2));
+const vec3 LIT_S[6] = vec3[6](vec3(0.14, 0.18, 0.14), vec3(0.3, 0.06, 0.09), vec3(0.4, 0.1, 0.1), vec3(0.42, 0.36, 0.2), vec3(0.27, 0.22, 0.27), vec3(0.4, 0.26, 0.13));
 // which kind lies here: the part of the walk decides the chance of each, and v varies it over the ground
 int pickKind(float pick, vec4 sw, float v) {
   if (pick < sw.x) return 0;
-  if (pick < sw.x + sw.y) return v < 0.5 ? 1 : 2;
+  if (pick < sw.x + sw.y) return v < 0.33 ? 1 : v < 0.66 ? 2 : 3;
   if (pick < sw.x + sw.y + sw.z) return 3;
   return 5;
 }
@@ -84,7 +84,7 @@ void makeDab(inout Dab d) {
   vec4 sw = segW(m.a);
   // it grows in drifts, keeps off the way, and fills the clearing
   float drift = smoothstep(0.46, 0.7, texture(tNoise, foot / 37.0).a);
-  float chance = max(0.05 + 0.8 * drift, m.g) * (1.0 - m.r);
+  float chance = max(0.05 + 0.8 * drift, m.g) * (1.0 - m.r) * (1.0 - 0.8 * sw.x);
   if (q.x > chance) { d.alive = 0.0; return; }
   float grass = step(q.z, max(m.g * 1.1, 0.22));           // a tuft of grass rather than a fern
   float big = min(pow(lod, 0.6), 2.2);
@@ -94,13 +94,13 @@ void makeDab(inout Dab d) {
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   float gust = gustAt(xz);
   float lit = sunAt(P + vec3(0.0, 0.3, 0.0));
-  vec3 L = sw.x * vec3(0.66, 0.74, 0.25) + sw.y * vec3(0.9, 0.24, 0.12) + sw.z * vec3(1.0, 0.82, 0.26) + sw.w * vec3(0.98, 0.56, 0.16);
-  vec3 M = sw.x * vec3(0.34, 0.45, 0.16) + sw.y * vec3(0.62, 0.12, 0.1) + sw.z * vec3(0.72, 0.54, 0.15) + sw.w * vec3(0.68, 0.36, 0.13);
+  vec3 L = sw.x * vec3(0.34, 0.42, 0.22) + sw.y * vec3(0.9, 0.24, 0.12) + sw.z * vec3(1.0, 0.82, 0.26) + sw.w * vec3(0.98, 0.56, 0.16);
+  vec3 M = sw.x * vec3(0.22, 0.3, 0.14) + sw.y * vec3(0.62, 0.12, 0.1) + sw.z * vec3(0.72, 0.54, 0.15) + sw.w * vec3(0.68, 0.36, 0.13);
   vec3 S = sw.x * vec3(0.13, 0.23, 0.17) + sw.y * vec3(0.34, 0.09, 0.12) + sw.z * vec3(0.34, 0.26, 0.16) + sw.w * vec3(0.34, 0.18, 0.16);
   vec3 c = paint3(L, M, S, lit, f.w);
   if (grass > 0.5) {
     float gg = sw.x;
-    c = paint3(gg * vec3(0.62, 0.78, 0.32) + (1.0 - gg) * vec3(1.0, 0.88, 0.46), gg * vec3(0.36, 0.5, 0.2) + (1.0 - gg) * vec3(0.76, 0.6, 0.24), gg * vec3(0.16, 0.26, 0.16) + (1.0 - gg) * vec3(0.3, 0.27, 0.2), lit, f.w);
+    c = paint3(gg * vec3(0.36, 0.46, 0.24) + (1.0 - gg) * vec3(1.0, 0.88, 0.46), gg * vec3(0.22, 0.3, 0.14) + (1.0 - gg) * vec3(0.76, 0.6, 0.24), gg * vec3(0.16, 0.26, 0.16) + (1.0 - gg) * vec3(0.3, 0.27, 0.2), lit, f.w);
   }
   c = jitter(c, f.zwx, 0.55);
   float sway = sin(uTime * (1.6 + f.z) + f.w * 40.0) * (0.04 + 0.1 * gust);
