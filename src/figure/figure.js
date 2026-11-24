@@ -228,5 +228,5 @@ export async function createFigure(shared, onProgress, palettes = {}) {
     cloakGeometry.attributes.normal.needsUpdate = true;
   }
 
-  return { man, hat, cloak, cloakMesh, dabs, updateCloak };
+  return { man, hat, cloak, cloakMesh, dabs, updateCloak, cloakDabs };
 }

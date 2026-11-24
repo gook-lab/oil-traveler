@@ -38,6 +38,8 @@ export const VIEWS = {
   birch: [-150, -74, -158, -92, { run: 0, pitch: 0.12 }],
   ridge: [-192, -190, -192, -230, { run: 0 }],
   ridgeUp: [-192, -175, -192, -230, { run: 0, pitch: 0.18, dist: 6 }],
+  // the hiker close up, from behind on the garden's way (the wanderer's own clothes)
+  hiker: [-8, 98, -26, 82, { run: 0, dist: 2.6, pitch: 0.05 }],
 };
 
 // --view "x,z,fx,fz,run,dist,pitch,yaw" --name n: a view given on the command line

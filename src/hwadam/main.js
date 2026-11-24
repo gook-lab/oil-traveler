@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { patchBlock } from 'patch-block';
 import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
-import { createShared, WIND } from '../oilpaint/common.js';
+import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, createLand, heightAt, wayDist, noise, way, START } from './world/land.js';
 import { createFloor } from './world/floor.js';
@@ -51,6 +51,10 @@ renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 document.getElementById('view').appendChild(renderer.domElement);
 
 const shared = createShared();
+// the sun: the autumn sun from ahead (default), or ?sun=side, a low sun from the west, for the ridge test
+const SUN_SIDE = new THREE.Vector3(-0.93, 0.36, 0.1).normalize();
+const sun = q.get('sun') === 'side' ? SUN_SIDE : SUN.clone();
+shared.uSunDir.value.copy(sun);
 shared.tBrush.value = createBrushSheet();
 if (q.has('impasto')) shared.uImpasto.value = +q.get('impasto');
 const scene = new THREE.Scene();
@@ -69,7 +73,13 @@ lap('start');
 // the wanderer's files are the large ones: they start coming down now, while the wood is made
 let told = 0;
 const say = (value, label) => { told = Math.max(told, value); block.progress(told, label); };
-const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'));
+// an autumn hiker: a teal-indigo windbreaker (shirt), dark olive trousers, a slate cap; no cloak
+const HIKER = {
+  SHIRT: [[0.22, 0.56, 0.62], [0.12, 0.36, 0.48], [0.06, 0.18, 0.3]],
+  TROUSERS: [[0.3, 0.32, 0.2], [0.2, 0.22, 0.14], [0.1, 0.11, 0.08]],
+  HAT: [[0.3, 0.3, 0.36], [0.18, 0.18, 0.24], [0.08, 0.08, 0.13]],
+};
+const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), HIKER);
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
@@ -82,7 +92,8 @@ lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
 const leaves = createLeaves(shared, 2400);
-const shade = createShade(renderer, shared, forest.shade);
+// the shade is taken over the whole walk (its middle, and a box as wide as the ground), not the autumn wood's 330 m
+const shade = createShade(renderer, shared, forest.shade, { sun, centre: [-40, 10, 20], box: [270, 270], back: 500, far: 1000 });
 lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
@@ -102,7 +113,8 @@ lap('physics');
 
 const figure = await figureComing;
 const { man } = figure;
-scene.add(man.object, figure.cloakMesh, figure.dabs);
+figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no cloak
+scene.add(man.object, figure.dabs);
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
 const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
@@ -169,7 +181,6 @@ function tick(dt) {
   const onGround = player.grounded && player.mode !== 'jump' && player.mode !== 'air';
   animator.placeFeet(dt, (x, z, from) => player.ground(x, z, from, 1.4), root.y, onGround ? 1 : 0);
   man.object.updateMatrixWorld(true);
-  figure.updateCloak(dt, air, heightAt);
   kick.update(dt, root, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) }, player.speed, onGround, heightAt);
 
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
