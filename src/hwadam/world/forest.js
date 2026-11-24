@@ -12,6 +12,8 @@ import { segW } from './segments.js';
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
 const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -155, -175], [-192, -175, -168, -143]];
+// sight lines cleared in a wedge: [x, z, fx, fz, far (m), half angle (rad)]
+const WEDGES = [[-192, -175, -168, -143, 300, 0.3]];
 
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
@@ -152,7 +154,18 @@ function plant() {
     const px = ex + ux * along, pz = ez + uz * along;
     return Math.hypot(t.x - px, t.z - pz) < t.r + 2.2;
   });
-  return trees.filter((t) => !blocks(t));
+  // the ridge view at 143°: the wood between the eye and the far ridge is a band that hides the layers, so that sight line
+  // is cleared in a wedge (about 17° either side, out to 300 m). Other sights are not changed.
+  const wedgeBlocks = (t) => WEDGES.some(([x, z, fx, fz, far, half]) => {
+    const dx = fx - x, dz = fz - z, len = Math.hypot(dx, dz);
+    const ux = dx / len, uz = dz / len;
+    const ex = x - ux * 6.4, ez = z - uz * 6.4;
+    const along = (t.x - ex) * ux + (t.z - ez) * uz;
+    if (along < 12 || along > far) return false;
+    const lateral = Math.abs(-(t.x - ex) * uz + (t.z - ez) * ux);
+    return lateral < along * Math.tan(half) + t.r;
+  });
+  return trees.filter((t) => !blocks(t) && !wedgeBlocks(t));
 }
 
 export function createForest(shared) {
