@@ -84,7 +84,9 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // plain ground (no cover), and the walk still opens
   let cover = null, coverError = '';
   try {
-    cover = await fetchCover({ lat, lon, near, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
+    // Jeju's coast is black lava (T2, the user's rule): only inside the island's box
+    const basalt = lat >= 33.1 && lat <= 33.6 && lon >= 126.1 && lon <= 127.0;
+    cover = await fetchCover({ lat, lon, near, basalt, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
   } catch (e) {
     coverError = e.message;
   }
