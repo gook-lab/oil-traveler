@@ -130,7 +130,12 @@ export function createScenery(shared, horizon, eyeY) {
         uniform float uAir;
         in vec3 vWorld;
         layout(location = 0) out vec4 outC;
-        void main() { outC = vec4(mix(uCol * mix(1.06, 0.84, smoothstep(-20.0, 90.0, vWorld.y)), uHaze, uAir), 1.0); }`,
+        void main() {
+          // the top of a band is its darkest, and its foot fades into the valley haze: the reverse of a cloud
+          vec3 c = uCol * mix(1.06, 0.84, smoothstep(-20.0, 90.0, vWorld.y));
+          c = mix(c, uHaze, 0.5 * (1.0 - smoothstep(-20.0, 60.0, vWorld.y)));
+          outC = vec4(mix(c, uHaze, uAir), 1.0);
+        }`,
     }));
     wallMesh.frustumCulled = false;
     wallMesh.renderOrder = order;
@@ -154,9 +159,10 @@ export function createScenery(shared, horizon, eyeY) {
           vec3 c = RING_COL[int(aData.w + 0.5)] * (0.82 + 0.36 * r.x) * mix(1.0, 0.86, aData.z);
           c = jitter(c, r.yzw, 0.16);
           c = mix(c, uHaze, RING_AIR[int(aData.w + 0.5)]);
-          d.dir = aDir;
+          // the fall line: a short upright stroke down the slope, tilted and lengthened a little by its own seed
+          d.dir = normalize(vec3(aDir.x * 0.5 + (r.y - 0.5) * 0.3, -1.0, aDir.z * 0.5 + (r.z - 0.5) * 0.3));
           d.pos = aPos;
-          d.size = vec2(aData.y * 0.3, aData.y);
+          d.size = vec2(aData.y * 0.3, aData.y * (0.6 + 0.5 * r.w));
           d.c1 = c;
           d.c2 = c * 1.08;
           d.seed = aData.x;

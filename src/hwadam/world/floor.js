@@ -62,7 +62,8 @@ void makeDab(inout Dab d) {
   d.turnabout = 1.0;
   d.lie = 1.0;
   d.nrm = Nn;
-  d.height = (0.03 + 0.07 * q.z) * pow(lod, 0.35);
+  // in the moss garden the cushions rise into hummocks: some tufts stand up to 0.12 m higher
+  d.height = ((0.03 + 0.07 * q.z) + 0.12 * sw.x * q.w) * pow(lod, 0.35);
   d.glaze = 1.0;
 }
 `;

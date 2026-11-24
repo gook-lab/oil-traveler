@@ -125,8 +125,8 @@ const pack = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.18), new THREE.M
 pack.visible = q.has('packdbg'); // ?packdbg shows the box in magenta, to check where the pack hangs
 man.bones.spine_03.add(pack);
 pack.position.set(0, -0.02, -0.2); // his back is the -z side of the spine (the +z side is the chest)
-// the paint goes on the back face and its sides: the chest side of the box is hidden inside his shirt
-const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 520, accept: (p) => p.z < -0.1, style: () => ({ pal: 0, size: [0.08, 0.13], dir: new THREE.Vector3(0, 1, 0) }) }]);
+// the paint goes on the back face (z < -0.05 in the box's own frame) and its sides: the chest side of the box is hidden inside his shirt
+const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 520, accept: (p) => p.z < -0.05, style: () => ({ pal: 0, size: [0.08, 0.13], dir: new THREE.Vector3(0, 1, 0) }) }]);
 scene.add(packDabs.mesh);
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
