@@ -16,3 +16,4 @@ dist
 upstream
 shots/work
 !shots/hwadam-*.jpg
+.scratch/
