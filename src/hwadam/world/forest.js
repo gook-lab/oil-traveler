@@ -102,6 +102,9 @@ function plant() {
       const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
       const u = rand();
       const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
+      // the birch stands in columns with aisles between them: only every third 3.2 m strip of the ground (by x) takes birch,
+      // so the trunks further back show between the ones in front (a wall of trunks covered the picture's width)
+      if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
       add(x, z, type, corridor < 22 ? 0 : corridor < 60 ? 1 : 2);
     }
   }
@@ -122,6 +125,8 @@ function plant() {
     const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
     const u = rand();
     const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
+    // the birch aisles hold here too: a birch only where its column of the walk's strip is kept
+    if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
     add(x, z, type, type === MAPLE ? 0 : 1);
     const near = trees[trees.length - 1];
     near.toward = Math.atan2(wz - z, wx - x);
@@ -137,8 +142,8 @@ function plant() {
     const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
     const row = Math.floor(dist / 3), lane = Math.floor((lat + 15) / 4);
     if ((row * 5 + lane * 3) % 4 === 0) continue;
-    // the far rows (20 m and beyond) keep a tenth of their trunks: together they covered two thirds of the picture's width
-    if (dist >= 20 && rand() < 0.9) continue;
+    // the far rows (20 m and beyond) keep a twentieth of their trunks: together they covered two thirds of the picture's width
+    if (dist >= 14 && rand() < 0.75) continue;
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
@@ -271,7 +276,7 @@ export function createForest(shared) {
       const r = trunkAt(y, p);
       const nx = Math.cos(a), nz = Math.sin(a);
       const across = Math.min(0.5, r * (t.type === BIRCH ? 1.5 : 0.75)) * (some ? 1.5 : 1);
-      barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 1.0 + rand() * 1.5) * (some ? 1.6 : 1));
+      barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 0.5 + rand() * 0.6) * (some ? 1.6 : 1));
     }
   }
 

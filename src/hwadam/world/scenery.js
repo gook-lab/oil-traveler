@@ -15,6 +15,8 @@ void makeDab(inout Dab d) {
   // lighter than the green floor by 15 L* or more, so the stones read against the moss (measured on the moss shot,
   // stone L* about 49 in shade, 60 mid, 80 lit against the floor's 24 to 46); the value is lifted, the hue is kept
   vec3 c = paint3(vec3(0.82, 0.82, 0.76), vec3(0.6, 0.62, 0.57), vec3(0.46, 0.48, 0.46), lit, r.x);
+  // the shade side is a cool dark grey-teal, so the stone reads as a lump, not a white slab
+  c = mix(c, vec3(0.2, 0.26, 0.26), (1.0 - smoothstep(0.1, 0.45, lit)) * 0.7);
   // moss on the top of some of them, more where the sun falls
   float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);
@@ -128,7 +130,7 @@ export function createScenery(shared, horizon, eyeY) {
       const cap = j === 5 ? 1 : 0;
       sp.push(x + ox, heightAt(x, z) + (cap ? 0.12 : 0), z + oz);
       // the grey marks are wider than the cap, so the stone keeps its grey rim under the moss
-      sd.push(rand() * 1000, cap ? size * 0.45 : size * (1.1 + 0.4 * rand()), cap ? 0.62 : 0.3 + 0.15 * j / 5, cap);
+      sd.push(rand() * 1000, cap ? size * 0.7 : size * (1.1 + 0.4 * rand()), cap ? 0.62 : 0.3 + 0.15 * j / 5, cap);
     }
     placed++;
   }

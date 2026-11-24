@@ -64,8 +64,9 @@ void makeDab(inout Dab d) {
   float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
   // the moss garden carries no leaves: its carpet is moss, dark green in the hollows to light green on the crowns
   vec3 mossC = mix(vec3(0.08, 0.2, 0.18), vec3(0.46, 0.7, 0.28), max(hump, q.w * 0.6)) * (0.55 + 0.6 * lit);
-  c1 = mix(c1, mossC, sw.x);
-  c2 = mix(c2, mossC * 0.92, sw.x);
+  // the moss garden's cover stops at the bare way: the path stays visible through the garden
+  c1 = mix(c1, mossC, sw.x * (1.0 - m.r));
+  c2 = mix(c2, mossC * 0.92, sw.x * (1.0 - m.r));
   c1 = jitter(c1, r.wzy, 0.5);
   c2 = jitter(c2, q.wzy, 0.5);
   // leaves lie any way round, though those that fell together lie much alike; the moss touches each turn their own way
