@@ -177,15 +177,16 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
   // the untagged shore, in the Jeju box only (the lava coast of the place): OSM's own sand and beaches stay sand
-  // (their class is set already); the inferred sand is the strip 15 m from the sea, within 300 m of a beach point of
-  // the poi layer (OSM has no sand tag at 협재, the beach is named in the poi layer only); the rest of the untagged
-  // land at the sea (0 to 8 m) is basalt; a few blocks stand in the shallow water in front of the basalt shore
+  // (their class is set already); the inferred sand is the strip 14 m from the sea, within 150 m of a beach point of
+  // the poi layer (a beach of 200 to 300 m; OSM has no sand tag at 협재, the beach is named in the poi layer only);
+  // the rest of the untagged land at the sea (0 to 8 m) is basalt, and so is the rock within 30 m of the sea; a few
+  // blocks stand in the shallow water in front of the basalt shore
   // sand: the strip of open ground behind the sea, under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
     if (!nearWater(sea, i, j, basalt ? 7 : 15)) continue;
-    if (basalt && !beaches.some((b) => Math.hypot(i - b.x, j - b.y) * NEAR_STEP <= 300)) continue;
+    if (basalt && !beaches.some((b) => Math.hypot(i - b.x, j - b.y) * NEAR_STEP <= 150)) continue;
     out[k] = COVER.SAND;
   }
   // basalt (Jeju only, after the sand): the untagged land (none, grass) 0 to 8 m from the sea, below 10 m high
@@ -209,6 +210,11 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     if (near[k] <= 0.5) continue;
     const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
+  }
+  // the lava rock of the Jeju shore (within 30 m of the sea) is basalt too: rock would take the granite brush
+  if (basalt) for (let k = 0; k < N * N; k++) {
+    const i = k % N, j = (k - i) / N;
+    if (out[k] === COVER.ROCK && nearWater(sea, i, j, 15)) out[k] = COVER.BASALT;
   }
   onProgress(1, 'cover');
   const counts = {};
