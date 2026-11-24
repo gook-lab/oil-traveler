@@ -79,7 +79,7 @@ function plant() {
     if (inFan(x, z)) return;
     // a place's land cover (T2): no tree on water, sand, rock or built-up ground
     if (hasCover() && NO_TREE.has(coverAt(x, z))) return;
-    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale; // 임시: M3 값, 리드 답 대기
+    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
       : type === MAPLE ? MAPLE_LEAVES[Math.floor(rand() * MAPLE_LEAVES.length)]
