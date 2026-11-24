@@ -172,3 +172,4 @@
 - 전경 줄기(hiker)와 배낭: 이번 묶음에서는 하지 않았습니다. 배낭은 우선순위 맨 뒤입니다.
 - 프레임 (`tools/with-gpu-lock.sh`, 2560×1440): 16.39 ms (네 장면), 16.89 ms (능선).
 - 회귀: 가을 start 317 px, side 2665 px(이전 노이즈 패턴), stripes · birches · clearing · oak 0 px, 오로라 start 0 px (`shots/after-aurora-r6`).
+- 배낭: 단색 밑칠 메시 방식은 후속 과제입니다(이번 마일스톤에서는 뺌). 4라운드 결과 전까지 그림은 바꾸지 않습니다.
