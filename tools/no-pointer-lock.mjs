@@ -7,6 +7,18 @@
 //   import { chromium } from 'playwright';
 //   import { guard } from './no-pointer-lock.mjs';
 //   guard(chromium);
+import { basename } from 'node:path';
+
+// tools/with-gpu-lock.sh sets GPU_LOCK_HELD=1 for the command it runs. A tool that starts a headless Chrome stops here
+// when the variable is missing: a frame measured beside another one's Chrome is noise (CLAUDE.md, 촬영 · 측정).
+export function requireGpuLock() {
+  if (process.env.GPU_LOCK_HELD === '1') return;
+  const tool = process.argv[1] ? basename(process.argv[1]) : '<도구>.mjs';
+  console.error(`이 도구는 헤드리스 Chrome 을 띄웁니다. GPU 잠금 없이는 멈춥니다.`);
+  console.error(`tools/with-gpu-lock.sh node tools/${tool} 로 돌려 주세요.`);
+  process.exit(2);
+}
+
 export function fakePointerLock() {
   let locked = null;
   const fire = () => document.dispatchEvent(new Event('pointerlockchange'));
@@ -40,6 +52,7 @@ function guardBrowser(browser) {
 
 /** Patches a Playwright BrowserType (chromium, firefox, webkit) in place and returns it. */
 export function guard(browserType) {
+  requireGpuLock();
   if (browserType.__noPointerLock) return browserType;
   browserType.__noPointerLock = true;
   const launch = browserType.launch.bind(browserType);

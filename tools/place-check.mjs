@@ -13,6 +13,8 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { gazeBearing } from '../src/hwadam/world/bake.js';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 const here = resolve(fileURLToPath(import.meta.url), '..', '..');
 const args = process.argv.slice(2);

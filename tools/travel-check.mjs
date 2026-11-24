@@ -6,6 +6,8 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 const here = resolve(fileURLToPath(import.meta.url), '..', '..');
 const root = resolve(here, 'dist');

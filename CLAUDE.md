@@ -21,7 +21,7 @@ CHROME="$(find ~/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64 -pa
 
 프레임을 재는 `--time` 측정은 다른 레포(oil-shooter)와 GPU 를 나눠 쓰면 숫자가 부풉니다. 측정은 `tools/with-gpu-lock.sh <명령>` 으로만 돌립니다. 이 스크립트가 `~/sonix/toy/.gpu-measure.lock` 을 잡고, 직접 잡은 잠금만 풉니다. 잠금을 손으로 `rmdir` 하지 않습니다(남의 잠금을 지운 일이 있었음).
 
-헤드리스 Chrome 을 띄우는 명령은 스틸 촬영 · 검사 도구(place-check · travel-check · cover-check 등)까지 모두 잠금 안에서 돌립니다. 2026-11-24 에 팀원 셋이 잠그지 않고 촬영하는 동안 잰 프레임이 15 → 23 ms 로 흩어졌습니다. 그때 잠금 없는 헤드리스 Chrome 둘이 동시에 떠 있는 것이 확인됐습니다. 빌드 직후 첫 실행은 셰이더 준비로 부풀므로 버리고, 2~3회 중앙값을 적습니다.
+헤드리스 Chrome 을 띄우는 명령은 스틸 촬영 · 검사 도구(place-check · travel-check · cover-check 등)까지 모두 잠금 안에서 돌립니다. 2026-11-24 에 팀원 셋이 잠그지 않고 촬영하는 동안 잰 프레임이 15 → 23 ms 로 흩어졌습니다. 그때 잠금 없는 헤드리스 Chrome 둘이 동시에 떠 있는 것이 확인됐습니다. 빌드 직후 첫 실행은 셰이더 준비로 부풀므로 버리고, 2~3회 중앙값을 적습니다. 이 규칙은 도구가 강제합니다. `tools/with-gpu-lock.sh` 가 명령에 `GPU_LOCK_HELD=1` 을 넘기고, 이 값이 없으면 헤드리스 Chrome 도구(`tools/no-pointer-lock.mjs` 의 `guard` 또는 `requireGpuLock`)는 시작에서 멈춥니다.
 
 ## 검증 — 화면만 보는 비평가
 
