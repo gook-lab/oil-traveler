@@ -24,7 +24,7 @@ const FULL = [
   { name: 'hyeopjae', query: `scene=travel&place=33.3943,126.2396&name=${encodeURIComponent('협재')}&clean` },
 ];
 const PLACES = hide
-  ? FULL.filter((p) => p.name === flag('place', 'hwadam')).map((p) => ({ name: `${p.name}-hide-${hide.replace(/,/g, '-')}`, query: `${p.query}&hide=${hide}` }))
+  ? FULL.filter((p) => p.name === flag('place', 'hwadam')).map((p) => ({ name: `${p.name}-hide-${hide.replace(/,/g, '-')}${flag('extra', '') ? '-x' : ''}`, query: `${p.query}&hide=${hide}${flag('extra', '') ? `&${flag('extra', '')}` : ''}` }))
   : FULL;
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.bin': 'application/octet-stream', '.mjs': 'text/javascript' };
@@ -70,6 +70,7 @@ for (const p of PLACES) {
   const drop = ready ? await page.evaluate(() => window.lab.drop50()) : null;
   console.log(`  drop within 50 m along gaze (m) ${drop}`);
   const stats = ready ? await page.evaluate(() => window.lab.treeStats()) : null;
+  if (ready && p.name.includes('hide')) console.log(`  pick ${JSON.stringify(await page.evaluate(() => [window.lab.pick(0.5, 0.42), window.lab.pick(0.7, 0.38), window.lab.pick(0.25, 0.37)]))}`);
   const mid = ready ? await page.evaluate(() => window.lab.midStats()) : null;
   if (ready) writeFileSync(join(outDir, `${p.name}-trees.json`), JSON.stringify(await page.evaluate(() => window.lab.frameTrees())));
   if (mid) console.log(`  midStats ${JSON.stringify(mid)}`);

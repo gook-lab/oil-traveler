@@ -166,7 +166,7 @@ if (rangesMesh) scene.add(rangesMesh);
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -312,7 +312,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
+  THREE, scene, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
   /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T2 check: the cover within 150 m of the start (node counts). */
@@ -409,6 +409,14 @@ window.lab = {
     const eye = camera.position.y; let worst = 0;
     for (let t = 0; t <= 50; t += 1) worst = Math.max(worst, eye - heightAt(camera.position.x + f.x * t, camera.position.z + f.z * t));
     return +worst.toFixed(1);
+  },
+  /** T2 check: what the picture shows at a screen point (u, v from the top-left): the first visible meshes hit by a ray. */
+  pick: (u, v) => {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(u * 2 - 1, 1 - v * 2), camera);
+    const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+    const hits = ray.intersectObjects(scene.children, true).filter((h) => shown(h.object)).slice(0, 4);
+    return hits.map((h) => ({ d: +h.distance.toFixed(1), type: h.object.type, name: h.object.name || (h.object.parent && h.object.parent.name) || '', mat: h.object.material?.type ?? '', vert: h.object.geometry?.attributes?.position?.count ?? 0 }));
   },
   /** T2 check: the trees whose trunk is in the frame (300 m), with their screen place (u, v in 0..1, from the top-left) and shape. */
   frameTrees: () => {
