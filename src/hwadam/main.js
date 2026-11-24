@@ -16,6 +16,7 @@ import { viewShares, COVER_GLSL } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
+import { walkSong } from '../travel/walk-song.js';
 import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
@@ -118,7 +119,7 @@ try {
 }
 setPlace(place);
 panel.done(place.name);
-const hud = travel ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도' }) : null;
+const hud = travel ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도 · B 음악 끄기' }) : null;
 if (travel) { const h = document.getElementById('hint'); if (h) h.textContent = 'Click to look · WASD move · Shift sprint · Space jump · V first / third person · M map'; }
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
 const land = createLand(shared);
@@ -236,6 +237,8 @@ function respawn() {
 const size = new THREE.Vector2();
 // travel: through his eyes by default (V toggles back to the third person), as in src/night/main.js
 let first = 0, firstKey = travel;
+// the song of the walk: travel picks it by the land round the start (src/travel/walk-song.js); M to the map and back
+let walkKey = 'forest';
 const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
 /** M: the map, centred on where he is (the lat/lon of his place in the baked square). */
 function openFromWalk() {
@@ -243,7 +246,7 @@ function openFromWalk() {
   const lat = c.lat - p.z / 110940, lon = c.lon + p.x / (111320 * Math.cos((c.lat * Math.PI) / 180));
   document.exitPointerLock?.();
   // the map shows where he is and, if it is another spot, the pin he set out from
-  openMap({ lat, lon, pin: { lat: c.lat, lon: c.lon }, back: () => {} });
+  openMap({ lat, lon, pin: { lat: c.lat, lon: c.lon }, back: () => playMusic(walkKey) });
 }
 addEventListener('keydown', (e) => {
   if (!travel || mapOpen()) return;
@@ -414,7 +417,8 @@ if (!capture) {
   const hint = document.getElementById('hint');
   addEventListener('keydown', (e) => { if (e.code === 'KeyH') hint.classList.toggle('off'); });
   setTimeout(() => hint.classList.add('faded'), 9000);
-  playMusic('forest');
+  if (travel) walkKey = walkSong(vantage.x, vantage.z);
+  playMusic(walkKey);
 }
 fitView();
 loaded = true;

@@ -4,6 +4,7 @@
 // The pins are circle layers drawn inside the map canvas (not DOM markers), so they move with the map and stay there.
 import './travel.css';
 import { geocodeMany, reverseName, highestSpot, PlaceError } from '../hwadam/world/place.js';
+import { playMusic } from '../music.js';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -290,6 +291,7 @@ function wire() {
  * from a failed bake; the map then says why and shows the spot. Never resolves: the walk starts by navigation.
  */
 export async function startMap({ err = '', place = '', name = '' } = {}) {
+  playMusic('map');
   document.getElementById('loading')?.remove();
   document.documentElement.dataset.scene = 'travel';
   await ensureMap();
@@ -315,6 +317,7 @@ export async function startMap({ err = '', place = '', name = '' } = {}) {
  * reloads the page on that spot. `pin` (the spot he set out from) is drawn too, when it is another point.
  */
 export async function openMap({ lat, lon, pin, back }) {
+  playMusic('map');
   await ensureMap();
   onBack = back;
   overlay.hidden = false;

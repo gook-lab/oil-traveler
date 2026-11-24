@@ -115,8 +115,10 @@ function plant() {
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
-  for (let i = 0; i < 400; i++) {
-    const k = 40 + Math.floor(rand() * 120);
+  // a short runtime way (travel) has fewer than 160 points: the stretch is cut to what it has (the baked walk keeps 120)
+  const span = Math.min(120, way.length - 42);
+  for (let i = 0; span > 0 && i < 400; i++) {
+    const k = 40 + Math.floor(rand() * span);
     const [wx, wz] = way[k];
     const [nx, nz] = way[k + 1];
     const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
