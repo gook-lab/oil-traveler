@@ -169,7 +169,7 @@ export async function startMap({ err = '', place = '', name = '' } = {}) {
  * Over the walk: M opens the map centred on the wanderer's place. `back` hides it again. Picking a new spot from here
  * reloads the page on that spot.
  */
-export async function openMap({ lat, lon, back }) {
+export async function openMap({ lat, lon, pin, back }) {
   await ensureMap();
   onBack = back;
   overlay.hidden = false;
@@ -177,8 +177,10 @@ export async function openMap({ lat, lon, back }) {
   overlay.querySelector('.tm-preset').hidden = true;
   if (!own) own = new maplibre.Marker({ element: pinElement('tm-pin tm-own') });
   own.setLngLat([lon, lat]).addTo(map);
+  // the spot he set out from (brown), when he has walked away from it: both are on the map
+  if (pin) setPin(pin.lat, pin.lon); else marker?.remove();
   map.jumpTo({ center: [lon, lat], zoom: 12.5 });
   chosen = null;
   overlay.querySelector('.tm-card').hidden = true;
-  status('다른 곳을 고르면 그곳을 새로 걸어요.');
+  status(pin ? '파란 점은 지금 자리, 갈색 점은 출발한 곳이에요. 다른 곳을 고르면 그곳을 새로 걸어요.' : '다른 곳을 고르면 그곳을 새로 걸어요.');
 }
