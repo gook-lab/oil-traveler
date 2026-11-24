@@ -24,15 +24,12 @@
 .tm-status:empty { display: none; }
 .tm-status.warn { color: #8a3a1c; }
 .tm-card {
-  position: absolute; left: 50%; bottom: 58px; z-index: 2; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; padding: 10px 14px; box-sizing: border-box; max-width: calc(100vw - 32px);
   background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 4px;
 }
 .tm-card[hidden] { display: none; }
 .tm-label { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-go { background: #8a3a1c; }
-.tm-preset { position: absolute; left: 16px; bottom: 58px; z-index: 2; }
-.tm-preset[hidden] { display: none; }
 .tm-back { position: absolute; left: 16px; top: 62px; z-index: 3; }
 .tm-back[hidden] { display: none; }
 .tm-credit {
@@ -71,3 +68,29 @@
 /* the pins on the map: a chosen spot (brown, with a white ring) and where the wanderer is (blue) */
 .tm-pin { width: 18px; height: 18px; border-radius: 50%; background: #8a3a1c; border: 3px solid #fdf8ec; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
 .tm-pin.tm-own { background: #2f5a7a; width: 14px; height: 14px; }
+
+/* search focus and results (palette: the brown of the pin and the warm paper) */
+.tm-search input:focus { outline: 2px solid #8a3a1c; outline-offset: 1px; border-color: #8a3a1c; }
+.tm-results {
+  position: absolute; left: 16px; top: 58px; z-index: 3; margin: 0; padding: 4px 0; list-style: none;
+  width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+  background: rgba(252, 248, 238, 0.97); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 3px;
+}
+.tm-results[hidden] { display: none; }
+.tm-results button {
+  display: block; width: 100%; text-align: left; padding: 8px 12px; background: none; color: #2a211b;
+  border: 0; border-radius: 0; font: 14px Georgia, serif;
+}
+.tm-results button:hover, .tm-results button:focus { background: rgba(138, 58, 28, 0.12); outline: none; }
+/* the bar at the bottom: the card (the chosen spot) and the recommended place beside it */
+.tm-bar {
+  position: absolute; left: 50%; bottom: 56px; z-index: 2; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+}
+.tm-recommend {
+  margin: 0; padding: 6px 10px; font-size: 13px; background: rgba(252, 248, 238, 0.9); border-radius: 3px;
+}
+.tm-recommend span { color: #5b4636; margin-right: 6px; }
+.tm-recommend button { padding: 6px 10px; font-size: 12px; background: #5b4636; }
+.tm-recommend[hidden] { display: none; }
+#tm-canvas canvas { cursor: crosshair; }

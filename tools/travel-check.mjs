@@ -47,7 +47,14 @@ await page.screenshot({ path: join(shotDir, 'map-pin.png') });
 // search: the result flies the map and shows the card
 await page.fill('#tm-q', '북한산 국립공원');
 await page.press('#tm-q', 'Enter');
-await page.waitForFunction(() => document.querySelector('.tm-label')?.textContent.includes('북한산'), null, { timeout: 30000 }).catch(() => failures.push('search did not set the card'));
+// the search gives a short list (3 to 5 results); the first is picked
+await page.waitForFunction(() => document.querySelector('.tm-results button') || /북한산/.test(document.querySelector('.tm-label')?.textContent ?? ''), null, { timeout: 30000 }).then(async () => {
+  if (!(await page.$('.tm-results button'))) return; // a single result flies straight there
+  report.resultCount = await page.evaluate(() => document.querySelectorAll('.tm-results button').length);
+  await page.screenshot({ path: join(shotDir, 'map-results.png') });
+  await page.click('.tm-results button');
+}).catch(() => failures.push('search gave no list'));
+await page.waitForFunction(() => /북한산/.test(document.querySelector('.tm-label')?.textContent ?? ''), null, { timeout: 30000 }).catch(() => failures.push('search did not set the card'));
 await page.waitForTimeout(3000);
 report.searched = await page.evaluate(() => document.querySelector('.tm-label')?.textContent ?? '');
 report.markers = await page.evaluate(() => [...document.querySelectorAll('.maplibregl-marker')].map((m) => ({ t: m.style.transform, display: getComputedStyle(m).display })));

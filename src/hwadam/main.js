@@ -146,6 +146,11 @@ const kick = createKick(shared);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
+{
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh };
+  for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
+}
 
 // --- the ground and the trunks, for his feet ---
 await RAPIER.init();
