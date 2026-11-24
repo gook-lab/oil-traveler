@@ -93,9 +93,15 @@ const rnd = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; 
 /** The light on a face: the sun's lambert over a dim ambient. */
 const lightOf = (n) => 0.66 + 0.34 * Math.max(0, n[0] * SUN.x + n[1] * SUN.y + n[2] * SUN.z);
 
-/** Classifies each outline: traditional or modern, and the measures the rule uses. Outlines out of range are dropped. */
+/**
+ * Classifies each outline: traditional or modern, and the measures the rule uses. Outlines out of range are dropped.
+ * A height of exactly 5 m is the tile default for a building with no height tag (OpenMapTiles: 73% of Gyeongbokgung's
+ * and 49% of Myeongdong's outlines, a spike at 5 m), so it is taken as unknown and filled: a traditional hall (within
+ * RULE.heritageM of a historic point, 0.9 rectangular) gets 0.8 of its short side, clamped to 6 to 24 m; any other gets
+ * the median of the known heights within 100 m, or 12 m when none is known.
+ */
 export function planBuildings(list, heritage) {
-  const plans = [];
+  const UNKNOWN = 5, plans = [];
   for (const b of list) {
     if (b.hide3d) continue; // the outer outline of a building with parts: its parts stand, not this
     const pts = clean(b.pts);
@@ -106,10 +112,22 @@ export function planBuildings(list, heritage) {
     if (Math.abs(c[0]) > RULE.range || Math.abs(c[1]) > RULE.range) continue;
     const R = minRect(pts);
     const rect = A / R.area;
-    const h = b.h > 0 ? b.h : 6;
     const historic = heritage.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) <= RULE.heritageM);
-    const trad = historic && h <= RULE.maxH && rect >= RULE.rect;
-    plans.push({ pts, R, rect: +rect.toFixed(3), h, mh: b.mh ?? 0, colour: b.colour, c, trad, historic, ccw: area2(pts) > 0 });
+    const unknown = b.h === UNKNOWN;
+    plans.push({ pts, R, rect: +rect.toFixed(3), h0: b.h > 0 ? b.h : 6, unknown, mh: b.mh ?? 0, colour: b.colour, c, historic, ccw: area2(pts) > 0 });
+  }
+  // the heights of the known buildings, for the fill of the modern ones
+  const known = plans.filter((p) => !p.unknown);
+  for (const p of plans) {
+    if (p.unknown) {
+      if (p.historic && p.rect >= RULE.rect) p.h = Math.min(24, Math.max(6, 0.8 * 2 * p.R.hv));
+      else {
+        const near = known.filter((q) => Math.hypot(q.c[0] - p.c[0], q.c[1] - p.c[1]) <= 100).map((q) => q.h0).sort((x, y) => x - y);
+        p.h = near.length ? near[Math.floor(near.length / 2)] : 12;
+      }
+      p.filled = true;
+    } else p.h = p.h0;
+    p.trad = p.historic && p.h <= RULE.maxH && p.rect >= RULE.rect;
   }
   return plans;
 }
@@ -154,18 +172,19 @@ function surfacesOf(p, ground) {
   const yTop = yb + p.h;
   const wallPts = (pad) => [rectPt(R, -R.hu - pad, -R.hv - pad), rectPt(R, R.hu + pad, -R.hv - pad), rectPt(R, R.hu + pad, R.hv + pad), rectPt(R, -R.hu - pad, R.hv + pad)];
   // four faces of a box with the given corners, from y0 to y1, each coloured by col(u, v, r, L, k)
-  const face = (ptsA, y0, y1, col, cell) => {
+  // dabCol (optional): the colour of the touches on the face, when it differs from the solid cells (posts stay in the body)
+  const face = (ptsA, y0, y1, col, cell, dabCol = null) => {
     for (let k = 0; k < 4; k++) {
       const a = ptsA[k], b = ptsA[(k + 1) % 4];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       const n = [ez / L, 0, -ex / L];
-      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k) });
+      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k), dabCol: dabCol ? (u, v, r) => dabCol(u, v, r, L, k) : null });
     }
   };
   // the stone base, a little out from the posts
   face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
-  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8]), TRAD_WALL_CELL);
+  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8]), TRAD_WALL_CELL, () => [0.88, 0.86, 0.8]);
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
   const posts = wallPts(0), eaveW = wallPts(EAVE);
   for (let k = 0; k < 4; k++) {
@@ -302,7 +321,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const u = (i + 0.5) / nu, v = (j + 0.5) / nv;
         const r = rnd(id + i * 0.31, j * 0.77 + 1.3);
         const P = bil(s, u, v);
-        const col = s.col(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
+        const col = (s.dabCol ?? s.col)(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
         // a touch fills its cell and no more, so it stays inside its face
         push(P.map((x, k) => x + N0[k] * 0.04), D, [(L2 / nv) * 0.95, (L1 / nu) * 0.95], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
@@ -341,7 +360,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
-    historic: plans.filter((p) => p.historic).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
     nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
     msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),

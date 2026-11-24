@@ -210,6 +210,8 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
     if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
   }
+  // paved ground (T4) before the rock: stone in a town is paved, and rock is for the natural rock alone
+  applyPaving(out, { buildings, heritage, roads, N, STEP: NEAR_STEP });
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
     const k = j * N + i;
@@ -218,7 +220,6 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
   }
-  applyPaving(out, { buildings, heritage, roads, N, STEP: NEAR_STEP });
   onProgress(1, 'cover');
   const counts = {};
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
