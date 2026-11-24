@@ -337,7 +337,14 @@ function surfacesOf(p, ground) {
     }
   };
   // the stone base, a little out from the posts
-  face(wallPts(big ? 2.0 : STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
+  // a big hall (short side 15 m or more) stands on a two-tier podium (월대) of dark grey-brown stone, each tier 0.9 m, with a
+  // straight edge along each tier's top; a small hall keeps the pale stone base
+  if (big) {
+    face(wallPts(2.6), yb - 0.2, yb + stone + 0.9, (u, v, r) => mixc([0.36, 0.34, 0.31], [0.44, 0.41, 0.37], 0.5 * r), [3.2, 0.8]);
+    face(wallPts(1.4), yb + stone + 0.9 - 0.01, yb + stone + 1.8, (u, v, r) => mixc([0.42, 0.4, 0.37], [0.5, 0.47, 0.43], 0.5 * r), [3.2, 0.8]);
+  } else {
+    face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
+  }
   // a big hall has a stair of three steps up its south side (the side the walker sees from the courtyard): 4 m wide, 0.6 m
   // deep each, 0.4 m high each, down to the base's top; the top step is the nearest the wall
   if (big) {
@@ -395,10 +402,11 @@ function surfacesOf(p, ground) {
   // no piece can part from its neighbour. d is the distance to the eave edge, t = d / rb (0 at the eave, 1 at the ridge),
   // h = wall top - drop + H g(t) with g(t) = t - 0.06 sin(pi t) (the dish of 6% of the slope), and the eave corners lift
   // by up to EAVE_LIFT, at the eave only (1 - t). Ridge and hips are where d is largest and the sides meet.
-  const eaveOut = Math.max(EAVE, 0.15 * 2 * R.hv);
+  // the eaves reach out 10% of the short side, at most 3.5 m (r52: a 5.5 m flat eave read as a metal sheet)
+  const eaveOut = Math.min(3.5, Math.max(EAVE, 0.10 * 2 * R.hv));
   const ra = R.hu + eaveOut, rb = R.hv + eaveOut;
   const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
-  const EAVE_LIFT = 1.8, DROP = 1.0, DISH = 0.06, ROOF_GRID = 1.5;
+  const EAVE_LIFT = 1.2, DROP = 1.0, DISH = 0.06, ROOF_GRID = 1.5;
   const hAt = (p, q) => {
     const d = Math.min(ra - Math.abs(p), rb - Math.abs(q));
     const t = Math.min(1, Math.max(0, d / rb));
