@@ -614,7 +614,9 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
           ? (s.jit ? [Math.min(L1 / nu * DENSE_OVERLAP, far ? FAR_WALL_MARK : WALL_DENSE_MARK), Math.min(L2 / nv * DENSE_OVERLAP, 1.0)] : [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)])
           : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
         // a dense touch is at least 1.8 m across (the size varies in height only, the width stays a long stroke)
-        const S2 = s.jit ? (dense ? [Math.max(1.8, S[0] * (0.9 + 0.2 * rnd(id * 0.37, i + j * 0.5))), S[1] * sz] : [S[0] * sz, S[1] * sz]) : S;
+        // the shader's size is [across, along] and the stroke runs along its direction (horizontal on a modern facade), so the
+        // long width goes in the along slot and the height in the across slot
+        const S2 = s.jit ? (dense ? [S[1] * sz, Math.max(1.8, S[0] * (0.9 + 0.2 * rnd(id * 0.37, i + j * 0.5)))] : [S[1] * sz, S[0] * sz]) : S;
         push(P.map((x, k) => x + N0[k] * 0.04), Dk, S2, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
