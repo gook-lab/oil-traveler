@@ -4,7 +4,7 @@
 // instead of a wall. The square itself is left to the land (src/hwadam/world/land.js), which is finer.
 import * as THREE from 'three';
 import { COMMON, EXTENT } from '../oilpaint/common.js';
-import { VS } from '../hwadam/world/land.js';
+import { verticalScale } from '../hwadam/world/land.js';
 
 /**
  * Builds the ring-shaped mesh (a hole where the land is). `mid` is { n, step, half, h }, `H0` the zero of the scaled
@@ -13,7 +13,7 @@ import { VS } from '../hwadam/world/land.js';
 export function createMidground(shared, mid, H0) {
   const { n, step, half, h } = mid;
   const y = new Float32Array(n * n);
-  for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * VS;
+  for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * verticalScale();
 
   // the normals, from the grid's own slopes
   const normal = new Float32Array(n * n * 3);

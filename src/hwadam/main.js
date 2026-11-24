@@ -9,10 +9,10 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, verticalScale } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
-import { viewShares, COVER_GLSL } from './world/cover.js';
+import { viewShares, coverWithin, COVER_GLSL } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -159,7 +159,7 @@ if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMater
 const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
 if (midMesh) scene.add(midMesh);
 // travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
-const rangesMesh = travel && place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, VS) : null;
+const rangesMesh = travel && place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, verticalScale()) : null;
 if (rangesMesh) scene.add(rangesMesh);
 // travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
 // their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
@@ -315,6 +315,48 @@ window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
   /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
   coverView: () => viewShares(camera, THREE, heightAt),
+  /** T2 check: the cover within 150 m of the start (node counts). */
+  startCover: () => coverWithin(CLEAR.x, CLEAR.z, 150),
+  /** T2 check: where the eye-level horizon lies in the frame (row from the top, 0 to 1), and the camera's pitch. */
+  horizonRow: () => {
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const far = new THREE.Vector3(camera.position.x + fwd.x * 1500, camera.position.y, camera.position.z + fwd.z * 1500).project(camera);
+    return { row: +((1 - far.y) / 2).toFixed(3), camPitch: +((Math.asin(fwd.y) * 180) / Math.PI).toFixed(1) };
+  },
+  /** T2 check: the frame (300 m, the 46-degree lens) by the distance from the eye: trees per band, their dabs, and the tiers. */
+  treeStats: () => {
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    const eye = camera.position;
+    const bands = { '0-50': { n: 0, dabs: 0 }, '50-120': { n: 0, dabs: 0 }, '120+': { n: 0, dabs: 0 } };
+    const tiers = [0, 0, 0];
+    let dabs = 0;
+    for (const t of forest.trees) {
+      const v = new THREE.Vector3(t.x - eye.x, t.y + t.h * 0.5 - eye.y, t.z - eye.z);
+      const d = v.dot(fwd);
+      if (d <= 0 || v.length() > 300) continue;
+      if (!(Math.abs(Math.atan2(v.dot(right), d)) < (36.5 * Math.PI) / 180 && Math.abs(Math.atan2(v.dot(up), d)) < (23 * Math.PI) / 180)) continue;
+      const L = v.length();
+      const band = L < 50 ? '0-50' : L < 120 ? '50-120' : '120+';
+      bands[band].n++; bands[band].dabs += t.dabs ?? 0; dabs += t.dabs ?? 0; tiers[t.tier]++;
+    }
+    return { bands, tiers, dabs: Math.round(dabs) };
+  },
+  /** T2 check: the trees in the frame within 40 m by tier (0 full, 1 some, 2 far), by the mid of each trunk. */
+  treeTiers: () => {
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    const eye = camera.position, tiers = [0, 0, 0];
+    for (const t of forest.trees) {
+      const v = new THREE.Vector3(t.x - eye.x, t.y + t.h * 0.5 - eye.y, t.z - eye.z);
+      const d = v.dot(fwd);
+      if (d <= 0 || v.length() > 40) continue;
+      if (Math.abs(Math.atan2(v.dot(right), d)) < (36.5 * Math.PI) / 180 && Math.abs(Math.atan2(v.dot(up), d)) < (23 * Math.PI) / 180) tiers[t.tier]++;
+    }
+    return tiers;
+  },
   /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */
   crownView: () => {
@@ -348,6 +390,15 @@ window.lab = {
     }
     return { inView, total };
   },
+  /** T2 check: the largest drop (m) of the ground below the eye along the gaze, within 50 m of the eye. */
+  drop50: () => {
+    const f = camera.getWorldDirection(new THREE.Vector3()); f.y = 0; f.normalize();
+    const eye = camera.position.y; let worst = 0;
+    for (let t = 0; t <= 50; t += 1) worst = Math.max(worst, eye - heightAt(camera.position.x + f.x * t, camera.position.z + f.z * t));
+    return +worst.toFixed(1);
+  },
+  /** T2 check: the feet's ground position, for the walk test (tools/cover-shots.mjs). */
+  feet: () => ({ x: player.feet.x, z: player.feet.z }),
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
@@ -418,6 +469,8 @@ loaded = true;
 run();
 document.getElementById('loading')?.remove();
 if (q.has('clean') || capture) document.getElementById('hint')?.remove();
+// the walk's place name and key line (travel HUD) are left out of the clean pictures too
+if (q.has('clean') || capture) document.querySelectorAll('.walk-name, .walk-keys').forEach((el) => el.remove());
 block.ready();
 window.lab.ready = true;
 // for the measuring tools

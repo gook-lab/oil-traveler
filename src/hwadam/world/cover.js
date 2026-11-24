@@ -228,12 +228,13 @@ export function raySpread(vx, vz, maxR, hit) {
 }
 
 /** The ground as the scene draws it: near heights above the entrance, at the scene's vertical scale (land.js VS). */
-const SCENE_VS = 0.5;
+/** The travel walk's vertical scale (1 = true). The baked Hwadam walk keeps land.js VS 0.5; see PLAN.md T2. */
+export const TRAVEL_VS = 1.0;
 export function sceneGround(near, H0) {
   return (x, z) => {
     const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
     const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
-    return (near[j * N + i] - H0) * SCENE_VS;
+    return (near[j * N + i] - H0) * TRAVEL_VS;
   };
 }
 
@@ -262,7 +263,7 @@ export function frameShare(cover, ground, x, z, a, cls) {
 }
 
 /** Scene scale of the ground (land.js VS): near and midground heights are scaled alike, so the angles match the frame. */
-const VS_SCENE = 0.5;
+const VS_SCENE = TRAVEL_VS;
 /**
  * The steepest elevation angle (degrees) toward the ridges of the midground grid (600 m to 2 km, mid = bakeMidground) from the
  * start (x, z) along bearing a. hc is the near height at the start (metres, absolute); the eye is 1.6 m above it.
@@ -309,7 +310,7 @@ export function occludeShare(ground, x, z, a, maxT) {
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** The elevation (degrees) a ridge band is drawn at, as ranges.js draws it: the scene's VS (0.5, 1.0 beyond 5 km). */
-export function drawnElev(th, d) { return (Math.atan(Math.tan(th) * (0.5 + 0.5 * smoothstep(2000, 5000, d))) * 180) / Math.PI; }
+export function drawnElev(th, d) { return (Math.atan(Math.tan(th) * (TRAVEL_VS + (1 - TRAVEL_VS) * smoothstep(2000, 5000, d))) * 180) / Math.PI; }
 /**
  * The ridge layers in the lane of bearing a (gaze +-12 degrees) from a horizon of the place's bands (metres, nearest
  * first; horizon as bakeHorizon makes it). A band is a layer when its highest ridge rises 0.4 degree over the nearer ones.
@@ -324,6 +325,17 @@ export function laneLayers(horizon, bands, a) {
   for (let b = 1; b < top.length; b++) if (top[b] > cur + 0.4) { layers++; cur = top[b]; }
   return { layers, top };
 }
+/** The classes of the cover within r metres of (x, z): node counts (for the check at the start). */
+export function coverWithin(x, z, r) {
+  const out = {};
+  for (let dx = -r; dx <= r; dx += NEAR_STEP) for (let dz = -r; dz <= r; dz += NEAR_STEP) {
+    if (dx * dx + dz * dz > r * r) continue;
+    const name = COVER_NAMES[coverAt(x + dx, z + dz)];
+    out[name] = (out[name] || 0) + 1;
+  }
+  return out;
+}
+
 /** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
 export function frameNear(cover, near, H0, x, z, cls) {
   const g = sceneGround(near, H0);
@@ -373,7 +385,8 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null, bands 
  * meets no ground within 400 m. Called from the page (window.lab.coverView).
  */
 export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
-  const counts = {};
+  const counts = {}, lower = {};
+  let lowerTotal = 0;
   const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
   const p = new THREE.Vector3(), d = new THREE.Vector3();
   let total = 0, occ150 = 0;
@@ -386,6 +399,7 @@ export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
       if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; hitT = t; break; }
     }
     counts[name] = (counts[name] || 0) + 1;
+    if (cy >= (rows * 2) / 3) { lower[name] = (lower[name] || 0) + 1; lowerTotal++; }
     // a hill over the view: a ray at or above the horizon that meets ground within 150 m (the floor below the
     // horizon is always near, and is not counted)
     if (hitT <= 150 && d.y >= -0.02) occ150 = (occ150 || 0) + 1;
@@ -394,5 +408,9 @@ export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
   for (const k of Object.keys(counts)) counts[k] = +(counts[k] / total).toFixed(3);
   // occ150: the share of the frame whose ground stands within 150 m (what hides the far view)
   counts.occ150 = +((occ150 || 0) / total).toFixed(3);
+  // the lower third of the frame (the foreground), by class, as shares of that third
+  const low = {};
+  for (const k of Object.keys(lower)) low[k] = +(lower[k] / lowerTotal).toFixed(3);
+  counts.lower = low;
   return counts;
 }
