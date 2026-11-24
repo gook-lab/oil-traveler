@@ -3,7 +3,7 @@
 // with ?place=LAT,LON&name=...; the world is then baked for that spot (src/hwadam/world/place.js).
 // The pins are circle layers drawn inside the map canvas (not DOM markers), so they move with the map and stay there.
 import './travel.css';
-import { geocodeMany, reverseName, PlaceError } from '../hwadam/world/place.js';
+import { geocodeMany, reverseName, highestSpot, PlaceError } from '../hwadam/world/place.js';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -18,9 +18,11 @@ const ERRORS = {
   badparam: '좌표 형식이 맞지 않아요.',
 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
-const HEAD = '어디로 떠날까요? 지도를 누르거나 이름을 찾아 보세요';
+const HEAD = '· 어디로 떠날까요? 지도를 누르거나 이름을 찾아 보세요';
+const kindText = (s) => String(s || '').replace(/\s*·\s*장소$/, '').replace(/^장소$/, ''); // a generic kind (장소) says nothing, so it is left out
 
 let overlay = null, map = null, maplibre = null, chosen = null, onBack = null, ready = false;
+let pickMarker = null, pickOn = false; // the chosen spot is a draggable paint dab (a MapLibre marker)
 let pins = { pick: null, own: null }; // { lat, lon } or null
 let lastReverse = 0;
 export const mapOpen = () => !!overlay && !overlay.hidden;
@@ -76,15 +78,30 @@ const point = (p) => (p ? { type: 'FeatureCollection', features: [{ type: 'Featu
 /** Puts the pins on the map: the chosen spot (brown) and where the wanderer is (blue). Before the map has loaded they wait. */
 function drawPins() {
   if (!ready) return;
-  map.getSource('pick').setData(point(pins.pick));
+  if (pins.pick) {
+    pickMarker.setLngLat([pins.pick.lon, pins.pick.lat]);
+    if (!pickOn) { pickMarker.addTo(map); pickOn = true; }
+  } else if (pickOn) { pickMarker.remove(); pickOn = false; }
   map.getSource('own').setData(point(pins.own));
+  map.getSource('tag').setData(pins.pick ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [pins.pick.lon, pins.pick.lat] }, properties: { label: chosen?.label ?? '' } }] } : EMPTY);
+}
+
+/** The numbered candidates of a search: one pin each, numbered as the list is. */
+function drawHits(list) {
+  if (!ready) return;
+  const features = list.map((r, i) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] }, properties: { n: String(i + 1) } }));
+  map.getSource('hits').setData({ type: 'FeatureCollection', features });
 }
 
 function addPinLayers() {
   map.addSource('own', { type: 'geojson', data: EMPTY });
-  map.addSource('pick', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'own', type: 'circle', source: 'own', paint: { 'circle-radius': 8, 'circle-color': '#2f5a7a', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
-  map.addLayer({ id: 'pick', type: 'circle', source: 'pick', paint: { 'circle-radius': 11, 'circle-color': '#8a3a1c', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
+  // the chosen spot carries its name, and the search results carry their numbers, both as labels on the paper
+  map.addSource('hits', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'hits', type: 'circle', source: 'hits', paint: { 'circle-radius': 10, 'circle-color': '#5b4636', 'circle-stroke-width': 2, 'circle-stroke-color': '#fdf8ec' } });
+  map.addLayer({ id: 'hit-num', type: 'symbol', source: 'hits', layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true }, paint: { 'text-color': '#fdf8ec' } });
+  map.addSource('tag', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'tag', type: 'symbol', source: 'tag', layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 13, 'text-offset': [0, 1.6], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#2a211b', 'text-halo-color': '#fdf8ec', 'text-halo-width': 2 } });
   ready = true;
   drawPins();
 }
@@ -97,7 +114,7 @@ async function ensureMap() {
   overlay.setAttribute('aria-label', '지도에서 걸을 곳 고르기');
   overlay.innerHTML = `
     <div class="tm-canvas" id="tm-canvas"></div>
-    <div class="tm-head"><b>유화 숲 산책</b><span>${HEAD}</span></div>
+    <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
         <input id="tm-q" type="text" autocomplete="off" placeholder="주소나 장소 이름" aria-label="주소나 장소 이름" />
@@ -127,6 +144,12 @@ async function ensureMap() {
   map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new maplibre.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors' }), 'bottom-right');
   map.on('style.load', () => paper(map));
+  // the chosen spot: a paint dab that can be dragged; the name tag follows it, and the spot is looked up when it is let go
+  const dab = document.createElement('div');
+  dab.className = 'tm-dab';
+  pickMarker = new maplibre.Marker({ element: dab, draggable: true, anchor: 'center' });
+  pickMarker.on('drag', () => { const ll = pickMarker.getLngLat(); pins.pick = { lat: ll.lat, lon: ll.lng }; drawPins(); });
+  pickMarker.on('dragend', () => { const ll = pickMarker.getLngLat(); choose(ll.lat, ll.lng, coords(ll.lat, ll.lng), true); });
   map.on('load', () => { map.resize(); addPinLayers(); });
   addEventListener('resize', () => map?.resize());
   // a click picks the spot and brings it nearer (at least zoom 11)
@@ -145,6 +168,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
   drawPins();
   setCard(label, sub);
   overlay.querySelector('.tm-card').hidden = false;
+  overlay.querySelector('.tm-recommend').hidden = true;
   if (look) {
     // one reverse lookup, kept to Nominatim's rate: a second at most between two of them
     const wait = Math.max(0, 1100 - (Date.now() - lastReverse));
@@ -156,6 +180,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
         chosen.label = found.label;
         chosen.sub = found.sub;
         setCard(found.label, found.sub);
+        drawPins(); // the name tag follows the lookup
       }
     } catch { /* the coordinates stay as the name */ }
   }
@@ -163,7 +188,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
 
 function setCard(label, sub) {
   overlay.querySelector('.tm-label').textContent = label;
-  overlay.querySelector('.tm-sub').textContent = sub || '';
+  overlay.querySelector('.tm-sub').textContent = kindText(sub);
 }
 
 function status(text, warn = false) {
@@ -175,33 +200,61 @@ function status(text, warn = false) {
 /** Search results as a list, always (one result too): name, region and kind. Picking one flies there. */
 function showResults(list) {
   const box = overlay.querySelector('.tm-results');
-  box.innerHTML = `<p class="tm-count">${list.length}건</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><b>${esc(r.label)}</b><span>${esc(r.sub || '')}</span></button></li>`).join('')}</ul>`;
+  box.innerHTML = `<p class="tm-count">${list.length}건 · 줄을 누르면 그곳으로 가요</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><span class="tm-num">${i + 1}</span><span class="tm-txt"><b>${esc(r.label)}</b><small>${esc(kindText(r.sub))}</small></span><span class="tm-pick">고르기 ›</span></button></li>`).join('')}</ul>`;
   box.hidden = false;
   overlay.querySelector('.tm-recommend').hidden = true;
+  drawHits(list);
   box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => flyTo(list[Number(b.dataset.i)])));
+  fitResults(list);
+}
+
+/** Frames the results by their points (not their boxes, a park's box is too wide) at the scale of their towns: zoom 11.5 at most. */
+function fitResults(list) {
+  const pts = list.map((r) => [r.lon, r.lat]);
+  const lons = pts.map((p) => p[0]), lats = pts.map((p) => p[1]);
+  const bounds = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
+  if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) map.easeTo({ center: bounds[0], zoom: 11.5, duration: 900 });
+  else map.fitBounds(bounds, { padding: 80, maxZoom: 11.5, duration: 900 });
+}
+
+/** A new search clears the last pick: the pin, the card and the chosen spot go, until a result is picked. */
+function clearPick() {
+  chosen = null;
+  pins.pick = null;
+  drawPins();
+  if (ready) map.getSource('hits').setData(EMPTY);
+  overlay.querySelector('.tm-card').hidden = true;
+  overlay.querySelector('.tm-recommend').hidden = false;
 }
 
 function hideResults() {
   overlay.querySelector('.tm-results').hidden = true;
-  overlay.querySelector('.tm-recommend').hidden = false;
+  overlay.querySelector('.tm-recommend').hidden = !!chosen;
+  if (ready) map.getSource('hits').setData(EMPTY);
 }
 
-function flyTo(r) {
+async function flyTo(r) {
   hideResults();
   if (r.box) map.fitBounds(r.box, { padding: 80, maxZoom: 12.5, duration: 1200 });
   else map.flyTo({ center: [r.lon, r.lat], zoom: 12, duration: 1200 });
-  choose(r.lat, r.lon, r.label, false, r.sub || '');
+  // a wide result (a park, a county) gets its pin on the highest ground inside its box, not on its edge
+  let spot = null;
+  if (r.box && (r.box[1][0] - r.box[0][0] > 0.01 || r.box[1][1] - r.box[0][1] > 0.01)) {
+    try { spot = await highestSpot(r.box); } catch { spot = null; }
+  }
+  choose(spot?.lat ?? r.lat, spot?.lon ?? r.lon, r.label, false, r.sub || '');
 }
 
 function wire() {
   const input = overlay.querySelector('#tm-q');
   const clear = overlay.querySelector('.tm-clear');
   input.addEventListener('input', () => { clear.hidden = !input.value; });
-  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; hideResults(); status(''); input.focus(); });
+  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; hideResults(); clearPick(); status(''); input.focus(); });
   overlay.querySelector('.tm-search').addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) { status('주소나 장소 이름을 먼저 적어 주세요.', true); return; }
+    clearPick();
     const coord = text.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
     if (coord) {
       const lat = Number(coord[1]), lon = Number(coord[2]);

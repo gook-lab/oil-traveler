@@ -7,6 +7,14 @@ import * as THREE from 'three';
 import { COMMON } from '../oilpaint/common.js';
 
 const NEAR_COL = [0.34, 0.38, 0.4], FAR_COL = [0.7, 0.77, 0.86];
+// The camera far plane is 2 km, so a range further out is drawn on a ring at CAP metres, at its own elevation angle: the
+// angle is kept, the distance is not (the ranges are a backdrop, nothing walks to them). The rings are kept apart by
+// STEP metres so their depths do not tie: the far one stands furthest, the near one in front of it.
+const CAP = 1900, STEP = 10;
+// The vertical scale: the walk squashes the ground by VS (0.5), so the mid-ground and the near skyline are read at VS.
+// The far ranges are real peaks, and they take the full scale by 5 km (smoothstep from 2 km), so no seam shows at 2 km.
+const FAR_VS = 1.0;
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
  * Builds the ranges. `horizon` is 360 bearings per band (0 north, clockwise; radians of elevation, from the eye); `bands`
@@ -18,19 +26,21 @@ export function createRanges(shared, horizon, bands, ex, ey, ez, VS) {
   const nb = bands.length;
   for (let b = nb - 1; b >= 0; b--) {
     const d = bands[b], t = nb > 1 ? b / (nb - 1) : 0; // t: 0 near, 1 far
+    const dp = d <= CAP ? d : CAP - STEP * (nb - 1 - b); // where the ring stands
+    const vs = VS + (FAR_VS - VS) * smooth(2000, 5000, d);
     const pos = new Float32Array(361 * 2 * 3);
     for (let a = 0; a <= 360; a++) {
       const az = (a * Math.PI) / 180, th = horizon[b * 360 + (a % 360)];
-      const top = ey + d * Math.tan(th) * VS;
+      const top = ey + dp * Math.tan(th) * vs;
       const bottom = ey - 2;
-      const x = ex + Math.sin(az) * d, z = ez - Math.cos(az) * d;
+      const x = ex + Math.sin(az) * dp, z = ez - Math.cos(az) * dp;
       pos.set([x, Math.max(bottom, top), z], a * 6);
       pos.set([x, bottom, z], a * 6 + 3);
     }
     const index = [];
     for (let a = 0; a < 360; a++) {
       const p = a * 2, q = p + 1, r = p + 2, s = p + 3;
-      index.push(p, r, q, q, r, s);
+      index.push(p, q, r, q, s, r); // counter-clockwise seen from inside the ring: the front faces the eye
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));

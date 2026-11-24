@@ -137,6 +137,25 @@ const subOf = (r) => [regionOf(r.address), kindOf(r)].filter(Boolean).join(' · 
  * Up to `limit` matches for a typed name, in OpenStreetMap search (Nominatim, one request). Each is { lat, lon, label,
  * box } where box is the result's own bounding box ([[west, south], [east, north]]) when it has one.
  */
+/**
+ * The highest point of a box ([[west, south], [east, north]]), sampled on a 41 x 41 grid from the terrain tiles at zoom 10.
+ * A park's search point can sit on its edge; this moves the pin to where the ground is highest inside it.
+ */
+export async function highestSpot(box) {
+  const [[w, s], [e, n]] = box, z = 10;
+  const lat = (s + n) / 2, lon = (w + e) / 2;
+  const radius = Math.max(((n - s) * 110940) / 2, ((e - w) * 111320 * Math.cos((lat * Math.PI) / 180)) / 2);
+  const terrain = new Terrain(tileLoader(new Set()));
+  await terrain.prefetch(lat, lon, radius, z);
+  let best = null;
+  for (let i = 0; i <= 40; i++) for (let j = 0; j <= 40; j++) {
+    const la = s + ((n - s) * i) / 40, lo = w + ((e - w) * j) / 40;
+    const h = terrain.height(la, lo, z);
+    if (!best || h > best.h) best = { lat: la, lon: lo, h };
+  }
+  return best;
+}
+
 export async function geocodeMany(query, limit = 5) {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&accept-language=ko&q=${encodeURIComponent(query)}`;
   let res;
