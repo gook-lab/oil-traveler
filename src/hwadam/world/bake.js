@@ -10,6 +10,9 @@ export const NEAR_ZOOM = 13;
 export const BANDS = [2000, 5000, 15000];
 /** Zoom for each band. The near square and the 2 km band use 13 (as the baked data does); the far bands use less. */
 export const RUNTIME_ZOOMS = [13, 12, 11];
+/** The runtime skyline's bands (six, for the far ranges in src/travel/ranges.js) and the zoom each reads at. */
+export const RUNTIME_BANDS = [1000, 2000, 3500, 5000, 8000, 15000];
+export const RUNTIME_BAND_ZOOMS = [13, 13, 13, 12, 12, 11];
 export const tileUrl = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 
 const M_LAT = 110940;
@@ -135,26 +138,26 @@ export function viewLatLon(lat, lon, view) {
 }
 
 /** Fetches the tiles the skyline reads: the eye's tile and each band's, at that band's zoom. */
-export async function prefetchSkyline(terrain, lat, lon, view, zooms = RUNTIME_ZOOMS) {
+export async function prefetchSkyline(terrain, lat, lon, view, zooms = RUNTIME_ZOOMS, bands = BANDS) {
   const v = viewLatLon(lat, lon, view);
   await terrain.prefetch(v.lat, v.lon, 100, NEAR_ZOOM);
-  for (let b = 0; b < BANDS.length; b++) await terrain.prefetch(v.lat, v.lon, BANDS[b], zooms[b]);
+  for (let b = 0; b < bands.length; b++) await terrain.prefetch(v.lat, v.lon, bands[b], zooms[b]);
 }
 
 /**
  * For each bearing (0 north, clockwise) and each band, the highest elevation angle (radians) seen from the view out
  * to the band's far edge, in 100 m steps. Same as tools/fetch-dem.mjs. Returns 3 bands x 360 bearings and the eye height.
  */
-export function bakeHorizon(terrain, lat, lon, view, zooms = RUNTIME_ZOOMS) {
+export function bakeHorizon(terrain, lat, lon, view, zooms = RUNTIME_ZOOMS, bands = BANDS) {
   const v = viewLatLon(lat, lon, view), m = mPerDegLon(lat);
   const eye = terrain.height(v.lat, v.lon, NEAR_ZOOM) + 1.6;
-  const horizon = new Float32Array(360 * BANDS.length);
-  for (let b = 0; b < BANDS.length; b++) {
-    const inner = b === 0 ? 0 : BANDS[b - 1];
+  const horizon = new Float32Array(360 * bands.length);
+  for (let b = 0; b < bands.length; b++) {
+    const inner = b === 0 ? 0 : bands[b - 1];
     for (let a = 0; a < 360; a++) {
       const rad = (a * Math.PI) / 180, s = Math.sin(rad), c = Math.cos(rad);
       let best = -Infinity;
-      for (let d = inner + 100; d <= BANDS[b]; d += 100) {
+      for (let d = inner + 100; d <= bands[b]; d += 100) {
         const e = terrain.height(v.lat + (c * d) / M_LAT, v.lon + (s * d) / m, zooms[b]);
         best = Math.max(best, Math.atan2(e - eye, d));
       }
@@ -261,12 +264,17 @@ export function pickVantage(near, N, STEP, radius = 150) {
  * among those the highest far ridge. A place's own shape is what the first frame then shows.
  */
 export function gazeBearing(horizon) {
-  const deg = (r) => (r * 180) / Math.PI, margin = 0.4;
+  const deg = (r) => (r * 180) / Math.PI, margin = 0.4, nb = horizon.length / 360;
   let best = 0, bestKey = -Infinity;
   for (let a = 0; a < 360; a++) {
-    const a2 = deg(horizon[a]), a5 = deg(horizon[360 + a]), a15 = deg(horizon[720 + a]);
-    const layers = 1 + (a5 > a2 + margin ? 1 : 0) + (a15 > Math.max(a2, a5) + margin ? 1 : 0);
-    const key = layers * 100 + a15;
+    // a band adds a layer when it rises over every nearer one by the margin; the key is the layers, then the far top
+    let layers = 1, nearest = deg(horizon[a]);
+    for (let b = 1; b < nb; b++) {
+      const t = deg(horizon[b * 360 + a]);
+      if (t > nearest + margin) layers++;
+      nearest = Math.max(nearest, t);
+    }
+    const key = layers * 100 + deg(horizon[(nb - 1) * 360 + a]);
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;

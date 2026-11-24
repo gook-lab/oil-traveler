@@ -1,7 +1,7 @@
 // Which ground the walk is built on. Without ?place= it is the baked Hwadam data (src/hwadam/data, no network).
 // With ?place=LAT,LON it bakes that place now, in the browser, from the same terrain tiles (src/hwadam/world/bake.js).
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
-import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
+import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
@@ -32,10 +32,12 @@ export function placeFromUrl(q) {
   if (!p || p === 'hwadam') return null; // place=hwadam is the baked data (the map's preset pin)
   const [lat, lon] = p.split(',').map((s) => Number(s.trim()));
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) throw new PlaceError('badparam');
-  const zooms = q.get('zooms') ? q.get('zooms').split(',').map(Number) : RUNTIME_ZOOMS;
+  // check mode (zooms=a,b,c): the three bands of the baked data; otherwise the runtime's six bands
+  const checkZooms = q.get('zooms') ? q.get('zooms').split(',').map(Number) : null;
+  const bands = checkZooms ? BANDS : RUNTIME_BANDS, zooms = checkZooms ?? RUNTIME_BAND_ZOOMS;
   const viewAt = q.get('view') === 'goal' ? 'goal' : 'vantage'; // check mode: the skyline from the way's goal, as the baked data
-  if (zooms.length !== 3 || zooms.some((z) => !Number.isInteger(z) || z < 7 || z > 13)) throw new PlaceError('badparam', 'zooms');
-  return { lat, lon, zooms, viewAt, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  if (checkZooms && (checkZooms.length !== 3 || checkZooms.some((z) => !Number.isInteger(z) || z < 7 || z > 13))) throw new PlaceError('badparam', 'zooms');
+  return { lat, lon, zooms, bands, viewAt, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
 }
 
 /** Terrain tiles: a tile counts only when its imagery is SRTM or GMTED2010 (the same guard as tools/fetch-dem.mjs). */
@@ -58,7 +60,7 @@ function tileLoader(sources) {
  * Bakes a place from the terrain tiles. onProgress(fraction 0..1, label). Throws PlaceError with a code the page
  * can explain (net, source, water, noway).
  */
-export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'vantage', name, onProgress = () => {} }) {
+export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, onProgress = () => {} }) {
   const sources = new Set();
   const terrain = new Terrain(tileLoader(sources));
   onProgress(0.05, 'ground');
@@ -76,12 +78,12 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'van
   // check against the baked data, from the way's goal (the baked skyline's point)
   const vantage = pickVantage(near, N, NEAR_STEP, 150);
   const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
-  await prefetchSkyline(terrain, lat, lon, view, zooms);
+  await prefetchSkyline(terrain, lat, lon, view, zooms, bands);
   onProgress(0.7, 'skyline');
-  const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms);
+  const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   onProgress(1, 'done');
   const meta2 = {
-    center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands: BANDS, eye,
+    center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands, eye,
     zooms, viewAt, vantage, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
   return { source: 'runtime', name, near, horizon, way, mid, meta: meta2 };

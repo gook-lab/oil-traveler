@@ -9,13 +9,14 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR } from './world/land.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
 import { createMidground } from '../travel/midground.js';
+import { createRanges } from '../travel/ranges.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -150,6 +151,8 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
 const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
 if (midMesh) scene.add(midMesh);
+// travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
+if (travel && place.source === 'runtime') scene.add(createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, VS));
 // travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
 // their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
 if (travel) scenery.group.visible = false;
