@@ -64,7 +64,8 @@ void makeDab(inout Dab d) {
   float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
   // the moss garden carries no leaves: its carpet is moss, dark green in the hollows to light green on the crowns
   // the sun on the moss stays as it is; only the shade goes cool and damp, a blue-green
-  vec3 mossC = mix(vec3(0.08, 0.2, 0.18), vec3(0.46, 0.7, 0.28), max(hump, q.w * 0.6)) * (0.55 + 0.6 * lit) * mix(vec3(0.78, 1.0, 0.96), vec3(1.0), lit);
+  // the value steps are small, so the garden reads as one velvet cover, not as leaves on dark ground
+  vec3 mossC = mix(vec3(0.1, 0.2, 0.17), vec3(0.38, 0.6, 0.3), max(hump, q.w * 0.5)) * (0.6 + 0.5 * lit) * mix(vec3(0.78, 1.0, 0.96), vec3(1.0), lit);
   // the moss garden's cover stops at the bare way: the path stays visible through the garden
   c1 = mix(c1, mossC, sw.x * (1.0 - m.r));
   c2 = mix(c2, mossC * 0.92, sw.x * (1.0 - m.r));

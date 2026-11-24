@@ -138,6 +138,7 @@ function plant() {
   const bl = Math.hypot(BT.x - BC.x, BT.z - BC.z), bfx = (BT.x - BC.x) / bl, bfz = (BT.z - BC.z) / bl;
   // fewer trunks, in rows with gaps between them: in each row (3 m deep) a lane of the sight (4 m wide) stays empty, so
   // the wood reads as trunks standing at different depths, not as one even wall; the far trunks are thinner
+  const placedBirch = [];
   for (let i = 0; i < 620; i++) {
     const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
     const row = Math.floor(dist / 3), lane = Math.floor((lat + 15) / 4);
@@ -147,6 +148,10 @@ function plant() {
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
+    // no two birches of the sight stand close in both depth and side (a jittered spacing, not columns): from the walk's
+    // eye they would overlap into one white pillar
+    if (placedBirch.some((q) => Math.abs(q[0] - dist) < 2.5 && Math.abs(q[1] - lat) < 2.4)) continue;
+    placedBirch.push([dist, lat]);
     let sc = 1.0 - 0.5 * (dist - 12) / 28;
     if (dist < 20 && rand() < 0.2) sc *= 1.6;
     add(x, z, BIRCH, 2, sc);

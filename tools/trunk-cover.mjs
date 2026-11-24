@@ -72,6 +72,16 @@ for (const [a, b] of bands) {
   for (const [p, q] of iv) { const s = Math.max(p, end); if (q > s) { cover += q - s; end = q; } }
   const n = rep.filter((t) => t.depth >= a && t.depth < b).length;
   console.log(`${a}~${b} m: 줄기 ${n} 그루, 화면 폭 덮음(합집합) ${(cover / W * 100).toFixed(1)}%`);
+  // bundles: runs of trunks whose screen spans touch or overlap within half a trunk width; a bundle of 3 or more is a wall piece
+  const all = rep.filter((t) => t.depth >= a && t.depth < b).map((t) => ({ x0: t.x0, x1: t.x1 })).sort((p, q) => p.x0 - q.x0);
+  let bundles = 0, cur = null;
+  for (const t of all) {
+    const w = t.x1 - t.x0;
+    if (cur && t.x0 < cur.end + 0.5 * w) { cur.n++; cur.end = Math.max(cur.end, t.x1); }
+    else { if (cur && cur.n >= 3) bundles++; cur = { n: 1, end: t.x1 }; }
+  }
+  if (cur && cur.n >= 3) bundles++;
+  console.log(`   묶음(3그루 이상 붙음): ${bundles}`);
 }
 await browser.close();
 server.close();

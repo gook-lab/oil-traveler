@@ -64,8 +64,9 @@ export function createSky(shared) {
         // thinner touches than before (the thick grey paint of the old sky is gone)
         d.size = vec2(26.0 + 22.0 * r.y, 110.0 + 100.0 * r.z);
         vec3 c = skyColour(v);
-        d.c1 = jitter(c, r.yzw, 0.22);
-        d.c2 = jitter(c * 1.05, r.wxy, 0.3);
+        // the strokes differ little in value, so the sky reads as clear air with thin brushwork, not as thick plaster
+        d.c1 = jitter(c, r.yzw, 0.1);
+        d.c2 = jitter(c * 1.03, r.wxy, 0.12);
         d.seed = aDir.w;
         d.lift = 0.0;
       }`,
