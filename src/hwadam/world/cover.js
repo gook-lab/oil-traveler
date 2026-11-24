@@ -131,6 +131,8 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
   const tiles = [];
   for (let x = a.x; x <= b.x; x++) for (let y = a.y; y <= b.y; y++) tiles.push([x, y]);
+  // beach points of the poi layer (class or subclass beach · beach_resort, or a name with 해수욕장 · 해변 · beach)
+  const beaches = [];
   let done = 0;
   for (const [x, y] of tiles) {
     const url = template.replace('{z}', Z).replace('{x}', x).replace('{y}', y);
@@ -156,6 +158,13 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     paint('landcover', (p) => LANDCOVER[p.class] ?? COVER.GRASS);
     paint('building', () => COVER.BUILT);
     paint('water', (p) => (WATER_CLASSES.has(p.class) || !p.class ? COVER.WATER : 0));
+    const P = vt.layers.poi;
+    if (P) for (let f = 0; f < P.length; f++) {
+      const feat = P.feature(f);
+      if (feat.type !== 1 || !isBeachPoi(feat.properties)) continue;
+      const g = feat.loadGeometry()[0][0];
+      beaches.push(toNode(x, y, n, P.extent, g.x, g.y, lat, lon, m0));
+    }
     done++;
     onProgress(0.1 + (0.8 * done) / tiles.length, 'cover');
   }
@@ -167,18 +176,32 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
-  // basalt (Jeju only, before the inferred sand so that it takes the 6 to 12 m strip): the untagged land (none, grass)
-  // 6 to 12 m inland from the sea, below 10 m high. OSM's own sand and beaches stay sand (their class is already set)
-  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const k = j * N + i;
-    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
-    if (nearWater(sea, i, j, 6) && !nearWater(sea, i, j, 3)) out[k] = COVER.BASALT;
-  }
-  // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
+  // the untagged shore, in the Jeju box only (the lava coast of the place): OSM's own sand and beaches stay sand
+  // (their class is set already); the inferred sand is the strip 14 m from the sea, within 150 m of a beach point of
+  // the poi layer (a beach of 200 to 300 m; OSM has no sand tag at 협재, the beach is named in the poi layer only);
+  // the rest of the untagged land at the sea (0 to 8 m) is basalt, and so is the rock within 30 m of the sea; a few
+  // blocks stand in the shallow water in front of the basalt shore
+  // sand: the strip of open ground behind the sea, under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
-    if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
+    if (!nearWater(sea, i, j, basalt ? 7 : 15)) continue;
+    if (basalt && !beaches.some((b) => Math.hypot(i - b.x, j - b.y) * NEAR_STEP <= 150)) continue;
+    out[k] = COVER.SAND;
+  }
+  // basalt (Jeju only, after the sand): the untagged land (none, grass) 0 to 8 m from the sea, below 10 m high
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
+    if (nearWater(sea, i, j, 4)) out[k] = COVER.BASALT;
+  }
+  // blocks in the shallow water in front of the basalt shore (within 4 m of it): one shallow sea cell in 30. They were
+  // water, so the reef mask keeps them: the sea share of a view counts them as water (the land of the start does not)
+  const reef = new Uint8Array(N * N);
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (out[k] !== COVER.WATER || near[k] <= -1 || (i * 7 + j * 3) % 30 !== 0) continue;
+    if (withinValue(out, i, j, 2, COVER.BASALT)) { out[k] = COVER.BASALT; reef[k] = 1; }
   }
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
@@ -188,12 +211,33 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
   }
+  // the lava rock of the Jeju shore (within 30 m of the sea) is basalt too: rock would take the granite brush
+  if (basalt) for (let k = 0; k < N * N; k++) {
+    const i = k % N, j = (k - i) / N;
+    if (out[k] === COVER.ROCK && nearWater(sea, i, j, 15)) out[k] = COVER.BASALT;
+  }
   onProgress(1, 'cover');
   const counts = {};
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts };
+  return { grid: out, depth: dep, counts, reef };
+}
+
+/** A poi-layer point that names a beach: class or subclass beach · beach_resort, or a name with 해수욕장 · 해변 · beach. */
+function isBeachPoi(p) {
+  if (['beach', 'beach_resort'].includes(p.class) || ['beach', 'beach_resort'].includes(p.subclass)) return true;
+  return ['name', 'name_ko', 'name_en'].some((k) => typeof p[k] === 'string' && /해수욕장|해변|beach/i.test(p[k]));
+}
+
+// true when a cell within r nodes of (i, j) holds the value v of the grid
+function withinValue(arr, i, j, r, v) {
+  for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    const a = i + di, b = j + dj;
+    if (a < 0 || b < 0 || a >= N || b >= N) continue;
+    if (arr[b * N + a] === v) return true;
+  }
+  return false;
 }
 
 function nearWater(sea, i, j, r) {
