@@ -71,6 +71,7 @@ export function createMidground(shared, mid, H0) {
       in vec3 vN;
       in float vSea;
       layout(location = 0) out vec4 outC;
+      float smoothstep2(float a, float b, float x) { float t = clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
       void main() {
         // large patches of paint, placed on a jittered grid, each in one of three colours of the autumn ground
         vec2 sq = floor(vWorld.xz / 16.0 + (texture(tNoise, vWorld.xz / 37.0).rg - 0.5) * 1.6) * 16.0;
@@ -86,7 +87,10 @@ export function createMidground(shared, mid, H0) {
         c = mix(c, water, smoothstep(0.3, 0.7, vSea));
         // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
         vec3 air = airColour(normalize(vWorld - cameraPosition));
-        outC = vec4(mix(c, air, 0.4 * mistBetween(vWorld)), 1.0);
+        // the haze grows with the distance: the near slopes keep their ground colour (about 0.2 at 0.9 km), the far ones
+        // go grey toward the sky (0.5 at 2 km). A flat 0.4 at every distance made the near slope one lilac plane.
+        float far = 0.15 + 0.35 * smoothstep2(400.0, 2000.0, length(vWorld - cameraPosition));
+        outC = vec4(mix(c, air, far * mistBetween(vWorld)), 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(geometry, material);
