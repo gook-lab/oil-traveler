@@ -12,8 +12,9 @@ const STONE = /* glsl */ `
 void makeDab(inout Dab d) {
   vec4 r = hash4(aData.x);
   float lit = sunAt(aPos + vec3(0.0, 0.5, 0.0));
-  // lighter than the green floor by about 15 L*, so the stones read against the moss (measured in shots/work/m3-r6)
-  vec3 c = paint3(vec3(0.66, 0.66, 0.6), vec3(0.44, 0.46, 0.42), vec3(0.18, 0.2, 0.19), lit, r.x);
+  // lighter than the green floor by 15 L* or more, so the stones read against the moss (measured on the moss shot,
+  // stone L* about 49 in shade, 60 mid, 80 lit against the floor's 24 to 46); the value is lifted, the hue is kept
+  vec3 c = paint3(vec3(0.82, 0.82, 0.76), vec3(0.6, 0.62, 0.57), vec3(0.46, 0.48, 0.46), lit, r.x);
   // moss on the top of some of them, more where the sun falls
   float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);

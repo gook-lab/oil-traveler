@@ -19,9 +19,9 @@ float inFan(vec2 p) {
   }
   return f;
 }
-const vec3 LIT_L[6] = vec3[6](vec3(0.36, 0.44, 0.24), vec3(0.8, 0.16, 0.16), vec3(0.96, 0.44, 0.14), vec3(0.96, 0.84, 0.42), vec3(0.74, 0.58, 0.42), vec3(0.97, 0.8, 0.36));
-const vec3 LIT_M[6] = vec3[6](vec3(0.24, 0.31, 0.18), vec3(0.52, 0.1, 0.1), vec3(0.72, 0.24, 0.09), vec3(0.76, 0.6, 0.26), vec3(0.5, 0.38, 0.3), vec3(0.74, 0.52, 0.2));
-const vec3 LIT_S[6] = vec3[6](vec3(0.14, 0.18, 0.14), vec3(0.3, 0.06, 0.09), vec3(0.4, 0.1, 0.1), vec3(0.42, 0.36, 0.2), vec3(0.27, 0.22, 0.27), vec3(0.4, 0.26, 0.13));
+const vec3 LIT_L[6] = vec3[6](vec3(0.36, 0.44, 0.24), vec3(0.8, 0.16, 0.16), vec3(0.96, 0.44, 0.14), vec3(0.96, 0.84, 0.42), vec3(0.86, 0.76, 0.58), vec3(0.97, 0.8, 0.36));
+const vec3 LIT_M[6] = vec3[6](vec3(0.24, 0.31, 0.18), vec3(0.52, 0.1, 0.1), vec3(0.72, 0.24, 0.09), vec3(0.76, 0.6, 0.26), vec3(0.68, 0.58, 0.44), vec3(0.74, 0.52, 0.2));
+const vec3 LIT_S[6] = vec3[6](vec3(0.14, 0.18, 0.14), vec3(0.3, 0.06, 0.09), vec3(0.4, 0.1, 0.1), vec3(0.42, 0.36, 0.2), vec3(0.44, 0.38, 0.32), vec3(0.4, 0.26, 0.13));
 // which kind lies here: the part of the walk decides the chance of each, and v varies it over the ground
 int pickKind(float pick, vec4 sw, float v) {
   if (pick < sw.x) return 0;
@@ -50,9 +50,9 @@ void makeDab(inout Dab d) {
   float patch_ = texture(tNoise, xz / 13.0).r * 1.9 + texture(tNoise, xz / 3.7).g * 0.5;
   // the bare way is its own colour; elsewhere the kind is drawn by the part of the walk
   float v = fract(patch_ + (q.z - 0.5) * 0.3);
-  int k1 = q.x < m.r * 0.62 ? 4 : pickKind(q.y, sw, v);
+  int k1 = q.x < m.r * 0.9 ? 4 : pickKind(q.y, sw, v);
   vec3 c1 = litter(k1, lit, q.y);
-  int k2 = q.z < m.r * 0.31 ? 4 : pickKind(q.w, sw, fract(v + 0.2));
+  int k2 = q.z < m.r * 0.6 ? 4 : pickKind(q.w, sw, fract(v + 0.2));
   vec3 c2 = litter(k2, lit, q.w);
   // the open ground of the clearing is grass gone to gold
   vec3 gl = paint3(vec3(0.95, 0.8, 0.36), vec3(0.62, 0.52, 0.2), vec3(0.2, 0.2, 0.2), lit, q.y);
@@ -77,13 +77,16 @@ void makeDab(inout Dab d) {
   float shrink = mix(1.0, 0.7, sw.y);
   // the moss touches are as wide as they are long: round, not blades
   // the moss touches vary in width and length more (0.7x to 1.3x of the base), so no two read as one stamp
-  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.6 * (0.7 + 0.6 * r.y), sw.x);
-  d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 0.8 + 0.7 * r.w, sw.x) * shrink, wide, sw.x)) * lod;
+  // in the garden the touches are about twice as wide as before (0.8 to 1.0 of the cell), so 3 per cell cover the ground
+  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.8 * (0.85 + 0.3 * r.y), sw.x);
+  d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 0.8 + 0.7 * r.w, sw.x) * shrink, wide * (0.85 + 0.3 * r.w), sw.x)) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37;
   d.turnabout = 1.0;
-  d.lie = 1.0;
+  // the touches stand up to the eye (lie 0): flat on the ground they were foreshortened to slivers at grazing angles,
+  // and the bare ground between them showed as flat olive
+  d.lie = 0.0;
   d.nrm = Nn;
   // in the moss garden the cushions rise into hummocks: some tufts stand up to 0.12 m higher
   // round mounds of moss in the garden, 1 to 2 m across: the crown of each is bright green, its hollow dark

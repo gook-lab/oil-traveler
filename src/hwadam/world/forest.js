@@ -131,11 +131,15 @@ function plant() {
   // the birch view's sight: a close set of birches 10 to 40 m ahead of its camera, along its line and 6 m to either side
   const BC = { x: -150, z: -74 }, BT = { x: -158, z: -92 };
   const bl = Math.hypot(BT.x - BC.x, BT.z - BC.z), bfx = (BT.x - BC.x) / bl, bfz = (BT.z - BC.z) / bl;
-  for (let i = 0; i < 900; i++) {
+  // fewer trunks, in rows with gaps between them: in each row (3 m deep) a lane of the sight (4 m wide) stays empty, so
+  // the wood reads as trunks standing at different depths, not as one even wall; the far trunks are thinner
+  for (let i = 0; i < 620; i++) {
     const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
+    const row = Math.floor(dist / 3), lane = Math.floor((lat + 15) / 4);
+    if ((row * 5 + lane * 3) % 4 === 0) continue;
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
-    add(x, z, BIRCH, 2);
+    add(x, z, BIRCH, 2, 1.25 - 0.45 * (dist - 12) / 28);
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
@@ -428,7 +432,10 @@ export function createForest(shared) {
         d.spin = turn;
         d.pos = P;
         float s = aData.y / sqrt(aData.w > 0.5 ? 1.0 : keep);
-        d.size = vec2(s, s * (aData.w > 0.5 ? 1.2 : 1.5 + 0.5 * q.z));
+        // the stroke size steps down with distance: a leaf 45 m off is 0.55 of its near size, so the mid-forest reads as
+        // many small touches, not as near bushes (the gate 1 critic's distance rule)
+        float dz = mix(1.0, 0.55, smoothstep(10.0, 45.0, distance(P, cameraPosition)));
+        d.size = vec2(s, s * (aData.w > 0.5 ? 1.2 : 1.5 + 0.5 * q.z)) * dz;
         d.c1 = hazed(c, P);
         d.c2 = hazed(jitter(c * 1.16, q.zxy, 0.7), P);
         d.seed = aData.x;
