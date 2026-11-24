@@ -31,6 +31,7 @@ import { Animator } from '../figure/animator.js';
 import { Player } from '../figure/player.js';
 import { Input } from '../figure/input.js';
 import { Follow } from '../figure/camera.js';
+import { playMusic } from '../music.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
@@ -413,6 +414,7 @@ if (!capture) {
   const hint = document.getElementById('hint');
   addEventListener('keydown', (e) => { if (e.code === 'KeyH') hint.classList.toggle('off'); });
   setTimeout(() => hint.classList.add('faded'), 9000);
+  playMusic('forest');
 }
 fitView();
 loaded = true;
