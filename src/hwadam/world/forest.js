@@ -36,9 +36,9 @@ vec3 bark(int k, vec3 P, vec3 Nn, float r, float foot) {
 const LEAF = /* glsl */ `
 uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
 vec3 hazedW(vec3 c, vec3 w) { return mix(c, airColour(normalize(w - cameraPosition)), uForestHaze * mistBetween(w)); }
-const vec3 LEAF_L[7] = vec3[7](vec3(0.8, 0.14, 0.16), vec3(0.98, 0.42, 0.12), vec3(1.0, 0.86, 0.26), vec3(0.98, 0.64, 0.2), vec3(0.56, 0.7, 0.28), vec3(0.98, 0.9, 0.44), vec3(0.56, 0.16, 0.2));
-const vec3 LEAF_M[7] = vec3[7](vec3(0.52, 0.08, 0.11), vec3(0.74, 0.22, 0.09), vec3(0.78, 0.6, 0.18), vec3(0.74, 0.4, 0.13), vec3(0.32, 0.46, 0.2), vec3(0.8, 0.7, 0.26), vec3(0.34, 0.09, 0.14));
-const vec3 LEAF_S[7] = vec3[7](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec3(0.42, 0.3, 0.14), vec3(0.4, 0.2, 0.11), vec3(0.16, 0.26, 0.16), vec3(0.44, 0.38, 0.2), vec3(0.2, 0.05, 0.1));
+const vec3 LEAF_L[8] = vec3[8](vec3(0.8, 0.14, 0.16), vec3(0.98, 0.42, 0.12), vec3(1.0, 0.86, 0.26), vec3(0.98, 0.64, 0.2), vec3(0.56, 0.7, 0.28), vec3(0.98, 0.9, 0.44), vec3(0.56, 0.16, 0.2), vec3(0.16, 0.34, 0.2));
+const vec3 LEAF_M[8] = vec3[8](vec3(0.52, 0.08, 0.11), vec3(0.74, 0.22, 0.09), vec3(0.78, 0.6, 0.18), vec3(0.74, 0.4, 0.13), vec3(0.32, 0.46, 0.2), vec3(0.8, 0.7, 0.26), vec3(0.34, 0.09, 0.14), vec3(0.11, 0.24, 0.14));
+const vec3 LEAF_S[8] = vec3[8](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec3(0.42, 0.3, 0.14), vec3(0.4, 0.2, 0.11), vec3(0.16, 0.26, 0.16), vec3(0.44, 0.38, 0.2), vec3(0.2, 0.05, 0.1), vec3(0.07, 0.14, 0.09));
 `;
 
 // which leaf a maple, a beech, an oak or a birch carries: most of a maple's are reds, a beech's are green and gold
@@ -184,7 +184,7 @@ function plant() {
       const before = trees.length;
       // the pines in front of the start stand at full detail (tier 0): as tier 1 their six lobes read as bare poles
       add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 0, 0.8);
-      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
+      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 7; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; } // family 7: the dark needle green of the front pines (travel only)
       if (trees.filter((t) => t.nearPine).length >= 14) break;
     }
   }
@@ -262,7 +262,7 @@ export function createForest(shared) {
     const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
     const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
     const treeLobes = [];
-    if (t.conifer) {
+    if (t.conifer && !t.nearPine) {
       // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
       const steps = full ? 9 : 6;
       for (let i = 0; i < steps; i++) {
@@ -272,14 +272,15 @@ export function createForest(shared) {
         treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
       }
     } else if (full) {
-      const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
+      // the front pine (nearPine, T2 critic round 4): 4 bent limbs from the upper third, the foliage only in flat clouds at their tips
+      const limbs = t.nearPine ? 4 : t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
-        const from = t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
+        const from = t.nearPine ? top * (0.62 + 0.12 * (i / limbs)) : t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
         const p0 = new THREE.Vector3();
         const r0 = trunkAt(from, p0);
-        const tilt = t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
-        const len = (spread / Math.sin(tilt)) * (0.7 + rand() * 0.4) * (1 - 0.35 * (i / limbs));
+        const tilt = t.nearPine ? 0.5 + rand() * 0.3 : t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
+        const len = t.nearPine ? spread * (0.75 + rand() * 0.35) : (spread / Math.sin(tilt)) * (0.7 + rand() * 0.4) * (1 - 0.35 * (i / limbs));
         const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
         const p2 = p0.clone().addScaledVector(out, len * Math.sin(tilt)).add(new THREE.Vector3(0, len * Math.cos(tilt), 0));
         const p1 = p0.clone().lerp(p2, 0.45).add(new THREE.Vector3(0, -len * 0.1, 0)).addScaledVector(out, len * 0.12);
@@ -303,10 +304,14 @@ export function createForest(shared) {
           const w = 1 - u;
           const c = new THREE.Vector3().addScaledVector(p0, w * w).addScaledVector(p1, 2 * w * u).addScaledVector(p2, u * u);
           c.add(v.set(rand() - 0.5, rand() * 0.9, rand() - 0.5).multiplyScalar(1.6));
+          if (t.nearPine) { // a flat cloud of needles at the tip: two lobes, spread out and low
+            for (let q = 0; q < 2; q++) treeLobes.push([c.x + (rand() - 0.5) * 2.4, c.y - 0.4 * q, c.z + (rand() - 0.5) * 2.4, 1.3 + rand() * 0.6]);
+            continue;
+          }
           treeLobes.push([c.x, c.y, c.z, (t.hero ? 2.3 : 1.25) + rand() * 1.0 + t.r * 0.6]);
         }
       }
-      for (let i = 0; i < (t.hero ? 8 : 3); i++) treeLobes.push([crown.x + (rand() - 0.5) * spread * 0.9, t.y + t.h * (t.hero ? 0.92 : 0.96) + (rand() - 0.5) * 3, crown.z + (rand() - 0.5) * spread * 0.9, 1.5 + rand() * (t.hero ? 1.6 : 0.9)]);
+      if (!t.nearPine) for (let i = 0; i < (t.hero ? 8 : 3); i++) treeLobes.push([crown.x + (rand() - 0.5) * spread * 0.9, t.y + t.h * (t.hero ? 0.92 : 0.96) + (rand() - 0.5) * 3, crown.z + (rand() - 0.5) * spread * 0.9, 1.5 + rand() * (t.hero ? 1.6 : 0.9)]);
     } else {
       const n = some ? 7 : 4;
       for (let i = 0; i < n; i++) {
@@ -319,7 +324,7 @@ export function createForest(shared) {
     }
     // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
     // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
-    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
+    const perLobe = t.nearPine ? 26 : full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);
