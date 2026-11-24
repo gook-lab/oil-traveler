@@ -162,9 +162,15 @@ const rangesMesh = travel
   : createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, heightAt(CLEARING.x, CLEARING.z) + 1.6, CLEARING.z, VS);
 if (rangesMesh) scene.add(rangesMesh);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
+if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
 const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
 if (midMesh) scene.add(midMesh);
+// check only (?band=k): only the range of band k (bands in place.meta.bands order), in its own colour
+if (q.has('band') && rangesMesh) rangesMesh.children.forEach((m, i) => { m.visible = rangesMesh.children.length - 1 - i === Number(q.get('band')); });
+// check only (?keyranges): the ranges in pure green, so that the picture counts how much of them stays
+if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide }); });
 // travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
 // their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
 if (travel) scenery.group.visible = false;
