@@ -64,10 +64,18 @@ function tube(out, pts, radii, sides, kind, seed) {
   }
 }
 
+// the ridge views' fans (see floor.js's inFan): the view's sight is kept clear of trees within 30 m
+const FANS = [{ a: [-192, -190], d: [0.927, 0.375] }, { a: [-192, -175], d: [0.602, 0.799] }];
+const inFan = (x, z) => FANS.some(({ a, d }) => {
+  const dx = x - a[0], dz = z - a[1], r = Math.hypot(dx, dz);
+  return r > 0.01 && r < 30 && (dx * d[0] + dz * d[1]) / r > 0.9063;
+});
+
 function plant() {
   const rand = rng(4471);
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
+    if (inFan(x, z)) return;
     const r = (type === BIRCH ? 0.13 + rand() * 0.08 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
@@ -108,7 +116,7 @@ function plant() {
     const x = wx + (-dz / len) * off, z = wz + (dx / len) * off;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     const sw = segW(pathT(x, z));
-    if (sw[3] > 0.5 || rand() > 0.25 + 0.75 * (sw[1] + sw[2])) continue;
+    if (inFan(x, z) || sw[3] > 0.5 || rand() > 0.25 + 0.75 * (sw[1] + sw[2])) continue; // (the walk's loop reads the tree it just added)
     const pBirch = 0.95 * sw[2] + 0.1 * sw[3];
     const pMaple = 0.75 * sw[1] + 0.03 * sw[0] + 0.15 * sw[3];
     const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];

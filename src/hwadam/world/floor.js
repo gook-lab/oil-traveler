@@ -7,6 +7,18 @@ import { segW, SEG_GLSL } from './segments.js';
 
 // leaf litter by kind: 0 moss-green, 1 crimson, 2 vermilion, 3 birch yellow, 4 the bare way, 5 gold grass gone down
 export const LITTER = /* glsl */ `
+// the two ridge views' fans: 25 degrees either side of the sight, 30 m out; there the grass is cut short
+const vec2 FAN_A[2] = vec2[2](vec2(-192.0, -190.0), vec2(-192.0, -175.0));
+const vec2 FAN_D[2] = vec2[2](vec2(0.927, 0.375), vec2(0.602, 0.799));
+float inFan(vec2 p) {
+  float f = 0.0;
+  for (int i = 0; i < 2; i++) {
+    vec2 d = p - FAN_A[i];
+    float r = length(d);
+    if (r > 0.01 && r < 30.0 && dot(d / r, FAN_D[i]) > 0.9063) f = 1.0;
+  }
+  return f;
+}
 const vec3 LIT_L[6] = vec3[6](vec3(0.36, 0.44, 0.24), vec3(0.8, 0.16, 0.16), vec3(0.96, 0.44, 0.14), vec3(0.96, 0.84, 0.42), vec3(0.74, 0.58, 0.42), vec3(0.97, 0.8, 0.36));
 const vec3 LIT_M[6] = vec3[6](vec3(0.24, 0.31, 0.18), vec3(0.52, 0.1, 0.1), vec3(0.72, 0.24, 0.09), vec3(0.76, 0.6, 0.26), vec3(0.5, 0.38, 0.3), vec3(0.74, 0.52, 0.2));
 const vec3 LIT_S[6] = vec3[6](vec3(0.14, 0.18, 0.14), vec3(0.3, 0.06, 0.09), vec3(0.4, 0.1, 0.1), vec3(0.42, 0.36, 0.2), vec3(0.27, 0.22, 0.27), vec3(0.4, 0.26, 0.13));
@@ -120,7 +132,7 @@ void makeDab(inout Dab d) {
   vec2 lean = fan * mix(0.9 + 1.3 * f.y, 0.12 + 0.4 * f.y, grass) + uWind.xy * (0.08 + 0.6 * gust + sway);
   d.dir = normalize(vec3(lean.x, 1.0, lean.y));
   d.pos = P - vec3(0.0, 0.02, 0.0);
-  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass) * mix(1.0, 0.4, sw.x) * mix(1.0, 0.55, sw.y);
+  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass) * mix(1.0, 0.4, sw.x) * mix(1.0, 0.55, sw.y) * mix(1.0, 0.25, inFan(foot));
   // a frond is a broad curved stroke that arches over; a blade of grass a thin straight one
   d.size = vec2(mix(0.17, 0.04, grass) * big * (0.8 + 0.5 * f.x), tall);
   d.cell = grass > 0.5 ? floor(f.y * 2.99) : (f.x > 0.5 ? 3.0 : 7.0);
