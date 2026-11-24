@@ -320,7 +320,6 @@ window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, stonePos: scenery.stonePos, stoneData: scenery.stoneData, heightAt, respawn, way, place,
   /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
   coverView: () => viewShares(camera, THREE, heightAt),
-  /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */
   crownView: () => {
     // the frame by angle: 36.5 degrees to either side, 23 up and down (the 46-degree lens at 16:9), within 300 m
@@ -342,6 +341,7 @@ window.lab = {
     }
     return { any, bottomIn, share: any ? +(bottomIn / any).toFixed(3) : 0 };
   },
+  /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   coniferView: () => {
     const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
     let inView = 0, total = 0;
