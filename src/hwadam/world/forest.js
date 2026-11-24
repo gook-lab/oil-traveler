@@ -137,6 +137,8 @@ function plant() {
     const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
     const row = Math.floor(dist / 3), lane = Math.floor((lat + 15) / 4);
     if ((row * 5 + lane * 3) % 4 === 0) continue;
+    // the far rows (20 m and beyond) keep a tenth of their trunks: together they covered two thirds of the picture's width
+    if (dist >= 20 && rand() < 0.9) continue;
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
