@@ -99,10 +99,7 @@ export function createMidground(shared, mid, H0) {
         c = mix(c, water, smoothstep(0.3, 0.7, vSea));
         // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
         vec3 air = airColour(normalize(vWorld - cameraPosition));
-        // the haze grows with the distance: the near slopes keep their ground colour (about 0.2 at 0.9 km), the far ones
-        // go grey toward the sky (0.5 at 2 km). A flat 0.4 at every distance made the near slope one lilac plane.
-        float far = 0.15 + 0.35 * smoothstep2(400.0, 2000.0, length(vWorld - cameraPosition));
-        outC = vec4(mix(c, air, far * mistBetween(vWorld)), 1.0);
+        outC = vec4(mix(c, air, mix(0.12, 0.6, zone) * mistBetween(vWorld)), 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(geometry, material);
