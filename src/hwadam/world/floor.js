@@ -63,7 +63,10 @@ void makeDab(inout Dab d) {
   d.lie = 1.0;
   d.nrm = Nn;
   // in the moss garden the cushions rise into hummocks: some tufts stand up to 0.12 m higher
-  d.height = ((0.03 + 0.07 * q.z) + 0.12 * sw.x * q.w) * pow(lod, 0.35);
+  // round mounds of moss in the garden, 1 to 2 m across: the crown of each is bright green, its hollow dark
+  float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
+  c1 = mix(c1, mix(vec3(0.2, 0.3, 0.1), vec3(0.62, 0.78, 0.26), hump), sw.x * 0.85);
+  d.height = ((0.03 + 0.07 * q.z) + sw.x * (0.12 * q.w + 0.3 * hump)) * pow(lod, 0.35);
   d.glaze = 1.0;
 }
 `;

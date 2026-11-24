@@ -128,6 +128,15 @@ pack.position.set(0, -0.02, -0.2); // his back is the -z side of the spine (the 
 // the paint goes on the back face (z < -0.05 in the box's own frame) and its sides: the chest side of the box is hidden inside his shirt
 const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 520, accept: (p) => p.z < -0.05, style: () => ({ pal: 0, size: [0.08, 0.13], dir: new THREE.Vector3(0, 1, 0) }) }]);
 scene.add(packDabs.mesh);
+if (q.has('packdbg')) {
+  // the scale test: a bone's world scale and the box's world bounds, to see whether the rig is not in metres
+  const sc = new THREE.Vector3(), bone = man.bones.spine_03;
+  man.object.updateMatrixWorld(true);
+  bone.getWorldScale(sc);
+  const bb = new THREE.Box3().setFromObject(pack);
+  const f = (v) => v.toArray().map((x) => +x.toFixed(4));
+  window.packDbg = { spineWorldScale: f(sc), objectScale: f(man.object.scale), boxMin: f(bb.min), boxMax: f(bb.max), boxSize: f(bb.getSize(new THREE.Vector3())) };
+}
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
 const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
@@ -283,6 +292,7 @@ run();
 document.getElementById('loading')?.remove();
 if (q.has('clean') || capture) document.getElementById('hint')?.remove();
 block.ready();
+if (window.packDbg) window.lab.counts.pack = window.packDbg; // ?packdbg: printed with the ready line
 window.lab.ready = true;
 // for the measuring tools
 window.__block = { ready: true, block, timings, set() {} };

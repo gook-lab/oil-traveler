@@ -94,6 +94,17 @@ export function createScenery(shared, horizon, eyeY) {
     }
   }
 
+  // three stones set in front of the moss viewpoint (its camera and sight: src/hwadam/main.js's moss view)
+  const mossCam = [-8, 98], mossAt = [-26, 82];
+  const fl = Math.hypot(mossAt[0] - mossCam[0], mossAt[1] - mossCam[1]);
+  const fwd = [(mossAt[0] - mossCam[0]) / fl, (mossAt[1] - mossCam[1]) / fl];
+  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8]]) {
+    const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
+    sp.push(x, heightAt(x, z), z);
+    sd.push(rand() * 1000, size, 0.42, 0); // a stone of its size, with its height set high so it reads as a body
+    placed++;
+  }
+
   const group = new THREE.Group();
   const stoneMesh = dabMesh(dabGeometry(sd.length / 4, { aPos: [new Float32Array(sp), 3], aData: [new Float32Array(sd), 4] }), dabMaterial(shared, {
     head: /* glsl */ `in vec3 aPos; in vec4 aData;`,
