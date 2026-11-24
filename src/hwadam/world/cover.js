@@ -128,7 +128,7 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   const template = await tileUrlTemplate();
   const out = new Uint8Array(N * N);
   // the building outlines and the heritage points (T3), kept for buildings.js: metres from the centre
-  const buildings = [], heritage = [], roads = [];
+  const buildings = [], heritage = [], heritageKinds = [], heritageNames = [], roads = [];
   const m0 = mPerDegLon(lat);
   const radius = NEAR_M / 2 + 50;
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
@@ -185,6 +185,9 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
       const q = feat.loadGeometry()[0][0];
       const m = toMetres(x, y, n, P.extent, q.x, q.y, lat, lon, m0);
       heritage.push([m.x, m.z]);
+      // a palace (a name with 궁) makes the palace ring; other castle points (an altar, a ruin) and the temples do not
+      heritageKinds.push(p.class === 'castle' ? (/궁/.test(p.name_ko || p.name || '') ? 'palace' : 'castle') : 'buddhist temple');
+      heritageNames.push(p.name_ko || p.name || p.name_en || '');
     }
     // the roads (the lines of the transportation layer, with a width by class): paved ground (paved.js)
     const T = vt.layers.transportation;
@@ -230,7 +233,7 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts, buildings, heritage, town };
+  return { grid: out, depth: dep, counts, buildings, heritage, heritageKinds, heritageNames, town };
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */

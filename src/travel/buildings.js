@@ -110,7 +110,7 @@ const lightOf = (n) => 0.66 + 0.34 * Math.max(0, n[0] * SUN.x + n[1] * SUN.y + n
  * RULE.heritageM of a historic point, 0.9 rectangular) gets 0.8 of its short side, clamped to 6 to 24 m; any other gets
  * the median of the known heights within 100 m, or 12 m when none is known.
  */
-export function planBuildings(list, heritage) {
+export function planBuildings(list, heritage, kinds = null) {
   const UNKNOWN = 5, plans = [];
   for (const b of list) {
     if (b.hide3d) continue; // the outer outline of a building with parts: its parts stand, not this
@@ -158,7 +158,8 @@ export function planBuildings(list, heritage) {
     p.trad = p.historic && p.h <= RULE.maxH && p.rect >= RULE.rect && (p.filled || p.h <= RULE.knownModernH);
     // a historic outline that is not a rectangle and covers 1500 m2 or more (a palace's walled court, or its ring of
     // walls) stands as a wall ring at 3.4 m: no roof plane, which would cover the court with a plate
-    p.wall = p.historic && p.rect < RULE.rect && p.area >= RULE.wallArea;
+    // the palace ring: only a castle (a palace's walls) makes one; a temple or a store on a big outline does not
+    p.wall = p.rect < RULE.rect && p.area >= RULE.wallArea && (kinds ? heritage.some((h, i) => kinds[i] === 'palace' && Math.hypot(h[0] - p.c[0], h[1] - p.c[1]) <= RULE.heritageM) : p.historic);
     if (p.wall) p.h = RULE.wallH;
   }
   // the ring is cut where a traditional outline stands on it (a gate or a hall on the wall): see wallCuts
@@ -382,7 +383,7 @@ function isNear(s, near) {
  */
 export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
   const T = [performance.now()];
-  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? []);
+  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null);
   const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
   T.push(performance.now());
   // the spacing: the touches cover the area of the walls and roofs, at most `cap` of them

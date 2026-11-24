@@ -102,7 +102,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z)) - 800 * Math.max(0, minOcclusion(sceneGround(near, way.startHeight), x, z) - 0.3)
     : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
   // the start stands 3 m clear of the buildings' outlines and walls (T3, buildings.js)
-  const clear = cover ? clearGrid(planBuildings(cover.buildings ?? [], cover.heritage ?? []), N, NEAR_STEP) : null;
+  const clear = cover ? clearGrid(planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null), N, NEAR_STEP) : null;
   let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 0, clear);
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
   // 30% of the frame hidden within 150 m gets 300 points (the bands and drawn heights are the ones ranges.js draws)
