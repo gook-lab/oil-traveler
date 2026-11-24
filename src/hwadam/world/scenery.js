@@ -39,7 +39,7 @@ void makeDab(inout Dab d) {
 
 // the rings: r = radius of the wall (m), top = how high its skyline stands in the north (m), col = its colour
 const RINGS = [
-  { r: 330, top: 95, seed: 3.1, col: [0.17, 0.23, 0.26], count: 3600, size: 40 },
+  { r: 330, top: 95, seed: 3.1, col: [0.24, 0.3, 0.33], count: 3600, size: 40 },
   { r: 480, top: 160, seed: 11.7, col: [0.27, 0.36, 0.44], count: 1800, size: 55 },
   { r: 640, top: 230, seed: 23.9, col: [0.3, 0.37, 0.48], count: 700, size: 70 },
 ];
@@ -83,7 +83,7 @@ function slopeDir(k, az, horizon, eyeY, r) {
 const RANGE = /* glsl */ `
 ${RING_COL}
 // air perspective per ring: the farther ring fades toward the sky, but keeps a step darker than it (0.65 made it vanish)
-const float RING_AIR[3] = float[3](0.25, 0.35, 0.35);
+const float RING_AIR[3] = float[3](0.25, 0.4, 0.55);
 `;
 
 export function createScenery(shared, horizon, eyeY) {
@@ -204,6 +204,8 @@ void makeDab(inout Dab d) {
         void main() {
           // the top of a band is its darkest, and its foot fades into the valley haze: the reverse of a cloud
           vec3 c = uCol * mix(1.06, 0.84, smoothstep(-20.0, 90.0, vWorld.y));
+          // the wall is broken by noise along its length, so it does not read as one even slab
+          c *= 0.9 + 0.2 * texture(tNoise, vec2(atan(vWorld.z, vWorld.x) * 3.0, vWorld.y / 60.0)).r;
           c = mix(c, uHaze, 0.5 * (1.0 - smoothstep(-20.0, 60.0, vWorld.y)));
           outC = vec4(mix(c, uHaze, uAir), 1.0);
         }`,
@@ -232,10 +234,11 @@ void makeDab(inout Dab d) {
           vec3 c = RING_COL[int(aData.w + 0.5)] * (1.0 + amp * (r.x - 0.5) * 0.14);
           c = jitter(c, r.yzw, 0.03 * amp);
           c = mix(c, uHaze, RING_AIR[int(aData.w + 0.5)]);
-          // the fall line: a short upright stroke down the slope, tilted and lengthened a little by its own seed
-          d.dir = normalize(vec3(aDir.x * 0.5 + (r.y - 0.5) * 0.3, -1.0, aDir.z * 0.5 + (r.z - 0.5) * 0.3));
+          // the skyline's own direction: a level touch along the crest (tilted a little by the slope), not an upright
+          // one (the upright touches read as vertical plates standing on the sky)
+          d.dir = normalize(vec3(aDir.x + (r.y - 0.5) * 0.2, aDir.y * 0.6, aDir.z + (r.z - 0.5) * 0.2));
           d.pos = aPos;
-          d.size = vec2(aData.y * 0.2, aData.y * (0.3 + 0.2 * r.w));
+          d.size = vec2(aData.y * 0.2, aData.y * (0.6 + 0.4 * r.w));
           d.c1 = c;
           d.c2 = c * 1.08;
           d.seed = aData.x;
