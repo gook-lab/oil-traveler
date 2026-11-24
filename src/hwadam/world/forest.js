@@ -195,7 +195,7 @@ export function createForest(shared) {
       const bend = Math.sin(u * 2.4 + t.seed) * 0.25 * (t.type === BIRCH ? 1.6 : 1);
       pts.push(new THREE.Vector3(t.x + t.lean[0] * y * top + bend * t.lean[1] * 8, t.y - 0.3 + y * (top + 0.3), t.z + t.lean[1] * y * top - bend * t.lean[0] * 8));
       // a birch's foot spreads where it meets the ground (the roots), so it stands on the ground, not on a point
-      radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))) * (t.type === BIRCH ? 1 + 0.8 * Math.exp(-(y * top) / 0.3) : 1));
+      radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))));
     }
     tube(wood, pts, radii, full ? 9 : some ? 7 : 5, t.type, t.seed);
     // the trunk's middle and radius at a height above its foot
