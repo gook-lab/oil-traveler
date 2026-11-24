@@ -126,8 +126,10 @@ await turn();
 // out to 40 m along that view. The baked Hwadam walk keeps its own start and view (no clearing).
 const gazeDeg = travel ? gazeBearing(place.horizon) : null;
 const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
+// the travel start: a vantage point near the pin (highest ground within 150 m); the pin itself on flat ground
+const vantage = travel ? place.meta.vantage : { x: 0, z: 0 }; // the start, from the same near square as the skyline
 Object.assign(CLEAR, {
-  x: 0, z: 0, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
+  x: vantage.x, z: vantage.z, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
 const forest = createForest(shared);
@@ -162,7 +164,7 @@ figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no 
 scene.add(man.object, figure.dabs);
 const animator = new Animator(man);
 // the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
-const spawnX = travel ? 0 : START.x, spawnZ = travel ? 0 : START.z;
+const spawnX = travel ? vantage.x : START.x, spawnZ = travel ? vantage.z : START.z;
 const spawn = new THREE.Vector3(spawnX, heightAt(spawnX, spawnZ), spawnZ);
 const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // travel: the skyline's view; else along the way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
@@ -213,7 +215,8 @@ function openFromWalk() {
   const c = place.meta.center, p = player.feet;
   const lat = c.lat - p.z / 110940, lon = c.lon + p.x / (111320 * Math.cos((c.lat * Math.PI) / 180));
   document.exitPointerLock?.();
-  openMap({ lat, lon, back: () => {} });
+  // the map shows where he is and, if it is another spot, the pin he set out from
+  openMap({ lat, lon, pin: { lat: c.lat, lon: c.lon }, back: () => {} });
 }
 addEventListener('keydown', (e) => {
   if (!travel || mapOpen()) return;

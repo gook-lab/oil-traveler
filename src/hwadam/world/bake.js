@@ -240,6 +240,22 @@ export function findWay(H, N, STEP) {
 }
 
 /**
+ * The travel start (the vantage point), from the near square: the highest ground within `radius` metres of the pin,
+ * with a small pull toward the pin (score = height - 0.02 * distance). World metres, x east, z south, as the land uses.
+ */
+export function pickVantage(near, N, STEP, radius = 150) {
+  let best = { x: 0, z: 0, h: -Infinity, score: -Infinity };
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = (i - N / 2) * STEP, z = -(j - N / 2) * STEP;
+    const d = Math.hypot(x, z);
+    if (d > radius || Math.abs(x) > 236 || Math.abs(z) > 236) continue;
+    const h = near[j * N + i], score = h - 0.02 * d;
+    if (score > best.score) best = { x, z, h, score };
+  }
+  return { x: best.x, z: best.z, h: best.h };
+}
+
+/**
  * The first view's bearing (degrees, 0 north, clockwise) from the skyline: the bearing with the most ridge layers
  * (the same count as tools/horizon-layers.mjs: a band counts when it rises 0.4 degree over the nearer ones), and
  * among those the highest far ridge. A place's own shape is what the first frame then shows.

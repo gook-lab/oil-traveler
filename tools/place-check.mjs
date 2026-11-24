@@ -137,7 +137,9 @@ async function openPlace(query, { shot, coverage = false } = {}) {
           const ridge = hz[720 + b];
           if (occ[c] < ridge) visible++;
         }
+        const feet = L.player.feet;
         return {
+          spawn: { x: +feet.x.toFixed(1), z: +feet.z.toFixed(1), y: +feet.y.toFixed(2) }, // where he starts (from the pin)
           skylineShare: +(visible / C).toFixed(4), // share of the frame width where the far ridge shows above the wood
           nearShare: +union(ivNear).toFixed(4), // trunks within 15 m: the ones that block the first view
           allShare: +union(iv).toFixed(4), // every trunk in view, the far wood included
@@ -147,9 +149,10 @@ async function openPlace(query, { shot, coverage = false } = {}) {
       }, out.place.horizon);
     }
     out.minTrunkM = await page.evaluate(() => {
-      // the nearest trunk to the start (the pin in travel): heroes (the old oak) are not counted
+      // the nearest trunk to where he starts (his feet, on the travel start): heroes (the old oak) are not counted
       const ts = window.lab.trees.filter((t) => !t.hero);
-      return ts.length ? Math.min(...ts.map((t) => Math.hypot(t.x, t.z))) : null;
+      const f = window.lab.player.feet;
+      return ts.length ? Math.min(...ts.map((t) => Math.hypot(t.x - f.x, t.z - f.z))) : null;
     });
     await page.waitForTimeout(500);
   }
@@ -159,7 +162,7 @@ async function openPlace(query, { shot, coverage = false } = {}) {
 }
 
 // 1. Hwadam point, with the baked settings: must reproduce the baked files
-const same = await openPlace(`scene=hwadam&place=${HWADAM.lat},${HWADAM.lon}&zooms=13,13,13&name=${encodeURIComponent('화담숲')}&clean`);
+const same = await openPlace(`scene=hwadam&place=${HWADAM.lat},${HWADAM.lon}&zooms=13,13,13&view=goal&name=${encodeURIComponent('화담숲')}&clean`); // the baked skyline's point: the goal
 if (!same.ready) failures.push(`hwadam (13,13,13) did not reach a frame: ${same.status} ${same.problems.join(' | ')}`);
 else {
   const nearStats = stats(same.place.near, bakedNear);
@@ -188,7 +191,7 @@ else {
   report.horizonVsBaked_runtimeZooms = { zooms: real.place.meta.zooms, bands_2km_5km_15km: bandsDeg, ms: real.ms };
 }
 
-// 3. Two other places reach their first frame (and capture the start panel once, on the first)
+// 3. Hwadam (travel), 북한산 and 제주 reach their first frame (named places geocoded at run time) (and capture the start panel once, on the first)
 const named = [];
 for (const q of ['북한산 국립공원', '제주 협재해수욕장']) {
   try {
@@ -196,18 +199,22 @@ for (const q of ['북한산 국립공원', '제주 협재해수욕장']) {
     named.push({ q, ...g });
   } catch (err) { failures.push(String(err)); }
 }
+named.push({ q: '화담숲', lat: HWADAM.lat, lon: HWADAM.lon });
 report.places = [];
 for (const [i, g] of named.entries()) {
-  const r = await openPlace(`scene=travel&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: i === 0 ? 'place-bukhansan' : 'place-jeju', coverage: true });
+  const r = await openPlace(`scene=travel&place=${g.lat},${g.lon}&name=${encodeURIComponent(g.q)}&nopad`, { shot: ['place-bukhansan', 'place-jeju', 'place-hwadam-travel'][i], coverage: true });
   const row = { name: g.q, lat: g.lat, lon: g.lon, ready: r.ready, ms: r.ms, status: r.status, problems: r.problems.slice(0, 3) };
   row.minTrunkFromStartM = r.minTrunkM == null ? null : +r.minTrunkM.toFixed(2);
   if (r.ready) {
     row.gazeDeg = gazeBearing(r.place.horizon);
     row.firstFrame = r.coverage;
     row.skylineShare = r.coverage.skylineShare;
+    row.spawnFromPin = r.coverage.spawn;
+    // the skyline gate: 30% for the places with relief; the flat coast is recorded only (its skyline is one layer)
+    if (g.q !== '제주 협재해수욕장' && r.coverage.skylineShare < 0.3) failures.push(`${g.q}: the far ridge shows over ${(r.coverage.skylineShare * 100).toFixed(1)}% of the first frame (target 30%)`);
     if (r.coverage.nearShare > 0.05) failures.push(`${g.q}: trunks within 15 m cover ${(r.coverage.nearShare * 100).toFixed(1)}% of the first frame's width (limit 5%)`);
   }
-  if (r.ready && r.minTrunkM != null && r.minTrunkM <= 12) failures.push(`${g.q}: a trunk stands ${r.minTrunkM.toFixed(2)} m from the start (need > 12)`);
+  if (r.ready && r.minTrunkM != null && r.minTrunkM <= 15) failures.push(`${g.q}: a trunk stands ${r.minTrunkM.toFixed(2)} m from the start (ring is 15 m)`);
   if (r.ready) row.way = { length: r.place.way.length, gain: r.place.way.gain, slopeMean: r.place.way.slopeMean, slopeMax: r.place.way.slopeMax, startH: r.place.way.startHeight, goalH: r.place.way.goalHeight };
   report.places.push(row);
   if (!r.ready) failures.push(`${g.q} did not reach a frame: ${r.status}`);

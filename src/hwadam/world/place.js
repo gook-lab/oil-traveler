@@ -1,7 +1,7 @@
 // Which ground the walk is built on. Without ?place= it is the baked Hwadam data (src/hwadam/data, no network).
 // With ?place=LAT,LON it bakes that place now, in the browser, from the same terrain tiles (src/hwadam/world/bake.js).
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
-import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
+import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
 import { fetchCover } from './cover.js';
 import wayData from '../data/way.json';
@@ -22,7 +22,9 @@ export async function bakedPlace() {
   const res = await fetch(nearUrl);
   if (!res.ok) throw new PlaceError('net', `near.bin: HTTP ${res.status}`);
   const near = new Float32Array(await res.arrayBuffer());
-  return { source: 'baked', name: BAKED_NAME, near, horizon: await loadHorizon(), way: wayData, meta };
+  // the baked skyline was taken from the way's goal; the travel start (vantage) is picked from the same near square
+  const vantage = pickVantage(near, meta.nearN, meta.nearStep);
+  return { source: 'baked', name: BAKED_NAME, near, horizon: await loadHorizon(), way: wayData, meta: { ...meta, vantage, viewAt: 'goal' } };
 }
 
 /** Reads ?place=LAT,LON (and &name=, &zooms=13,12,11 for checks). Returns null when there is no place. */
@@ -32,8 +34,9 @@ export function placeFromUrl(q) {
   const [lat, lon] = p.split(',').map((s) => Number(s.trim()));
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) throw new PlaceError('badparam');
   const zooms = q.get('zooms') ? q.get('zooms').split(',').map(Number) : RUNTIME_ZOOMS;
+  const viewAt = q.get('view') === 'goal' ? 'goal' : 'vantage'; // check mode: the skyline from the way's goal, as the baked data
   if (zooms.length !== 3 || zooms.some((z) => !Number.isInteger(z) || z < 7 || z > 13)) throw new PlaceError('badparam', 'zooms');
-  return { lat, lon, zooms, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  return { lat, lon, zooms, viewAt, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
 }
 
 /** Terrain tiles: a tile counts only when its imagery is SRTM or GMTED2010 (the same guard as tools/fetch-dem.mjs). */
@@ -56,7 +59,7 @@ function tileLoader(sources) {
  * Bakes a place from the terrain tiles. onProgress(fraction 0..1, label). Throws PlaceError with a code the page
  * can explain (net, source, water, noway).
  */
-export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, name, onProgress = () => {} }) {
+export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'vantage', name, onProgress = () => {} }) {
   const sources = new Set();
   const terrain = new Terrain(tileLoader(sources));
   onProgress(0.05, 'ground');
@@ -67,8 +70,10 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, name, onProgr
   const way = findWay(near, N, NEAR_STEP);
   if (way.length < 80) throw new PlaceError('noway', `way ${way.length} m`);
   onProgress(0.3, 'skyline');
-  // the view is where the way ends (in the baked Hwadam data the goal and the view are the same point)
-  const view = { x: way.goal[0], z: way.goal[1] };
+  // the skyline is taken from the travel start (the vantage point), so that it matches where he stands; or, for the
+  // check against the baked data, from the way's goal (the baked skyline's point)
+  const vantage = pickVantage(near, N, NEAR_STEP, 150);
+  const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
   await prefetchSkyline(terrain, lat, lon, view, zooms);
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms);
@@ -85,7 +90,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, name, onProgr
   const meta2 = {
     cover: cover ? coverCounts : null, coverError,
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands: BANDS, eye,
-    zooms, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
+    zooms, viewAt, vantage, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
   return { source: 'runtime', name, near, horizon, way, meta: meta2, cover };
 }
