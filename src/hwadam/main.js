@@ -12,6 +12,7 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
+import { viewShares, COVER_GLSL } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -126,19 +127,23 @@ await turn();
 // travel: the start is the pin (the centre of the square). The first view looks along the skyline's most layered
 // bearing (src/hwadam/world/bake.js gazeBearing), and no trunk stands within 15 m of the pin nor in the 25 degree fan
 // out to 40 m along that view. The baked Hwadam walk keeps its own start and view (no clearing).
-const gazeDeg = travel ? gazeBearing(place.horizon) : null;
+// (a place with a land cover looks at its sea, or at its rock; see cover.js chooseGaze)
+const gazeDeg = travel ? (place.meta.gaze ?? gazeBearing(place.horizon)) : null;
 const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
 // the travel start: a vantage point near the pin (highest ground within 150 m); the pin itself on flat ground
 const vantage = travel ? place.meta.vantage : { x: 0, z: 0 }; // the start, from the same near square as the skyline
 Object.assign(CLEAR, {
-  x: vantage.x, z: vantage.z, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
+  // a place with a cover (T2) clears 30 m round the start, so that the trees in front stand 25 to 40 m off and their crowns
+  // reach into the frame (the 15 m clearing put them above its top edge)
+  x: vantage.x, z: vantage.z, r: travel ? (place.cover ? 30 : 15) : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
 const forest = createForest(shared);
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
-const leaves = createLeaves(shared, 2400);
+// a place's falling leaves keep off the sea, sand, rock and built-up ground (T2); the autumn wood has no exclusion
+const leaves = createLeaves(shared, 2400, { head: COVER_GLSL, exclude: 'if (bareCover(coverClass(p.xz))) { d.alive = 0.0; return; }' });
 // the shade is taken over the whole walk (its middle, and a box as wide as the ground), not the autumn wood's 330 m
 const shade = createShade(renderer, shared, forest.shade, { sun, centre: [-40, 10, 20], box: [270, 270], back: 500, far: 1000 });
 lap('shade');
@@ -189,6 +194,8 @@ const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
 follow.yaw = faceYaw;
+// a summit start looks down (place.js: meta.pitch); the other starts keep the camera's own pitch
+if (travel && place.meta.pitch != null) follow.pitch = place.meta.pitch;
 const input = new Input(renderer.domElement, { pads: !capture && !q.has('nopad') });
 physics.step();
 lap('figure');
@@ -307,6 +314,41 @@ function tick(dt) {
 
 window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, stonePos: scenery.stonePos, stoneData: scenery.stoneData, heightAt, respawn, way, place,
+  /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
+  coverView: () => viewShares(camera, THREE, heightAt),
+  /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
+  /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */
+  crownView: () => {
+    // the frame by angle: 36.5 degrees to either side, 23 up and down (the 46-degree lens at 16:9), within 300 m
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    const eye = camera.position;
+    const inFrame = (x, y, z) => {
+      const v = new THREE.Vector3(x - eye.x, y - eye.y, z - eye.z);
+      const d = v.dot(fwd);
+      if (d <= 0 || v.length() > 300) return false;
+      return Math.abs(Math.atan2(v.dot(right), d)) < (36.5 * Math.PI) / 180 && Math.abs(Math.atan2(v.dot(up), d)) < (23 * Math.PI) / 180;
+    };
+    let any = 0, bottomIn = 0;
+    for (const t of forest.trees) {
+      if (!(inFrame(t.x, t.y + t.h * 0.3, t.z) || inFrame(t.x, t.y + t.h * 0.55, t.z) || inFrame(t.x, t.y + t.h * 0.8, t.z))) continue;
+      any++;
+      if (inFrame(t.x, t.y + t.h * 0.55, t.z)) bottomIn++;
+    }
+    return { any, bottomIn, share: any ? +(bottomIn / any).toFixed(3) : 0 };
+  },
+  coniferView: () => {
+    const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    let inView = 0, total = 0;
+    for (const t of forest.trees) {
+      if (!t.conifer) continue;
+      total++;
+      const p = new THREE.Vector3(t.x, t.y + t.h * 0.5, t.z);
+      if (f.containsPoint(p) && p.distanceTo(camera.position) < 120) inView++;
+    }
+    return { inView, total };
+  },
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

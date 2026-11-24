@@ -1,0 +1,378 @@
+// The ground cover of a place (T2, 땅 쓰임 칠하기): what lies on each node of the near square (512 m, 2 m nodes,
+// 256 x 256, the same grid as near.bin). The classes come from OpenFreeMap vector tiles (OpenMapTiles schema:
+// water, landcover, landuse, building; © OpenMapTiles © OpenStreetMap contributors) and from the near heights
+// (sea at or below 0.5 m beside water, rock on steep ground with no vegetation). Nothing here runs for the baked
+// Hwadam walk: setCover() is only called for a place given with ?place=.
+// The node layout matches land.js groundAt(): node (i, j) is east (i - N/2)*STEP, north (j - N/2)*STEP.
+import * as THREE from 'three';
+import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
+
+export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9 };
+export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water'];
+/** Higher wins where two features overlap (water over everything, buildings over the land under them). */
+const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
+const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
+const WATER_CLASSES = new Set(['ocean', 'lake', 'pond', 'river', 'reservoir', 'water']);
+const TILE_JSON = 'https://tiles.openfreemap.org/planet';
+const N = NEAR_M / NEAR_STEP;
+const M_LAT = 110940;
+const mPerDegLon = (lat) => 111320 * Math.cos((lat * Math.PI) / 180);
+const Z = 14;
+/** Steeper than 30 degrees with no tree or field on it reads as bare rock. */
+export const ROCK_SLOPE = Math.tan((30 * Math.PI) / 180);
+
+// the grid of the place in use (node order as near.bin). Null for the baked walk.
+let grid = null, depth = null, conifer = 0;
+export function setCover(g, coniferShare = 0, d = null) { grid = g; depth = d; conifer = coniferShare; }
+export function hasCover() { return grid !== null; }
+/** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
+export function coniferChance() { return conifer; }
+/** Classes where no tree stands: water, sand, rock and built-up ground. */
+export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT]);
+/** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
+export function coverTexture() {
+  // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
+  let tex;
+  if (grid && depth) {
+    const data = new Uint8Array(N * N * 2);
+    for (let k = 0; k < N * N; k++) { data[2 * k] = grid[k]; data[2 * k + 1] = depth[k]; }
+    tex = new THREE.DataTexture(data, N, N, THREE.RGFormat, THREE.UnsignedByteType);
+  } else {
+    tex = new THREE.DataTexture(new Uint8Array(2), 1, 1, THREE.RGFormat, THREE.UnsignedByteType);
+  }
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+/** GLSL: the class under a world point (x east, z south). Declared with the other maps in every shader that paints ground. */
+export const COVER_GLSL = /* glsl */ `
+uniform sampler2D tCover;
+float coverClass(vec2 xz) {
+  vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
+  return floor(texture(tCover, (f + 0.5) / ${N}.0).r * 255.0 + 0.5);
+}
+float coverDepth(vec2 xz) {
+  vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
+  return texture(tCover, (f + 0.5) / ${N}.0).g * 12.0;
+}
+/** True when water lies within 4 m (eight points on a ring): the shore carries no leaves, even on untagged land. */
+bool wetCover(vec2 xz) {
+  for (int k = 0; k < 8; k++) {
+    float a = float(k) * 0.7853982;
+    if (abs(coverClass(xz + 4.0 * vec2(cos(a), sin(a))) - 9.0) < 0.5) return true;
+  }
+  return false;
+}
+bool bareCover(float c) {
+  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5;
+}
+`;
+/** Class at world (x, z), nearest node (x east, z south as in land.js). NONE when no place is set. */
+export function coverAt(x, z) {
+  if (!grid) return COVER.NONE;
+  const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
+  const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
+  return grid[j * N + i];
+}
+
+/** Scanline fill of rings (node coordinates, nonzero winding), keeping the larger class value where they overlap. */
+function fill(out, rings, v) {
+  let y0 = Infinity, y1 = -Infinity;
+  for (const r of rings) for (const p of r) { if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+  const from = Math.max(0, Math.ceil(y0)), to = Math.min(N - 1, Math.floor(y1));
+  for (let j = from; j <= to; j++) {
+    const xs = [];
+    for (const r of rings) {
+      for (let k = 0; k < r.length; k++) {
+        const a = r[k], b = r[(k + 1) % r.length];
+        if ((a.y <= j && b.y > j) || (b.y <= j && a.y > j)) {
+          const t = (j - a.y) / (b.y - a.y);
+          xs.push([a.x + t * (b.x - a.x), b.y > a.y ? 1 : -1]);
+        }
+      }
+    }
+    xs.sort((p, q) => p[0] - q[0]);
+    let w = 0;
+    for (let k = 0; k < xs.length - 1; k++) {
+      w += xs[k][1];
+      if (w === 0) continue;
+      const i0 = Math.max(0, Math.ceil(xs[k][0])), i1 = Math.min(N - 1, Math.floor(xs[k + 1][0]));
+      for (let i = i0; i <= i1; i++) if (v > out[j * N + i]) out[j * N + i] = v;
+    }
+  }
+}
+
+/** Tile pixel (extent units) to node coordinates of the place (lat0, lon0 at the centre). */
+function toNode(tx, ty, n, ext, px, py, lat0, lon0, m0) {
+  const lon = ((tx + px / ext) / n) * 360 - 180;
+  const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + py / ext)) / n))) * 180) / Math.PI;
+  return { x: ((lon - lon0) * m0) / NEAR_STEP + N / 2, y: ((lat - lat0) * M_LAT) / NEAR_STEP + N / 2 };
+}
+
+let tileTemplate = null;
+async function tileUrlTemplate() {
+  if (tileTemplate) return tileTemplate;
+  let res;
+  try { res = await fetch(TILE_JSON); } catch { throw new Error('cover: net tilejson'); }
+  if (!res.ok) throw new Error(`cover: tilejson HTTP ${res.status}`);
+  tileTemplate = (await res.json()).tiles[0];
+  return tileTemplate;
+}
+
+/** Rasterises the land cover of the square about (lat, lon) from OpenFreeMap tiles. Returns { grid, counts }. */
+export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
+  const { VectorTile } = await import('@mapbox/vector-tile');
+  const Pbf = (await import('pbf')).default;
+  const template = await tileUrlTemplate();
+  const out = new Uint8Array(N * N);
+  const m0 = mPerDegLon(lat);
+  const radius = NEAR_M / 2 + 50;
+  const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
+  const tiles = [];
+  for (let x = a.x; x <= b.x; x++) for (let y = a.y; y <= b.y; y++) tiles.push([x, y]);
+  let done = 0;
+  for (const [x, y] of tiles) {
+    const url = template.replace('{z}', Z).replace('{x}', x).replace('{y}', y);
+    let res;
+    try { res = await fetch(url); } catch { throw new Error(`cover: net ${Z}/${x}/${y}`); }
+    if (!res.ok) throw new Error(`cover: tile ${Z}/${x}/${y} HTTP ${res.status}`);
+    const vt = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
+    const n = 2 ** Z;
+    const paint = (layer, valueOf) => {
+      const L = vt.layers[layer];
+      if (!L) return;
+      for (let f = 0; f < L.length; f++) {
+        const feat = L.feature(f);
+        if (feat.type !== 3) continue;
+        const v = valueOf(feat.properties);
+        if (!v) continue;
+        const ext = L.extent;
+        const rings = feat.loadGeometry().map((ring) => ring.map((p) => toNode(x, y, n, ext, p.x, p.y, lat, lon, m0)));
+        fill(out, rings, v);
+      }
+    };
+    paint('landuse', (p) => LANDUSE[p.class] ?? 0);
+    paint('landcover', (p) => LANDCOVER[p.class] ?? COVER.GRASS);
+    paint('building', () => COVER.BUILT);
+    paint('water', (p) => (WATER_CLASSES.has(p.class) || !p.class ? COVER.WATER : 0));
+    done++;
+    onProgress(0.1 + (0.8 * done) / tiles.length, 'cover');
+  }
+  // the sea that the tiles missed: at or below sea level, beside water, flat
+  const sea = new Uint8Array(N * N);
+  for (let k = 0; k < N * N; k++) if (out[k] === COVER.WATER) sea[k] = 1;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
+    if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
+  }
+  // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
+    if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
+  }
+  // rock: steep ground with no tree, field or building on it
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i;
+    if (out[k] !== COVER.NONE && out[k] !== COVER.GRASS && out[k] !== COVER.ROCK) continue;
+    if (near[k] <= 0.5) continue;
+    const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
+    if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
+  }
+  onProgress(1, 'cover');
+  const counts = {};
+  for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
+  const dep = new Uint8Array(N * N);
+  for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
+  return { grid: out, depth: dep, counts };
+}
+
+function nearWater(sea, i, j, r) {
+  for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    const ii = i + di, jj = j + dj;
+    if (ii >= 0 && jj >= 0 && ii < N && jj < N && sea[jj * N + ii]) return true;
+  }
+  return false;
+}
+
+/**
+ * Share of trees that are conifers (pine-like) at a place: by altitude above the entrance and by latitude (Jeju and
+ * the southern coast carry more black pine). A fixed rule, written in PLAN.md; a tree is conifer when its draw
+ * number lies under this share.
+ */
+export function coniferShare(lat, heightM) {
+  const alt = Math.min(1, Math.max(0, (heightM - 100) / 400));
+  const south = lat < 35 ? 0.15 : 0;
+  return Math.min(0.75, 0.1 + 0.5 * alt + south);
+}
+
+/**
+ * For each bearing (0 north, clockwise, degrees) the share of the samples out to maxR metres from (vx, vz) that
+ * `hit(node index)` accepts. Samples every 2 m; a ray leaves the square at its edge.
+ */
+export function raySpread(vx, vz, maxR, hit) {
+  const out = new Float64Array(360);
+  for (let a = 0; a < 360; a++) {
+    const r = (a * Math.PI) / 180, dx = Math.sin(r), dz = -Math.cos(r);
+    let n = 0, h = 0;
+    for (let d = 2; d <= maxR; d += NEAR_STEP) {
+      const i = Math.round((vx + dx * d) / NEAR_STEP + N / 2), j = Math.round(N / 2 - (vz + dz * d) / NEAR_STEP);
+      if (i < 0 || j < 0 || i >= N || j >= N) break;
+      n++;
+      if (hit(j * N + i)) h++;
+    }
+    out[a] = n ? h / n : 0;
+  }
+  return out;
+}
+
+/** The ground as the scene draws it: near heights above the entrance, at the scene's vertical scale (land.js VS). */
+const SCENE_VS = 0.5;
+export function sceneGround(near, H0) {
+  return (x, z) => {
+    const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
+    const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
+    return (near[j * N + i] - H0) * SCENE_VS;
+  };
+}
+
+/**
+ * The share of the first frame's ground rays (looking down at 1 to 23 degrees from 1.6 m above the start, as the
+ * scene's camera does) that first meet ground of class `cls`. The ray walks over the scene's own ground, so the
+ * slopes it meets are the ones on screen. Trees are not counted.
+ */
+export function frameShare(cover, ground, x, z, a, cls) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = ground(x, z) + 1.6;
+  let n = 0, h = 0;
+  for (let dep = 1; dep <= 23; dep += 1) {
+    const slope = Math.tan((dep * Math.PI) / 180);
+    n++;
+    for (let t = 1; t < 400; t += 2) {
+      const gx = x + sx * t, gz = z + sz * t;
+      if (eye - t * slope <= ground(gx, gz)) {
+        const i = Math.round(gx / NEAR_STEP + N / 2), j = Math.round(N / 2 - gz / NEAR_STEP);
+        if (i >= 0 && j >= 0 && i < N && j < N && cover[j * N + i] === cls) h++;
+        break;
+      }
+    }
+  }
+  return n ? h / n : 0;
+}
+
+/** Scene scale of the ground (land.js VS): near and midground heights are scaled alike, so the angles match the frame. */
+const VS_SCENE = 0.5;
+/**
+ * The steepest elevation angle (degrees) toward the ridges of the midground grid (600 m to 2 km, mid = bakeMidground) from the
+ * start (x, z) along bearing a. hc is the near height at the start (metres, absolute); the eye is 1.6 m above it.
+ */
+export function ridgeDeg(mid, hc, x, z, a) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = 1.6;
+  let best = -90;
+  // the ridges far off: from 600 m out (a cliff at hand is not a ridge, and would hide the sky)
+  for (let d = 600; d <= mid.half; d += mid.step) {
+    const i = Math.round((x + sx * d + mid.half) / mid.step), j = Math.round((z + sz * d + mid.half) / mid.step);
+    if (i < 0 || j < 0 || i >= mid.n || j >= mid.n) break;
+    const e = Math.atan2(VS_SCENE * (mid.h[j * mid.n + i] - hc) - eye, d) * (180 / Math.PI);
+    if (e > best) best = e;
+  }
+  return best;
+}
+/** The highest ridge angle over the bearings (every 6 degrees) from (x, z); hc from the near square (metres). */
+export function ridgeNear(mid, near, N, STEP, x, z) { // capped at 20 degrees, as the ridge's rise is what reads
+  const i = Math.min(N - 1, Math.max(0, Math.round(x / STEP + N / 2))), j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / STEP)));
+  const hc = near[j * N + i];
+  let best = -90;
+  for (let a = 0; a < 360; a += 6) best = Math.max(best, ridgeDeg(mid, hc, x, z, a));
+  return Math.min(20, best);
+}
+/**
+ * The share of the frame (elevation -23 to +23 degrees, every 2) whose line of sight from (x, z) meets the ground
+ * within maxT metres, looking along bearing a. A near hill that stands in the view hides the far ones.
+ */
+export function occludeShare(ground, x, z, a, maxT) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = ground(x, z) + 1.6;
+  let blocked = 0, n = 0;
+  for (let e = -23; e <= 23; e += 2) {
+    const slope = Math.tan((e * Math.PI) / 180);
+    n++;
+    if (e < -1) continue; // only the rays at or above the horizon can be hidden by a hill
+    for (let t = 2; t <= maxT; t += 2) {
+      if (eye + t * slope <= ground(x + sx * t, z + sz * t)) { blocked++; break; }
+    }
+  }
+  return blocked / n;
+}
+
+/** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
+export function frameNear(cover, near, H0, x, z, cls) {
+  const g = sceneGround(near, H0);
+  let best = 0;
+  for (let a = 0; a < 360; a += 6) best = Math.max(best, frameShare(cover, g, x, z, a, cls));
+  return best;
+}
+
+/**
+ * The first view's bearing for a place with its land cover. Where sea lies in the square, the bearing with the most
+ * sea along its ray (out to 300 m). Otherwise the skyline rule of gazeBearing (bake.js), with a weight for rock seen
+ * along the ray, so that a granite place looks at its domes. Returns degrees, or null without a cover.
+ */
+export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
+  if (!cover) return null;
+  const g = sceneGround(near, H0);
+  // sea in the first frame: the bearing with the most sea on its lower half
+  const sea = new Float64Array(360);
+  for (let a = 0; a < 360; a++) sea[a] = frameShare(cover, g, vantage.x, vantage.z, a, COVER.WATER);
+  let best = 0;
+  for (let a = 1; a < 360; a++) if (sea[a] > sea[best]) best = a;
+  if (sea[best] > 0.02) return best;
+  const deg = (r) => (r * 180) / Math.PI, margin = 0.4;
+  let bestKey = -Infinity;
+  for (let a = 0; a < 360; a++) {
+    const a2 = deg(horizon[a]), a5 = deg(horizon[360 + a]), a15 = deg(horizon[720 + a]);
+    const layers = 1 + (a5 > a2 + margin ? 1 : 0) + (a15 > Math.max(a2, a5) + margin ? 1 : 0);
+    // a mountain looks at the ridge that rises highest above it (the midground), and at the rock it can see
+    let ridge = 0;
+    if (mid) { const i = Math.round(vantage.x / NEAR_STEP + N / 2), j = Math.round(N / 2 - vantage.z / NEAR_STEP); ridge = Math.min(20, ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, a)); }
+    // rock on the frame counts up to 30%; more than 60% is a cliff at hand, which hides the sky, and costs points
+    const rk = frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
+    // a near hill over the view (150 m) costs points beyond 30% of the frame: the far ridge must be what is seen
+    const occ = occludeShare(g, vantage.x, vantage.z, a, 150);
+    const key = layers * 100 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 60 * ridge - 800 * Math.max(0, occ - 0.3);
+    if (key > bestKey) { bestKey = key; best = a; }
+  }
+  return best;
+}
+
+/**
+ * What the first frame shows, as shares of the screen's rays that first hit the ground of each class (trees hide some
+ * of it; they are not counted). camera is the page's THREE camera; ground(x, z) the height. 'sky' is a ray that
+ * meets no ground within 400 m. Called from the page (window.lab.coverView).
+ */
+export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
+  const counts = {};
+  const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+  const p = new THREE.Vector3(), d = new THREE.Vector3();
+  let total = 0, occ150 = 0;
+  for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+    p.set(((cx + 0.5) / cols) * 2 - 1, -(((cy + 0.5) / rows) * 2 - 1), 0.5).unproject(camera);
+    d.copy(p).sub(eye).normalize();
+    let name = 'sky', hitT = Infinity;
+    for (let t = 0.5; t < 400; t += 0.5) {
+      const x = eye.x + d.x * t, y = eye.y + d.y * t, z = eye.z + d.z * t;
+      if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; hitT = t; break; }
+    }
+    counts[name] = (counts[name] || 0) + 1;
+    // a hill over the view: a ray at or above the horizon that meets ground within 150 m (the floor below the
+    // horizon is always near, and is not counted)
+    if (hitT <= 150 && d.y >= -0.02) occ150 = (occ150 || 0) + 1;
+    total++;
+  }
+  for (const k of Object.keys(counts)) counts[k] = +(counts[k] / total).toFixed(3);
+  // occ150: the share of the frame whose ground stands within 150 m (what hides the far view)
+  counts.occ150 = +((occ150 || 0) / total).toFixed(3);
+  return counts;
+}

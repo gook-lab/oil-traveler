@@ -2,8 +2,11 @@
 // air that travels with the eye. A gust shakes more of them loose. Where one crosses a shaft of sun it lights.
 import { dabMaterial, dabGeometry, dabMesh } from '../oilpaint/dabs.js';
 
-export function createLeaves(shared, count = 2400) {
+/** opts.head: GLSL declared before the leaves (a place's cover, T2); opts.exclude: a line that drops a leaf (both '' for the autumn wood). */
+export function createLeaves(shared, count = 2400, opts = {}) {
+  const exclude = opts.exclude ?? '';
   const mesh = dabMesh(dabGeometry(count), dabMaterial(shared, {
+    head: opts.head ?? '',
     body: /* glsl */ `
       const vec3 BOX = vec3(64.0, 26.0, 64.0);
       void makeDab(inout Dab d) {
@@ -17,6 +20,7 @@ export function createLeaves(shared, count = 2400) {
         vec3 origin = vec3(cameraPosition.x, uFocus.y + 11.0, cameraPosition.z);
         p = mod(p - origin + BOX * 0.5, BOX) - BOX * 0.5 + origin;
         float ground = heightAt(p.xz);
+        ${exclude}
         float gust = gustAt(p.xz);
         // most hang on until a gust; all vanish into the carpet
         d.alive = smoothstep(q.z * 0.75 - 0.08, q.z * 0.75 + 0.05, gust + 0.2) * smoothstep(ground, ground + 0.5, p.y) * (1.0 - smoothstep(BOX.x * 0.38, BOX.x * 0.5, distance(p.xz, cameraPosition.xz)));

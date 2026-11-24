@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
+import { setCover, hasCover, coverTexture, coniferShare, COVER_GLSL } from './cover.js';
 export { noise, rng, segW };
 
 /** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
@@ -60,6 +61,8 @@ export function setPlace(place) {
   NEAR_STEP = place.meta.nearStep;
   near = place.near;
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
+  // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
+  setCover(place.cover?.grid ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0, place.cover?.depth ?? null);
   START.x = place.way.start[0]; START.z = place.way.start[1];
   CLEARING.x = place.way.goal[0]; CLEARING.z = place.way.goal[1];
   const WAY = place.way.points;
@@ -136,7 +139,9 @@ export async function prepareLand(pause) {
       land[k + 1] = Math.round(255 * clearingAt(x, z));
       land[k + 2] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + 0.6 * noise(x / 17 + 9, z / 17) + 0.3 * noise(x / 5, z / 5 + 4))));
       // along the way: the nearest sample's place on it (0 at the first point, 1 at the last)
-      land[k + 3] = Math.round(255 * (label[idx] >= 0 ? label[idx] / (way.length - 1) : 0));
+      // a place with its land cover (T2) is painted as the maple climb throughout (autumn ground, no garden moss):
+      // the walk's parts mean nothing there
+      land[k + 3] = hasCover() ? 128 : Math.round(255 * (label[idx] >= 0 ? label[idx] / (way.length - 1) : 0));
     }
   }
 }
@@ -153,6 +158,7 @@ export function createLand(shared) {
   const tHeight = new THREE.DataTexture(heights, N, N, THREE.RedFormat, THREE.FloatType);
   tHeight.minFilter = tHeight.magFilter = THREE.LinearFilter;
   tHeight.needsUpdate = true;
+  shared.tCover = { value: coverTexture() };
   const tLand = new THREE.DataTexture(land, N, N);
   tLand.minFilter = tLand.magFilter = THREE.LinearFilter;
   tLand.needsUpdate = true;
@@ -176,6 +182,7 @@ export function createLand(shared) {
     fragmentShader: /* glsl */ `
       ${COMMON}
       ${SEG_GLSL}
+      ${COVER_GLSL}
       in vec3 vWorld;
       layout(location = 0) out vec4 outC;
       void main() {
@@ -192,6 +199,64 @@ export function createLand(shared) {
         vec3 c = mix(deep, bright, lit);
         c = mix(c, mix(vec3(0.21, 0.17, 0.2), vec3(0.6, 0.47, 0.33), lit), m.r); // the way itself, worn bare
         c *= 0.78 + 0.3 * texture(tNoise, vWorld.xz / 9.0).r;
+        // the ground of a place (T2), painted in dabs of its own: sea, sand, rock and built-up ground. Each class has a
+        // stroke texture (long flat strokes on water and sand, short coarse ones on rock), so no class reads as a flat fill
+        float cls = coverClass(vWorld.xz);
+        vec2 sq2 = floor(vWorld.xz / 0.5 + (texture(tNoise, vWorld.xz / 2.3).rg - 0.5) * 1.4) * 0.5;
+        float sqn = texture(tNoise, sq2 / 9.0).r;
+        float strokeH = texture(tNoise, vec2(vWorld.x / 6.0, vWorld.z / 0.9)).r; // long along x
+        float strokeV = texture(tNoise, vec2(vWorld.x / 1.3, vWorld.z / 2.6)).g; // short, coarse
+        // how much of the water lies next to this node, sampled a metre and a half off on four sides: the shore
+        // breaks into dabs (a dab of water where the noise falls under the share), not a stair of cells
+        float wet = 0.0, rockNear = 0.0;
+        for (int q = 0; q < 4; q++) {
+          vec2 o = vec2(q == 0 ? 1.5 : q == 1 ? -1.5 : 0.0, q == 2 ? 1.5 : q == 3 ? -1.5 : 0.0);
+          float o2 = coverClass(vWorld.xz + o * 2.0);
+          wet += abs(o2 - 9.0) < 0.5 ? 0.25 : 0.0;
+          rockNear = max(rockNear, abs(o2 - 9.0) < 0.5 ? 1.0 : 0.0);
+        }
+        // the shore is a curve, not the 2 m cell stairs: the share of water among nine points 2.5 m apart, with the dab
+        // noise pushing the line either way; a point is water where that share passes one half
+        float wf = 0.0;
+        for (int gy = -1; gy <= 1; gy++) for (int gx = -1; gx <= 1; gx++) {
+          wf += abs(coverClass(vWorld.xz + vec2(float(gx), float(gy)) * 2.5) - 9.0) < 0.5 ? 1.0 : 0.0;
+        }
+        wf /= 9.0;
+        // a water cell is always water (else it kept the autumn underpainting, rust red); the noisy line only moves sand and bare ground
+        bool isWater = abs(cls - 9.0) < 0.5 || (wf + (sqn - 0.5) * 0.45 > 0.5 && (cls < 0.5 || abs(cls - 6.0) < 0.5));
+        if (isWater) {
+          // water as the night fjord paints it (src/night/far.js): long strokes lying flat, the shallows emerald and
+          // the deep teal, and a grazing look that gives back the sky; a white line of foam where sand or rock meets it
+          float dep = coverDepth(vWorld.xz);
+          vec3 wc = mix(vec3(0.3, 0.8, 0.66), vec3(0.04, 0.3, 0.42), smoothstep(0.0, 6.0, dep));
+          wc *= 0.8 + 0.34 * strokeH;
+          float graze = pow(1.0 - clamp(-normalize(vWorld - cameraPosition).y, 0.0, 1.0), 3.0);
+          wc = mix(wc, vec3(0.62, 0.78, 0.82), graze * 0.35);
+          float land3 = 0.0;
+          for (int q = 0; q < 4; q++) {
+            vec2 o = vec2(q == 0 ? 3.0 : q == 1 ? -3.0 : 0.0, q == 2 ? 3.0 : q == 3 ? -3.0 : 0.0);
+            float o2 = coverClass(vWorld.xz + o);
+            land3 = max(land3, (abs(o2 - 6.0) < 0.5 || abs(o2 - 5.0) < 0.5) ? 1.0 : 0.0);
+          }
+          float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
+          c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
+        } else if (abs(cls - 6.0) < 0.5 || (cls < 0.5 && wf > 0.0)) {
+          // (untagged land by the water is beach too: it would otherwise keep the maple climb's rust underpainting)
+          // sand: pale warm, in long flat strokes; where the sea reaches it, the water breaks in dabs over it
+          vec3 sc = mix(vec3(0.8, 0.7, 0.52), vec3(0.95, 0.87, 0.68), sqn) * (0.9 + 0.2 * strokeH);
+          c = sc;
+          if (wet > 0.0 && sqn < wet) c = mix(vec3(0.2, 0.62, 0.58), vec3(0.3, 0.8, 0.66), strokeH);
+        } else if (abs(cls - 5.0) < 0.5) {
+          if (rockNear > 0.5) {
+            // the rock by the sea is basalt (dark, in coarse dark strokes), as on Jeju
+            c = mix(vec3(0.2, 0.2, 0.22), vec3(0.36, 0.34, 0.36), strokeV) * (0.85 + 0.3 * sqn);
+          } else {
+            // the mountain's rock is pale granite, lit in coarse strokes with some dark seams
+            c = mix(vec3(0.66, 0.62, 0.58), vec3(0.86, 0.8, 0.76), strokeV) * (0.9 + 0.15 * sqn);
+          }
+        } else if (abs(cls - 8.0) < 0.5) {
+          c = mix(vec3(0.56, 0.48, 0.42), vec3(0.78, 0.7, 0.6), sqn) * (0.9 + 0.2 * strokeV);
+        }
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
   });

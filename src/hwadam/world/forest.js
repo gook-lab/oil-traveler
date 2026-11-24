@@ -8,6 +8,7 @@ import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
 import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
+import { hasCover, coverAt, coniferChance, NO_TREE } from './cover.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
@@ -76,13 +77,17 @@ function plant() {
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
     if (inFan(x, z)) return;
-    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
+    // a place's land cover (T2): no tree on water, sand, rock or built-up ground
+    if (hasCover() && NO_TREE.has(coverAt(x, z))) return;
+    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale; // 임시: M3 값, 리드 답 대기
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
       : type === MAPLE ? MAPLE_LEAVES[Math.floor(rand() * MAPLE_LEAVES.length)]
       : type === OAK ? (rand() < 0.5 ? 1 : 3)
       : BEECH_LEAVES[Math.floor(rand() * BEECH_LEAVES.length)];
-    trees.push({ x, z, y: heightAt(x, z), type, tier, r, h, family, seed: rand() * 1000, lean: [(rand() - 0.5) * 0.09, (rand() - 0.5) * 0.09] });
+    // a place's conifers (T2): not birch; drawn as a tall narrow cone in the moss green of the palette
+    const conifer = type !== BIRCH && hasCover() && rand() < coniferChance();
+    trees.push({ x, z, y: heightAt(x, z), type, tier, r, h: conifer ? 19 + rand() * 9 : h, family: conifer ? 4 : family, conifer, seed: rand() * 1000, lean: [(rand() - 0.5) * 0.09, (rand() - 0.5) * 0.09] });
   };
   const G = 7.2;
   for (let gz = -40; gz <= 40; gz++) {
@@ -156,6 +161,18 @@ function plant() {
     if (dist < 20 && rand() < 0.2) sc *= 1.6;
     add(x, z, BIRCH, 2, sc);
   }
+  // a place with a cover (T2): conifers stand at the sides of the first view, 32 to 44 m out and 28 to 34 degrees off
+  // the sight, so that the first frame has pines in its near field (they are not lowered with the sight band)
+  if (hasCover() && CLEAR.fan) {
+    for (let i = 0; i < 60; i++) {
+      const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 32 + rand() * 12;
+      const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
+      const before = trees.length;
+      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);
+      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
+      if (trees.filter((t) => t.nearPine).length >= 14) break;
+    }
+  }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
   trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });
@@ -183,7 +200,7 @@ function plant() {
     return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
   };
   const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
-  for (const t of kept) if (inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  for (const t of kept) if (!t.nearPine && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
   return kept;
 }
 
@@ -199,7 +216,7 @@ export function createForest(shared) {
 
   for (const t of trees) {
     const full = t.tier === 0, some = t.tier === 1;
-    const top = t.h * (t.type === BIRCH ? 0.95 : 0.8);
+    const top = t.h * (t.type === BIRCH ? 0.95 : t.conifer ? 0.97 : 0.8);
     // --- trunk ---
     const rings = full ? 9 : some ? 5 : 3;
     const pts = [], radii = [];
@@ -225,7 +242,15 @@ export function createForest(shared) {
     const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
     const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
     const treeLobes = [];
-    if (full) {
+    if (t.conifer) {
+      // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
+      const steps = full ? 9 : 6;
+      for (let i = 0; i < steps; i++) {
+        const u = i / steps, y = t.y + t.h * (0.22 + 0.72 * u);
+        const lr = Math.max(0.9, spread * 0.55 * (1 - u) + 0.9);
+        treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
+      }
+    } else if (full) {
       const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
@@ -304,6 +329,8 @@ export function createForest(shared) {
     const x = (rand() - 0.5) * 150, z = -125 + rand() * 235;
     const wd = wayDist(x, z);
     if (wd < 3.5 || wd > 62 || clearingAt(x, z) > 0.6) continue;
+    // a place's cover (T2): no bush on water, sand, rock or built-up ground
+    if (hasCover() && NO_TREE.has(coverAt(x, z))) continue;
     const y = heightAt(x, z), garden = segW(pathT(x, z))[0], tall = (1.1 + rand() * rand() * 3.4) * (1 - 0.75 * garden);
     const sw = segW(pathT(x, z));
     const family = rand() < sw[0] ? 4 : rand() < sw[1] ? (rand() < 0.6 ? 0 : 1) : rand() < sw[2] ? 5 : 2;

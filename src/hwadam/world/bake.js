@@ -243,16 +243,21 @@ export function findWay(H, N, STEP) {
 }
 
 /**
- * The travel start (the vantage point), from the near square: the highest ground within `radius` metres of the pin,
+ * The travel start (the vantage point), from the near square: the highest land within `radius` metres of the pin,
  * with a small pull toward the pin (score = height - 0.02 * distance). World metres, x east, z south, as the land uses.
  */
-export function pickVantage(near, N, STEP, radius = 150) {
+export function pickVantage(near, N, STEP, radius = 150, cover = null, rockBonus = null) {
   let best = { x: 0, z: 0, h: -Infinity, score: -Infinity };
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+  // a mountain's start looks at its rock: the candidates are then every 8 m (the rock count is costly), and each
+  // gets up to 400 points (more than any height gap on a mountain) for the most rock within 60 m (rockBonus, from cover.js)
+  const stride = rockBonus ? 4 : 1;
+  for (let j = 0; j < N; j += stride) for (let i = 0; i < N; i += stride) {
     const x = (i - N / 2) * STEP, z = -(j - N / 2) * STEP;
     const d = Math.hypot(x, z);
     if (d > radius || Math.abs(x) > 236 || Math.abs(z) > 236) continue;
-    const h = near[j * N + i], score = h - 0.02 * d;
+    // the start stands on land: never on water (9) or built-up ground (8) of a place's cover (T2)
+    if (cover && cover[j * N + i] >= 8) continue;
+    const h = near[j * N + i], score = h - 0.02 * d + (rockBonus ? 400 * rockBonus(x, z) : 0);
     if (score > best.score) best = { x, z, h, score };
   }
   return { x: best.x, z: best.z, h: best.h };

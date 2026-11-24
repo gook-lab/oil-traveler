@@ -19,6 +19,7 @@ The travel scene (`?scene=travel`), a walk on any place picked on the map:
 - The map: MapLibre GL JS 6.17.0 (BSD-3-Clause) over OpenFreeMap's style and tiles.
 - Map data: © OpenStreetMap contributors (ODbL), © OpenMapTiles, OpenFreeMap.
 - Place search: OpenStreetMap Nominatim, one query per submitted search.
+- The land cover of a picked place (water, woods, sand, rock, fields, built-up ground): © OpenMapTiles © OpenStreetMap contributors (ODbL), via OpenFreeMap.
 - Heights of the picked place: AWS Terrain Tiles, the official attribution list at https://github.com/tilezen/joerd/blob/master/docs/attribution.md (SRTM and GMTED2010 only; the page refuses any other source).
 
 The full list with sources is in `LICENCE-NOTES.md`.

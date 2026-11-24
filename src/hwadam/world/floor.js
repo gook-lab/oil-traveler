@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { groundRings } from '../../oilpaint/ground.js';
 import { segW, SEG_GLSL } from './segments.js';
+import { COVER_GLSL } from './cover.js';
 
 // leaf litter by kind: 0 moss-green, 1 crimson, 2 vermilion, 3 birch yellow, 4 the bare way, 5 gold grass gone down
 export const LITTER = /* glsl */ `
@@ -42,6 +43,8 @@ void makeDab(inout Dab d) {
   float lod;
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
+  // no litter on sea, sand, rock or built-up ground (T2): the ground's own paint shows there
+  if (bareCover(coverClass(xz)) || wetCover(xz)) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   vec3 Nn = normalAt(xz);
   vec4 m = texture(tLand, landUv(xz));
@@ -116,6 +119,7 @@ void makeDab(inout Dab d) {
   float lod;
   d.alive = ringGrow(distance(foot, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
+  if (bareCover(coverClass(foot)) || wetCover(foot)) { d.alive = 0.0; return; }
   vec4 m = texture(tLand, landUv(foot));
   vec4 sw = segW(m.a);
   // it grows in drifts, keeps off the way, and fills the clearing
@@ -157,10 +161,57 @@ void makeDab(inout Dab d) {
 }
 `;
 
+// the bare ground of a place (T2): sand, rock and built-up ground painted in dabs like the wood's floor, so that it
+// reads as paint and not as a flat fill. The dabs lie flat, in the colour of their class; the basalt by the sea is dark.
+const bare = /* glsl */ `
+void makeDab(inout Dab d) {
+  vec2 cell; float sub;
+  if (!ringCell(20.0, true, cell, sub)) { d.alive = 0.0; return; }
+  vec4 r = hash4(cell, sub * 3.0 + 7.0);
+  vec4 q = hash4(cell + 13.1, sub + 5.0);
+  vec2 xz = (cell + r.xy) * uCell0;
+  float lod;
+  d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
+  if (d.alive <= 0.0) return;
+  float cls = coverClass(xz);
+  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5;
+  if (!(sand || rock || built)) { d.alive = 0.0; return; }
+  vec3 P = vec3(xz.x, heightAt(xz), xz.y);
+  vec3 Nn = normalAt(xz);
+  float lit = woodSunAt(P + vec3(0.0, 0.2, 0.0)) * clamp(dot(Nn, uSunDir) * 2.4, 0.0, 1.0);
+  float wet = 0.0;
+  if (rock) {
+    for (int k = 0; k < 4; k++) {
+      vec2 o = vec2(k == 0 ? 3.0 : k == 1 ? -3.0 : 0.0, k == 2 ? 3.0 : k == 3 ? -3.0 : 0.0);
+      wet = max(wet, abs(coverClass(xz + o) - 9.0) < 0.5 ? 1.0 : 0.0);
+    }
+  }
+  vec3 c;
+  if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
+  else if (rock && wet > 0.5) c = paint3(vec3(0.3, 0.3, 0.32), vec3(0.2, 0.2, 0.22), vec3(0.12, 0.12, 0.14), lit, q.y);
+  else if (rock) c = paint3(vec3(0.86, 0.82, 0.78), vec3(0.66, 0.62, 0.58), vec3(0.42, 0.4, 0.38), lit, q.y);
+  else c = paint3(vec3(0.7, 0.62, 0.52), vec3(0.52, 0.45, 0.38), vec3(0.34, 0.3, 0.26), lit, q.y);
+  c = jitter(c, r.wzy, 0.4);
+  float a = (q.x - 0.5) * 0.5;
+  d.dir = vec3(cos(a), 0.0, sin(a));
+  d.pos = P;
+  d.size = uCell0 * vec2(1.1 + 0.5 * r.z, 1.8 + 0.9 * r.w) * lod;
+  d.c1 = hazed(c, P);
+  d.c2 = hazed(jitter(c, q.wzy, 0.5), P);
+  d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37 + 2.0;
+  d.turnabout = 1.0;
+  d.lie = 1.0;
+  d.nrm = Nn;
+  d.height = 0.02 + 0.03 * q.z;
+  d.glaze = 1.0;
+}
+`;
+
 export function createFloor(shared) {
-  const carpetRings = groundRings(shared, { head: LITTER + SEG_GLSL, body: carpet, per: 3, n: 192, cell0: 0.14, levels: 6, minPx: [5, 9], maxPx: [4000, 4000], cells: [0, 8] });
-  const growthRings = groundRings(shared, { head: LITTER + SEG_GLSL, body: growth, per: 6, n: 96, cell0: 0.42, levels: 4, minPx: [2.5, 12], maxPx: [60, 420], cells: [0, 4] });
+  const carpetRings = groundRings(shared, { head: LITTER + SEG_GLSL + COVER_GLSL, body: carpet, per: 3, n: 192, cell0: 0.14, levels: 6, minPx: [5, 9], maxPx: [4000, 4000], cells: [0, 8] });
+  const growthRings = groundRings(shared, { head: LITTER + SEG_GLSL + COVER_GLSL, body: growth, per: 6, n: 96, cell0: 0.42, levels: 4, minPx: [2.5, 12], maxPx: [60, 420], cells: [0, 4] });
+  const bareRings = groundRings(shared, { head: COVER_GLSL + SEG_GLSL, body: bare, per: 2, n: 128, cell0: 0.3, levels: 4, minPx: [3, 8], maxPx: [900, 900], cells: [0, 4] });
   const group = new THREE.Group();
-  group.add(carpetRings.group, growthRings.group);
-  return { group, follow(x, z) { carpetRings.follow(x, z); growthRings.follow(x, z); } };
+  group.add(carpetRings.group, growthRings.group, bareRings.group);
+  return { group, follow(x, z) { carpetRings.follow(x, z); growthRings.follow(x, z); bareRings.follow(x, z); } };
 }
