@@ -1,7 +1,7 @@
 // Which ground the walk is built on. Without ?place= it is the baked Hwadam data (src/hwadam/data, no network).
 // With ?place=LAT,LON it bakes that place now, in the browser, from the same terrain tiles (src/hwadam/world/bake.js).
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
-import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
+import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
@@ -65,6 +65,9 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'van
   await terrain.prefetch(lat, lon, NEAR_M, NEAR_ZOOM);
   const near = bakeNear(terrain, lat, lon);
   if (waterShare(near) > 0.5) throw new PlaceError('water');
+  // the middle ground: the ground out to 2 km, on a 24 m grid (only the travel walk uses it)
+  await terrain.prefetch(lat, lon, 2050, NEAR_ZOOM);
+  const mid = bakeMidground(terrain, lat, lon, 2000, 24);
   const N = NEAR_M / NEAR_STEP;
   const way = findWay(near, N, NEAR_STEP);
   if (way.length < 80) throw new PlaceError('noway', `way ${way.length} m`);
@@ -81,7 +84,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'van
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands: BANDS, eye,
     zooms, viewAt, vantage, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
-  return { source: 'runtime', name, near, horizon, way, meta: meta2 };
+  return { source: 'runtime', name, near, horizon, way, mid, meta: meta2 };
 }
 
 /** A short label for a Nominatim result: its first two parts, the rest cut (the full name is long). */

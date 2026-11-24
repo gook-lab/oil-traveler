@@ -271,3 +271,17 @@ export function gazeBearing(horizon) {
   }
   return best;
 }
+
+/**
+ * The mid-ground: the ground from the near square's edge out to `half` metres (4 km square by default), on a coarse
+ * grid of `step` metres (x east, z south, from the pin). It is baked for travel only (the walk's middle ground,
+ * src/travel/midground.js). Needs the tiles of that square prefetched. Heights are raw metres, as the near square's.
+ */
+export function bakeMidground(terrain, lat, lon, half = 2000, step = 24) {
+  const n = Math.round((2 * half) / step) + 1, h = new Float32Array(n * n), m = mPerDegLon(lat);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = -half + i * step, z = -half + j * step;
+    h[j * n + i] = terrain.height(lat + -z / M_LAT, lon + x / m, NEAR_ZOOM);
+  }
+  return { n, step, half, h };
+}

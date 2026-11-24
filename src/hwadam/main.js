@@ -15,6 +15,7 @@ import { gazeBearing } from './world/bake.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
+import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -146,9 +147,15 @@ const kick = createKick(shared);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
+const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
+if (midMesh) scene.add(midMesh);
+// travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
+// their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
+if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
