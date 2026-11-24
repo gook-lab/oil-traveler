@@ -8,4 +8,10 @@ Oil paint, a block by Patch. Code MIT, art CC0 1.0.
 - Physics: Rapier 0.21.0 by Dimforge (Apache-2.0), see `RAPIER-LICENSE.txt`.
 - three.js 0.186.1 (MIT), see `THIRD-PARTY-NOTICES.md`.
 
+The Hwadam walk (`?scene=hwadam`), added by gook-lab:
+
+- Heights: Terrain Tiles on AWS Open Data. Global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
+- The centre point of the walk: © OpenStreetMap contributors (ODbL).
+- An impression of the place, made in code. No photograph, logo or map of it was used.
+
 The full list with sources is in `LICENCE-NOTES.md`.

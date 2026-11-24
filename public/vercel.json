@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/", "missing": [{ "type": "query", "key": "scene" }], "destination": "/?scene=hwadam", "permanent": false }
+  ]
+}

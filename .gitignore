@@ -15,3 +15,4 @@ node_modules
 dist
 upstream
 shots/work
+!shots/hwadam-*.jpg
