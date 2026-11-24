@@ -341,7 +341,8 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
     const rk = frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
     // a near hill over the view (150 m) costs points beyond 30% of the frame: the far ridge must be what is seen
     const occ = occludeShare(g, vantage.x, vantage.z, a, 150);
-    const key = layers * 100 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 60 * ridge - 800 * Math.max(0, occ - 0.3);
+    // the layers of the skyline weigh most (400 each): overlapping ridges are the picture; the ridge's rise adds 20 a degree
+    const key = layers * 400 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 20 * ridge - 800 * Math.max(0, occ - 0.3);
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;

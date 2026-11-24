@@ -74,7 +74,24 @@ for (const p of PLACES) {
       for (let b = 0; b < 3; b++) { const e = deg(H[b * 360 + a]); if (e > max) max = e; if (e > 0.5) up = true; }
       if (up) above++;
     }
-    return { maxElev: +max.toFixed(2), bearingsAbove05: above };
+    // the ridge layers in the lane (gaze +-12 degrees): each distance band's highest ridge, and a band counts as a
+    // layer when it rises 0.4 degree over the nearer ones (the layers are what overlapping ridges show)
+    const bands = [0, 1, 2].map((b) => {
+      let m = -90;
+      for (let k = -12; k <= 12; k++) m = Math.max(m, deg(H[b * 360 + ((g + k + 360) % 360)]));
+      return +m.toFixed(2);
+    });
+    let layers = 1, top = bands[0];
+    for (let b = 1; b < 3; b++) if (bands[b] > top + 0.4) { layers++; top = bands[b]; }
+    // the same count for every bearing of the start: how many bearings show two or more layers at all
+    let multi = 0;
+    for (let q = 0; q < 360; q++) {
+      const bb = [0, 1, 2].map((b) => deg(H[b * 360 + q]));
+      let L = 1, t = bb[0];
+      for (let b = 1; b < 3; b++) if (bb[b] > t + 0.4) { L++; t = bb[b]; }
+      if (L >= 2) multi++;
+    }
+    return { maxElev: +max.toFixed(2), bearingsAbove05: above, laneBands: bands, laneLayers: layers, bearingsWithTwoLayers: multi };
   }) : null;
   if (skyline) console.log(`  skyline in the gaze cone ${JSON.stringify(skyline)}`);
   const need = { hyeopjae: ['water', 0.25], bukhansan: ['rock', 0.1] }[p.name];
