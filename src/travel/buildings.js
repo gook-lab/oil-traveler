@@ -355,33 +355,40 @@ function surfacesOf(p, ground) {
     const P00 = [a[0], yEave - 0.05, a[1]], P10 = [b[0], yEave - 0.05, b[1]], P01 = [ea[0], yEave - 0.05, ea[1]], P11 = [eb[0], yEave - 0.05, eb[1]];
     out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u) => (Math.floor(u * 8) % 2 ? [0.13, 0.28, 0.25] : [0.4, 0.13, 0.09]) });
   }
-  // the hip roof, as a curved surface: the eaves rise toward the corners (the upturned eaves, 1.5 m at the corner), and the
-  // roof is steep at the ridge and flat at the eave (a concave curve, t ** 1.6 of the way up). Its ridge is a line of
-  // the length eu - ev. The surface is cut into N by N quads, each a surface of its own (lit, dabbed like the rest)
-  const eu = R.hu + EAVE, ev = R.hv + EAVE, rr = Math.max(0, eu - ev);
+  // the roof: a hip-and-gable (팔작) roof. A straight ridge runs along the long side, its length the long side less 0.6 of
+  // the short one. The long slopes curve down to the eaves (flat at the eave, steep at the ridge), the ends hip down from
+  // the ridge's ends, and only the eave corners lift. The roof stands 0.4 of the short side high. Each short end carries a
+  // triangular gable on the wall top. The roof is cut into N by N quads (each lit and dabbed like the rest).
+  const eu = R.hu + EAVE, ev = R.hv + EAVE, rr = Math.max(0, R.hu - 0.6 * R.hv);
+  const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
+  const yRidge = yEave + roofH;
+  const curve = (t) => Math.pow(Math.min(1, Math.max(0, t)), 1.6);
   const roofAt = (su, sv) => {
     const a = su * eu, b = sv * ev;
-    // the distance in from the eave, 0 at the eave and 1 on the ridge: flat along the ridge (the ridge is a straight line,
-    // not a V), and falling off as a curve toward the eave
-    const q = Math.min(1, Math.max(Math.abs(b), Math.max(0, Math.abs(a) - rr)) / ev);
-    const t = Math.max(0, 1 - Math.pow(q, 2.2));
-    // the eave corners alone lift (the upturned ends); the eave's middle stays on the wall top
+    const longH = yEave + roofH * curve(1 - Math.abs(b) / ev);
+    const hipT = 1 - Math.max(0, Math.abs(a) - rr) / Math.max(1, eu - rr);
+    const y0 = Math.min(longH, yEave + roofH * curve(hipT));
     const ca = Math.min(1, Math.max(0, (Math.abs(a) - rr) / Math.max(1, eu - rr)));
     const cb = Math.min(1, Math.abs(b) / ev);
-    const cornerF = ca * ca * Math.pow(cb, 4);
-    const y = yEave + (yTop - yEave) * Math.pow(t, 1.6) + CORNER_LIFT * cornerF;
     const [x, z] = rectPt(R, a, b);
-    return [x, y, z];
+    return [x, y0 + CORNER_LIFT * ca * ca * Math.pow(cb, 4), z];
   };
   const N = ROOF_N;
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
     const s0 = -1 + (2 * i) / N, s1 = -1 + (2 * (i + 1)) / N, t0 = -1 + (2 * j) / N, t1 = -1 + (2 * (j + 1)) / N;
     const sc = (s0 + s1) / 2 * eu; // the centre across the roof, in metres: the tile grooves run down the slope at its lines
-    const ridge = roofAt((s0 + s1) / 2, (t0 + t1) / 2)[1] > yTop - 0.3; // the ridge's tiles are darker
+    const ridge = roofAt((s0 + s1) / 2, (t0 + t1) / 2)[1] > yRidge - 0.3; // the ridge's tiles are darker
     out.push({
       P00: roofAt(s0, t0), P10: roofAt(s1, t0), P01: roofAt(s0, t1), P11: roofAt(s1, t1), cell: [9, 9],
-      col: (u, v, r) => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], r).map((c) => c * (0.9 + 0.1 * Math.sin(sc * 9)) * (ridge ? 0.7 : 1)),
+      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (0.9 + 0.1 * Math.sin(sc * 9)) * (ridge ? 0.7 : 1)),
     });
+  }
+  // the gables: a triangle at each short end, from the wall top to the apex over the middle of the end (a degenerate quad)
+  for (const sgn of [-1, 1]) {
+    const a = sgn * R.hu;
+    const apex = yEave + roofH * curve(1 - Math.max(0, Math.abs(a) - rr) / Math.max(1, eu - rr));
+    const p0 = rectPt(R, a, -R.hv), p1 = rectPt(R, a, R.hv), pa = rectPt(R, a, 0);
+    out.push({ P00: [p0[0], yEave, p0[1]], P10: [p1[0], yEave, p1[1]], P01: [pa[0], apex, pa[1]], P11: [pa[0], apex, pa[1]], cell: [3, 1], col: () => [0.86, 0.84, 0.78] });
   }
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
@@ -463,11 +470,12 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     const N0 = s.n ?? quadNormal(s);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
       // each row's joints are staggered (no straight joints across the face), and each cell takes its own tone
-      const sh = (rnd(j * 0.61 + 0.2, nu * 0.37 + 1.1) - 0.5) * 0.6 / nu;
+      // (a traditional wall is not staggered: its columns must run straight up through the bays)
+      const sh = s.vertical ? 0 : (rnd(j * 0.61 + 0.2, nu * 0.37 + 1.1) - 0.5) * 0.6 / nu;
       const ub = (k) => (k === 0 ? 0 : k === nu ? 1 : Math.min(1, Math.max(0, k / nu + sh)));
       const u0 = ub(i), u1 = ub(i + 1), v0 = j / nv, v1 = (j + 1) / nv;
       const off = (P) => P.map((x, k) => x + N0[k] * 0.02);
-      const rc = rnd(i * 1.73 + j * 0.31 + s.P00[0] * 0.37, j * 1.3 + i * 0.21 + s.P00[2] * 0.11);
+      const rc = s.vertical ? 0.5 : rnd(i * 1.73 + j * 0.31 + s.P00[0] * 0.37, j * 1.3 + i * 0.21 + s.P00[2] * 0.11);
       const c = s.col((u0 + u1) / 2, (v0 + v1) / 2, rc).map((x) => x * lightOf(N0));
       const A = off(bil(s, u0, v0)), B = off(bil(s, u1, v0)), C = off(bil(s, u1, v1)), D = off(bil(s, u0, v1));
       vert(A, c); vert(B, c); vert(C, c); vert(A, c); vert(C, c); vert(D, c);
@@ -603,6 +611,8 @@ export function clearGrid(plans, N, STEP) {
         }
       }
     }
+    // a palace ring's court is open (the start may stand in it, and see the hall); only its wall and the 3 m band are blocked
+    if (p.wall) continue;
     const xs = p.pts.map((q) => q[0]), zs = p.pts.map((q) => q[1]);
     const [i0, j1] = nodeOf(Math.min(...xs), Math.min(...zs)), [i1, j0] = nodeOf(Math.max(...xs), Math.max(...zs));
     for (let j = Math.max(0, j0); j <= Math.min(N - 1, j1); j++) for (let i = Math.max(0, i0); i <= Math.min(N - 1, i1); i++) {
@@ -617,7 +627,8 @@ export function clearance(plans, x, z) {
   let d = Infinity, inBuilding = false;
   for (const p of plans) {
     for (let k = 0; k < p.pts.length; k++) d = Math.min(d, segDist(x, z, p.pts[k], p.pts[(k + 1) % p.pts.length]));
-    if (inside(p.pts, x, z)) inBuilding = true;
+    // a palace ring's court is open ground: only the wall itself and the buildings count as inside
+    if (!p.wall && inside(p.pts, x, z)) inBuilding = true;
   }
   return { d: +d.toFixed(2), inBuilding };
 }

@@ -42,26 +42,29 @@ const frameShare = () => {
   const { THREE, camera, heightAt, buildingPlans } = window.lab;
   const plans = buildingPlans.map((p) => {
     const gMin = Math.min(...p.pts.map((q) => heightAt(q[0], q[1])), heightAt(p.c[0], p.c[1]));
-    return { pts: p.pts, lo: gMin + (p.mh ?? 0), hi: gMin + p.h };
+    return { pts: p.pts, lo: gMin + (p.mh ?? 0), hi: gMin + p.h, kind: p.trad ? 'hall' : p.wall ? 'wall' : 'building' };
   });
   const inside = (pts, x, z) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
   const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
   const p = new THREE.Vector3(), d = new THREE.Vector3();
   const cols = 64, rows = 36;
-  let hit = 0, total = 0;
+  const share = { building: 0, hall: 0, wall: 0 };
+  let total = 0;
   for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
     p.set(((cx + 0.5) / cols) * 2 - 1, -(((cy + 0.5) / rows) * 2 - 1), 0.5).unproject(camera);
     d.copy(p).sub(eye).normalize();
-    let name = 'other';
-    for (let t = 0.5; t < 300; t += 0.5) {
+    let kind = null;
+    for (let t = 0.5; t < 300 && !kind; t += 0.5) {
       const x = eye.x + d.x * t, y = eye.y + d.y * t, z = eye.z + d.z * t;
       if (y <= heightAt(x, z)) break;
-      if (plans.some((b) => y >= b.lo && y <= b.hi && inside(b.pts, x, z))) { name = 'building'; break; }
+      const hitB = plans.find((b) => y >= b.lo && y <= b.hi && inside(b.pts, x, z));
+      if (hitB) kind = hitB.kind;
     }
-    if (name === 'building') hit++;
+    if (kind) share[kind]++;
     total++;
   }
-  return +(hit / total).toFixed(3);
+  // the share of the frame's rays (64 by 36) that first meet a traditional hall, a palace wall, or any other building
+  return { hall: +(share.hall / total).toFixed(3), wall: +(share.wall / total).toFixed(3), building: +(share.building / total).toFixed(3) };
 };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true, args: ['--mute-audio', '--ignore-gpu-blocklist', '--use-angle=metal', '--enable-gpu'] });

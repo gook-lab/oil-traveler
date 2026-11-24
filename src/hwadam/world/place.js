@@ -3,7 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { planBuildings, clearGrid } from '../../travel/buildings.js';
+import { planBuildings, clearGrid, clearance } from '../../travel/buildings.js';
 import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
@@ -102,8 +102,33 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z)) - 800 * Math.max(0, minOcclusion(sceneGround(near, way.startHeight), x, z) - 0.3)
     : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
   // the start stands 3 m clear of the buildings' outlines and walls (T3, buildings.js)
-  const clear = cover ? clearGrid(planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null), N, NEAR_STEP) : null;
+  const plansAll = cover ? planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null) : [];
+  const clear = cover ? clearGrid(plansAll, N, NEAR_STEP) : null;
   let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 0, clear);
+  // a palace place: the start stands in the court of the palace ring (3 m clear of its wall), 15 to 25 m from the nearest
+  // traditional hall, so that the hall fills the first view and the ring does not hide it (nearest to 20 m wins)
+  let palaceGaze = null;
+  const palace = plansAll.filter((p) => p.wall), halls = plansAll.filter((p) => p.trad);
+  if (palace.length && halls.length) {
+    const inPoly = (pts, x, z) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+    let best = null;
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const x = (i - N / 2) * NEAR_STEP, z = -(j - N / 2) * NEAR_STEP;
+      if (clear[j * N + i] !== 1 || !palace.some((p) => inPoly(p.pts, x, z))) continue;
+      const dh = Math.min(...halls.map((h) => Math.hypot(h.c[0] - x, h.c[1] - z)));
+      if (dh < 15 || dh > 25) continue;
+      // 9 m or more from the ring wall, so the wall does not fill the lower frame
+      if (clearance(palace, x, z).d < 9) continue;
+      const score = -Math.abs(dh - 20) + 0.01 * near[j * N + i];
+      if (!best || score > best.score) best = { x, z, score, h: near[j * N + i] };
+    }
+    if (best) {
+      vantage = { x: best.x, z: best.z, h: best.h, score: best.score };
+      // the first view looks at the nearest hall, so that the hall (not the ring wall behind the start) fills the frame
+      const hall = halls.reduce((m, h) => (Math.hypot(h.c[0] - best.x, h.c[1] - best.z) < Math.hypot(m.c[0] - best.x, m.c[1] - best.z) ? h : m));
+      palaceGaze = (Math.atan2(hall.c[0] - best.x, -(hall.c[1] - best.z)) * 180) / Math.PI;
+    }
+  }
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
   // 30% of the frame hidden within 150 m gets 300 points (the bands and drawn heights are the ones ranges.js draws)
   if (focus === 5 && bonus) {
@@ -124,7 +149,8 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
-  const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
+  let gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
+  if (typeof palaceGaze === 'number') gaze = ((palaceGaze % 360) + 360) % 360;
   // a mountain whose first view has no ridge above the eye (a summit pin) looks down about 8 degrees (pitch 0.14),
   // so that the skyline lies a third of the way down from the top of the frame; otherwise the start pitch (0.05)
   let pitch = 0.05;
