@@ -19,6 +19,8 @@ CHROME="$(find ~/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64 -pa
 
 도구들은 맥에서 ANGLE Metal 을 씁니다(원본은 Windows d3d11).
 
+프레임을 재는 `--time` 측정은 다른 레포(oil-shooter)와 GPU 를 나눠 쓰면 숫자가 부풉니다. 재기 전에 `mkdir ~/sonix/toy/.gpu-measure.lock` 으로 잠그고, 끝나면 `rmdir` 합니다. mkdir 이 실패하면 30초 기다렸다가 다시 시도합니다. 스틸 촬영만 할 때는 잠그지 않습니다.
+
 ## 검증 — 화면만 보는 비평가
 
 그림 · 색 · 붓 자국을 바꾼 묶음은 커밋 전에, 바꾼 구간을 찍어 **새** 서브에이전트에게 그림과 "이 구간이 보여 줄 인상" 한 줄만 줍니다. 코드 · diff · 설명은 주지 않습니다. 심각도(치명 · 큼 · 보통 · 사소함)와 함께 고칠 점 다섯 개까지 받고, 치명 · 큼부터 고쳐 다시 찍어 새 비평가에게 보냅니다. 라운드 수와 남은 지적을 PLAN.md 에 적습니다.

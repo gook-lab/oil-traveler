@@ -20,3 +20,5 @@ Code MIT. Art CC0 1.0. Checked 2026-11-11.
 No picture is stored or copied, and there is no sound. The aurora scene began from one photograph its author showed as a mood: a small figure with a light under a snowy peak and a green aurora. Nothing of that photograph is in the repo, and its place was not reproduced: the ridge, the horns, the fjord, the cabin and the sky here are this demo's own, made in code.
 
 **Nothing here has no stated source.**
+
+- 화담 장면의 고도 자료(`src/hwadam/data/`): AWS Terrain Tiles(terrarium, Mapzen/Joerd). 원자료 확인 전 상태. 한국 구간의 원자료를 확인하지 못했고, 전역 목록의 SRTM(USGS) · ETOPO1(NOAA) 문구가 후보예요. 확정 전까지 출처 문구는 잠정입니다. 중심 좌표 근거는 OpenStreetMap(ODbL) 의 leisure=park '화담숲'.
