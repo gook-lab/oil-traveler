@@ -410,6 +410,23 @@ window.lab = {
     for (let t = 0; t <= 50; t += 1) worst = Math.max(worst, eye - heightAt(camera.position.x + f.x * t, camera.position.z + f.z * t));
     return +worst.toFixed(1);
   },
+  /** T2 check: the trees whose trunk is in the frame (300 m), with their screen place (u, v in 0..1, from the top-left) and shape. */
+  frameTrees: () => {
+    const fwd = camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    const eye = camera.position, out = [];
+    for (const t of forest.trees) {
+      const v = new THREE.Vector3(t.x - eye.x, t.y + t.h * 0.5 - eye.y, t.z - eye.z);
+      const d = v.dot(fwd);
+      if (d <= 0 || v.length() > 300) continue;
+      const hz = Math.atan2(v.dot(right), d), vt = Math.atan2(v.dot(up), d);
+      if (!(Math.abs(hz) < (36.5 * Math.PI) / 180 && Math.abs(vt) < (23 * Math.PI) / 180)) continue;
+      const p = new THREE.Vector3(t.x, t.y + t.h * 0.5, t.z).project(camera);
+      out.push({ u: +((p.x + 1) / 2).toFixed(3), v: +((1 - p.y) / 2).toFixed(3), L: +v.length().toFixed(1), kind: t.nearPine ? 'nearPine' : t.conifer ? 'conifer' : ['beech', 'birch', 'oak', 'maple'][t.type] ?? String(t.type), tier: t.tier, h: +t.h.toFixed(1), r: +t.r.toFixed(2), base: +t.y.toFixed(1), top: +(t.y + t.h).toFixed(1), leafY0: +t.leafY0.toFixed(1), leafY1: +t.leafY1.toFixed(1), leaves: t.leaves, dabs: Math.round(t.dabs ?? 0), family: t.family, hero: !!t.hero });
+    }
+    return out;
+  },
   /** T2 check: the midground's heights (absolute m): the cells at sea level (<= 0.5, 1, 3 m), the range, and the entrance height. */
   midStats: () => {
     const m = place.mid;

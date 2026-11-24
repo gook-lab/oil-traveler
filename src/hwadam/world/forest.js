@@ -156,7 +156,8 @@ function plant() {
       const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 32 + rand() * 12;
       const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
       const before = trees.length;
-      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);
+      // the pines in front of the start stand at full detail (tier 0): as tier 1 their six lobes read as bare poles
+      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 0, 0.8);
       if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
       if (trees.filter((t) => t.nearPine).length >= 14) break;
     }
@@ -234,7 +235,8 @@ export function createForest(shared) {
       // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
       const steps = full ? 9 : 6;
       for (let i = 0; i < steps; i++) {
-        const u = i / steps, y = t.y + t.h * (0.22 + 0.72 * u);
+        // the front pines (nearPine, travel) carry their lobes up to the leader, so no bare pole shows above the crown
+        const u = i / steps, y = t.y + t.h * (0.22 + (t.nearPine ? 0.8 : 0.72) * u);
         const lr = Math.max(0.9, spread * 0.55 * (1 - u) + 0.9);
         treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
       }

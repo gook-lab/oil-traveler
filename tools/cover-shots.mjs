@@ -2,7 +2,7 @@
 //   CHROME=<chromium> node tools/cover-shots.mjs [--out shots/cover-r1] [--dist dist]
 // Writes <out>/<name>.png at 2560x1440 and prints the cover histogram each place reports. Needs `npm run build`.
 // Coordinates are the place pins; nothing personal is sent.
-import { mkdirSync, createReadStream, existsSync, statSync } from 'node:fs';
+import { mkdirSync, createReadStream, existsSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +71,7 @@ for (const p of PLACES) {
   console.log(`  drop within 50 m along gaze (m) ${drop}`);
   const stats = ready ? await page.evaluate(() => window.lab.treeStats()) : null;
   const mid = ready ? await page.evaluate(() => window.lab.midStats()) : null;
+  if (ready) writeFileSync(join(outDir, `${p.name}-trees.json`), JSON.stringify(await page.evaluate(() => window.lab.frameTrees())));
   if (mid) console.log(`  midStats ${JSON.stringify(mid)}`);
   if (stats) console.log(`  treeStats ${JSON.stringify(stats)}`);
   const conifers = ready ? await page.evaluate(() => window.lab.coniferView()) : null;
