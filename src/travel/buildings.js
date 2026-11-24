@@ -16,7 +16,7 @@ export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea:
 /** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
 const DAB_M = 1.5, ROOF_DAB_M = 3;
 // the dense wall touches (T3 round 2): 1.2 m spacing within 60 m of the start, each mark 1.5 times its cell (overlapping)
-const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 1.6, DENSE_OVERLAP = 1.5;
+const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 1.6, DENSE_OVERLAP = 1.5, FAR_WALL_ST = 4.5;
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
 // the near zone: within 120 m of the start, touches 3 m apart; the cap is 16000 (r20: 14807 touches at 120 m)
@@ -409,6 +409,8 @@ function dabStep(s, base, near) {
   if (!near) return base;
   // a wall within WALL_DENSE_M of the start takes the dense spacing (overlapping touches cover the face, as floor.js does)
   if (near.wallSt && !s.poly && isNear(s, near, WALL_DENSE_M)) return near.wallSt;
+  // a far wall (over 60 m) takes a larger overlapping brush (its face is seen small, so the marks are bigger)
+  if (!s.poly && !isNear(s, near, WALL_DENSE_M) && !near.fixed) return Math.min(base, FAR_WALL_ST);
   return isNear(s, near) ? near.st : base;
 }
 /** True for a surface whose centre lies within NEAR_M of the start. */
@@ -529,7 +531,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         // a touch fills its cell and no more, so it stays inside its face
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
         // a vertical stroke: up to 1.5 m long and 0.6 m across (the 2.5 m strokes read as blobs at close range)
-        const dense = near?.wallSt && !s.poly && st === near.wallSt;
+        const dense = near?.wallSt && !s.poly && (st === near.wallSt || st === FAR_WALL_ST || st < base);
         const S = dense
           ? [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)]
           : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
