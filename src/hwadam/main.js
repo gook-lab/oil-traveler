@@ -200,7 +200,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, stonePos: scenery.stonePos, stoneData: scenery.stoneData, heightAt, respawn, way,
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
