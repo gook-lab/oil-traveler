@@ -312,10 +312,6 @@ export function createForest(shared) {
         vec3 Nn = normalize(vN);
         float grain = texture(tNoise, vec2(atan(Nn.z, Nn.x) * 1.3 + vData.y, vWorld.y * 0.07)).r;
         vec3 c = bark(int(vData.x + 0.5), vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
-        // a birch trunk is round: its lit side is bright and the far side falls off to the cold shade, so it reads as a
-        // column rather than a flat band (the shade is by the normal, not the sky)
-        float roundness = 0.6 + 0.55 * smoothstep(-0.7, 0.8, dot(Nn, uSunDir));
-        c = mix(c, c * roundness, step(abs(vData.x - 1.0), 0.5));
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
   });

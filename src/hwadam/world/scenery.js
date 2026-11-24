@@ -50,8 +50,19 @@ const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)
  */
 function crest(k, az, horizon, eyeY) {
   const deg = (((az * 180) / Math.PI) % 360 + 360) % 360;
-  const i0 = Math.floor(deg) % 360, i1 = (i0 + 1) % 360, f = deg - Math.floor(deg);
-  const th = horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
+  // the horizon samples come one per degree and carry the terrain's spikes (the sawtooth and thorns on the ring
+  // skyline), so the skyline is a triangle-weighted mean over three degrees either side
+  const sample = (d) => {
+    const i0 = Math.floor(d) % 360, i1 = (i0 + 1) % 360, f = d - Math.floor(d);
+    return horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
+  };
+  let th = 0, wsum = 0;
+  for (let j = -3; j <= 3; j++) {
+    const w = 4 - Math.abs(j);
+    th += w * sample((deg + j + 360) % 360);
+    wsum += w;
+  }
+  th /= wsum;
   return Math.max(-15, eyeY + RINGS[k].r * Math.tan(th));
 }
 
