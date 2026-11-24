@@ -383,7 +383,10 @@ function surfacesOf(p, ground) {
   // the short one. The long slopes curve down to the eaves (flat at the eave, steep at the ridge), the ends hip down from
   // the ridge's ends, and only the eave corners lift. The roof stands 0.4 of the short side high. Each short end carries a
   // triangular gable on the wall top. The roof is cut into N by N quads (each lit and dabbed like the rest).
-  const eu = R.hu + EAVE, ev = R.hv + EAVE, rr = Math.max(0, R.hu - 0.6 * R.hv);
+  // the eaves reach out 15% of the short side (T3 round 2; 1.8 m at least), and the roof's length is what it sags by
+  const eaveOut = Math.max(EAVE, 0.15 * 2 * R.hv);
+  const eu = R.hu + eaveOut, ev = R.hv + eaveOut, rr = Math.max(0, R.hu - 0.6 * R.hv);
+  const sagM = 0.07 * 2 * eu; // the eave line sags in the middle by 7% of the roof's length (the ends rise)
   const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
   const yRidge = yEave + roofH;
   const curve = (t) => Math.pow(Math.min(1, Math.max(0, t)), 1.6);
@@ -395,7 +398,9 @@ function surfacesOf(p, ground) {
     const ca = Math.min(1, Math.max(0, (Math.abs(a) - rr) / Math.max(1, eu - rr)));
     const cb = Math.min(1, Math.abs(b) / ev);
     const [x, z] = rectPt(R, a, b);
-    return [x, y0 + CORNER_LIFT * ca * ca * Math.pow(cb, 4), z];
+    // the concave eave: the ends of the eave line rise by sagM (cb = 1 at the eave, 0 at the ridge)
+    const sag = sagM * (a / eu) * (a / eu) * cb * cb;
+    return [x, y0 + CORNER_LIFT * ca * ca * Math.pow(cb, 4) + sag, z];
   };
   const N = ROOF_N;
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
@@ -404,7 +409,8 @@ function surfacesOf(p, ground) {
     const ridge = roofAt((s0 + s1) / 2, (t0 + t1) / 2)[1] > yRidge - 0.3; // the ridge's tiles are darker
     out.push({
       P00: roofAt(s0, t0), P10: roofAt(s1, t0), P01: roofAt(s0, t1), P11: roofAt(s1, t1), cell: [9, 9],
-      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (0.9 + 0.1 * Math.sin(sc * 9)) * (ridge ? 0.7 : 1)),
+      // the tile grooves: dark lines every 0.7 m down the slope, lighter between (a stronger 25% step than before)
+      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (Math.sin(sc * 9) > 0.2 ? 0.75 : 1.02) * (ridge ? 0.7 : 1)),
     });
   }
   // the gables: a triangle at each short end, from the wall top to the apex over the middle of the end (a degenerate quad)
@@ -414,6 +420,8 @@ function surfacesOf(p, ground) {
     const p0 = rectPt(R, a, -R.hv), p1 = rectPt(R, a, R.hv), pa = rectPt(R, a, 0);
     out.push({ P00: [p0[0], yEave, p0[1]], P10: [p1[0], yEave, p1[1]], P01: [pa[0], apex, pa[1]], P11: [pa[0], apex, pa[1]], cell: [3, 1], col: () => [0.86, 0.84, 0.78] });
   }
+  // the roof's numbers (metres), for the report: ridge length, the sag, the eave out, the height of the roof and the corner lift
+  out.roofInfo = { ridgeLen: 2 * rr, roofLen: 2 * eu, sagM, eaveOut, roofH, cornerLift: CORNER_LIFT, shortSide: 2 * R.hv };
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
