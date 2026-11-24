@@ -16,7 +16,7 @@ export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea:
 /** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
 const DAB_M = 1.5, ROOF_DAB_M = 3;
 // the dense wall touches (T3 round 2): 1.2 m spacing within 60 m of the start, each mark 1.5 times its cell (overlapping)
-const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 2.6, DENSE_OVERLAP = 2.2, FAR_WALL_ST = 4.5;
+const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 2.6, DENSE_OVERLAP = 2.2, FAR_WALL_ST = 4.5, FAR_WALL_MARK = 6;
 // the sign colours of a block's band (T3 round 2)
 const SIGN_C = [[0.95, 0.78, 0.35], [0.7, 0.2, 0.15], [0.92, 0.9, 0.86]];
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
@@ -293,7 +293,7 @@ function surfacesOf(p, ground) {
           out.push({ P00: [A[0], yt, A[1]], P10: [B[0], yt, B[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [0, 1, 0], cell: [3, 0.9], col: () => [0.6, 0.24, 0.16] });
         }
         out.push({
-          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7],
+          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb, H },
           col: (u, v, r) => {
             const fy = v * H, x = s0 + u * Lk;
             // the bands are set by the world height (yb + fy) and the facade's run, not by the cell: every building's
@@ -429,6 +429,21 @@ function surfacesOf(p, ground) {
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
+/** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
+ *  2.6 m, along the run) and at each window band's edges (1.0 and 2.3 m of every 3.5 m, in world height). */
+function runBreaks({ s0, Lk, yb, H }) {
+  const u = [0, 1], v = [0, 1];
+  for (let m = Math.floor(s0 / 2.6) * 2.6 - 2.6; m <= s0 + Lk + 2.6; m += 2.6) for (const off of [0, 0.4]) {
+    const p = m + off - s0;
+    if (p > 0.02 && p < Lk - 0.02) u.push(p / Lk);
+  }
+  for (let k = Math.floor(yb / 3.5) - 1; k <= Math.ceil((yb + H) / 3.5) + 1; k++) for (const c of [1.0, 2.3]) {
+    const y = k * 3.5 + c, vv = (y - yb) / H;
+    if (vv > 0.02 && vv < 0.98) v.push(vv);
+  }
+  const uniq = (a) => [...new Set(a.map((x) => +x.toFixed(4)))].sort((x, y) => x - y);
+  return { u: uniq(u), v: uniq(v) };
+}
 const bil = (s, u, v) => [0, 1, 2].map((k) => (1 - v) * ((1 - u) * s.P00[k] + u * s.P10[k]) + v * ((1 - u) * s.P01[k] + u * s.P11[k]));
 const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const len3 = (a) => Math.hypot(a[0], a[1], a[2]);
@@ -508,14 +523,15 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     // a wall within the near zone is cut finer (FINE_CELL), so its tone can vary across the face like a brush's
     let [cu, cv] = s.cell;
     if (near && s.cell === WALL_CELL && isNear(s, near)) [cu, cv] = FINE_CELL;
-    const nu = Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
+    const BR = s.jitRun ? runBreaks(s.jitRun) : null;
+    const nu = BR ? BR.u.length - 1 : Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = BR ? BR.v.length - 1 : Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
     const N0 = s.n ?? quadNormal(s);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
       // each row's joints are staggered (no straight joints across the face), and each cell takes its own tone
       // (a traditional wall is not staggered: its columns must run straight up through the bays)
       const sh = s.vertical ? 0 : (rnd(j * 0.61 + 0.2, nu * 0.37 + 1.1) - 0.5) * 0.6 / nu;
       const ub = (k) => (k === 0 ? 0 : k === nu ? 1 : Math.min(1, Math.max(0, k / nu + sh)));
-      const u0 = ub(i), u1 = ub(i + 1), v0 = j / nv, v1 = (j + 1) / nv;
+      const u0 = BR ? BR.u[i] : ub(i), u1 = BR ? BR.u[i + 1] : ub(i + 1), v0 = BR ? BR.v[j] : j / nv, v1 = BR ? BR.v[j + 1] : (j + 1) / nv;
       const off = (P) => P.map((x, k) => x + N0[k] * 0.02);
       const rc = s.vertical ? 0.5 : rnd(i * 1.73 + j * 0.31 + s.P00[0] * 0.37, j * 1.3 + i * 0.21 + s.P00[2] * 0.11);
       const c = s.col((u0 + u1) / 2, (v0 + v1) / 2, rc).map((x) => x * lightOf(N0));
@@ -582,10 +598,12 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         // a vertical stroke: up to 1.5 m long and 0.6 m across (the 2.5 m strokes read as blobs at close range)
         const dense = near?.wallSt && !s.poly && (st === near.wallSt || st === FAR_WALL_ST || st < base);
         // a dense touch on the modern facade is wide and low: 2.2 times its cell across, at most 1.0 m high (the band is 1.3 m)
+        const far = dense && st === FAR_WALL_ST;
         const S = dense
-          ? (s.jit ? [Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L2 / nv * DENSE_OVERLAP, 1.0)] : [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)])
+          ? (s.jit ? [Math.min(L1 / nu * DENSE_OVERLAP, far ? FAR_WALL_MARK : WALL_DENSE_MARK), Math.min(L2 / nv * DENSE_OVERLAP, 1.0)] : [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)])
           : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
-        const S2 = s.jit ? [S[0] * sz, S[1] * sz] : S;
+        // a dense touch is at least 1.8 m across (the size varies in height only, the width stays a long stroke)
+        const S2 = s.jit ? (dense ? [Math.max(1.8, S[0] * (0.9 + 0.2 * rnd(id * 0.37, i + j * 0.5))), S[1] * sz] : [S[0] * sz, S[1] * sz]) : S;
         push(P.map((x, k) => x + N0[k] * 0.04), Dk, S2, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
