@@ -35,7 +35,7 @@ export const VIEWS = {
   // the hwadam walk, one or more to each part of the way (use --query "scene=hwadam")
   moss: [-1, 56, 2, 30, { run: 0 }],
   maple: [4, 14, 4, -20, { run: 0 }],
-  birch: [5, -18, 2, -44, { run: 0 }],
+  birch: [3, -34, 1, -58, { run: 0 }],
   ridge: [8, -74, 10, -110, { run: 0 }],
   ridgeUp: [8, -74, 10, -110, { run: 0, pitch: 0.1, dist: 4 }],
 };

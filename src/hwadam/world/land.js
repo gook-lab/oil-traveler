@@ -55,7 +55,7 @@ const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)
 function rawHeight(x, z, wd) {
   let h = 2.8 * noise(x / 74 + 3.1, z / 74 - 1.7) + 1.2 * noise(x / 26, z / 26) + 0.3 * noise(x / 8.3, z / 8.3);
   h += 5.5 * sstep(70, -110, z); // the land climbs gently toward the clearing
-  h += 2.5 * sstep(46, -8, z);   // and the way climbs more steeply through the maple part
+  h += 8 * sstep(46, -8, z);     // and the way climbs more steeply through the maple part
   h -= 0.28 * Math.exp(-(wd * wd) / 3.2); // the way is worn a little into it
   return h;
 }

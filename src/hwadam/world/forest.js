@@ -32,7 +32,7 @@ const vec3 LEAF_S[7] = vec3[7](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec
 `;
 
 // which leaf a maple, a beech, an oak or a birch carries: most of a maple's are reds, a beech's are green and gold
-const MAPLE_LEAVES = [0, 0, 1, 1, 2, 3, 6];
+const MAPLE_LEAVES = [0, 0, 0, 1, 1, 2, 6];
 const BEECH_LEAVES = [4, 4, 4, 4, 2, 3];
 
 function tube(out, pts, radii, sides, kind, seed) {
@@ -81,12 +81,12 @@ function plant() {
       const corridor = Math.hypot(Math.max(0, Math.abs(x) - 10), Math.max(0, Math.abs(z + 8) - 100));
       // the wood is close set among the birches, and opens toward the ridge view
       const sw = segW(pathT(x, z));
-      if (corridor > 185 || rand() > 0.84 - 0.12 * sw[0] + 0.1 * sw[2] - 0.45 * sw[3]) continue;
+      if (corridor > 185 || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
       const wd = corridor < 60 ? wayDist(x, z) : 99;
       if (wd < 2.7 || clearingAt(x, z) > 0.25) continue;
       // the kind of tree is drawn by the part of the walk it stands in: the weights of the four parts mixed into
       // the chance of each kind (beech is what is left over)
-      const pBirch = 0.8 * sw[2] + 0.1 * sw[3];
+      const pBirch = 0.95 * sw[2] + 0.1 * sw[3];
       const pMaple = 0.75 * sw[1] + 0.15 * sw[0] + 0.15 * sw[3];
       const pOak = 0.1 * sw[1] + 0.15 * sw[0] + 0.3 * sw[3];
       const u = rand();
@@ -228,8 +228,10 @@ export function createForest(shared) {
         leafDabs.push(lx + d.x * lr, ly + d.y * lr, lz + d.z * lr, d.x, d.y, d.z, rand() * 1000, 0.22 + rand() * 0.2, rand() < 0.2 ? Math.floor(rand() * 7) : family, 0);
       }
       // its stem
+      // its stem: from the foot to the middle of the leaves it holds, so the leaves hang from something
       const dir = v.set(lx - x, ly - y, lz - z).normalize();
-      barkDabs.push(x + dir.x * tall * 0.3, y + tall * 0.3, z + dir.z * tall * 0.3, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.05, MAPLE, tall * 0.75);
+      const len = Math.hypot(lx - x, ly - y, lz - z);
+      barkDabs.push((x + lx) / 2, (y + ly) / 2, (z + lz) / 2, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.05, MAPLE, len);
     }
   }
 
