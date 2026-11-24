@@ -10,6 +10,9 @@ import { verticalScale } from '../hwadam/world/land.js';
  * Builds the ring-shaped mesh (a hole where the land is). `mid` is { n, step, half, h }, `H0` the zero of the scaled
  * ground (the entrance height, as land.js uses it). Returns a Mesh for the scene.
  */
+/** The highest absolute height (m) of the sea in the midground: the measured sea cells of Hyeopjae sit at -1.5 to 0.5 m. */
+const SEA_M = 0.5;
+
 export function createMidground(shared, mid, H0) {
   const { n, step, half, h } = mid;
   const y = new Float32Array(n * n);
@@ -46,6 +49,10 @@ export function createMidground(shared, mid, H0) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  // the sea (T2 check 4): the cells at sea level (absolute height at most 0.5 m) are painted as water, not as the autumn ground
+  const sea = new Float32Array(n * n);
+  for (let k = 0; k < n * n; k++) sea[k] = h[k] <= SEA_M ? 1 : 0;
+  geometry.setAttribute('sea', new THREE.BufferAttribute(sea, 1));
   geometry.setIndex(index);
 
   const material = new THREE.ShaderMaterial({
@@ -55,11 +62,14 @@ export function createMidground(shared, mid, H0) {
       ${COMMON}
       out vec3 vWorld;
       out vec3 vN;
-      void main() { vWorld = position; vN = normal; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+      in float sea;
+      out float vSea;
+      void main() { vWorld = position; vN = normal; vSea = sea; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       ${COMMON}
       in vec3 vWorld;
       in vec3 vN;
+      in float vSea;
       layout(location = 0) out vec4 outC;
       void main() {
         // large patches of paint, placed on a jittered grid, each in one of three colours of the autumn ground
@@ -71,6 +81,9 @@ export function createMidground(shared, mid, H0) {
         float lit = clamp(dot(normalize(vN), uSunDir) * 1.4 + 0.25, 0.0, 1.0);
         vec3 c = mix(base * 0.55, base * 1.25 + vec3(0.06, 0.04, 0.0), lit);
         c *= 0.9 + 0.2 * texture(tNoise, vWorld.xz / 7.0).r;
+        // the sea cells: the water's colour, lit by the same sun; the haze below takes them the way it takes the ground
+        vec3 water = mix(vec3(0.2, 0.42, 0.46), vec3(0.34, 0.58, 0.6), lit) * (0.92 + 0.16 * texture(tNoise, vWorld.xz / 9.0).r);
+        c = mix(c, water, smoothstep(0.3, 0.7, vSea));
         // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
         vec3 air = airColour(normalize(vWorld - cameraPosition));
         outC = vec4(mix(c, air, 0.4 * mistBetween(vWorld)), 1.0);
