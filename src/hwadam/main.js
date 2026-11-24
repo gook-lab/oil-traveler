@@ -9,8 +9,9 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
-import { loadHorizon } from './world/horizon.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
+import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
+import { mountPlacePanel } from './start-panel.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -84,6 +85,20 @@ const HIKER = {
 const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), HIKER, { longSleeves: true, smallBrim: true });
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
+// the ground: the baked Hwadam data, or the place the address names (baked now, from the terrain tiles)
+const panel = mountPlacePanel(q);
+let place;
+try {
+  const request = placeFromUrl(q);
+  place = request
+    ? await bakePlace({ ...request, onProgress: (f, what) => { panel.progress(f, what); say(0.01 + 0.02 * f, 'Fetching the ground'); } })
+    : await bakedPlace();
+} catch (err) {
+  panel.fail(err);
+  throw err;
+}
+setPlace(place);
+panel.done(place.name);
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
 const land = createLand(shared);
 lap('land');
@@ -100,7 +115,7 @@ lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
 const kick = createKick(shared);
-const horizon = await loadHorizon(); // the real skyline round the viewpoint (see tools/fetch-dem.mjs)
+const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
 
@@ -200,7 +215,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
