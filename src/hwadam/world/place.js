@@ -3,7 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { fetchCover, chooseGaze, frameNear } from './cover.js';
+import { fetchCover, chooseGaze, frameNear, ridgeNear } from './cover.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
 import nearUrl from '../data/near.bin?url';
@@ -90,13 +90,17 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // coast (sea on 5%) at its sea; elsewhere the plain pick
   const share = (cls) => (grid ? grid.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / grid.length : 0);
   const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9) > 0.05 ? 9 : null;
-  const vantage = pickVantage(near, N, NEAR_STEP, 150, grid, focus ? (x, z) => frameNear(grid, near, way.startHeight, x, z, focus) : null);
+  // a mountain's start: the rock it can see, and the highest ridge of the midground over it (60 points a degree)
+  const bonus = !focus ? null : focus === 5
+    ? (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, 5) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z))
+    : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
+  const vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus);
   const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
   await prefetchSkyline(terrain, lat, lon, view, zooms, bands);
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
-  const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight);
+  const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid);
   onProgress(1, 'done');
   const meta2 = {
     cover: cover ? cover.counts : null, coverError, gaze,

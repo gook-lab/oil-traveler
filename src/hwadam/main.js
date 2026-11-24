@@ -12,7 +12,7 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
-import { viewShares } from './world/cover.js';
+import { viewShares, COVER_GLSL } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -140,7 +140,8 @@ const forest = createForest(shared);
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
-const leaves = createLeaves(shared, 2400);
+// a place's falling leaves keep off the sea, sand, rock and built-up ground (T2); the autumn wood has no exclusion
+const leaves = createLeaves(shared, 2400, { head: COVER_GLSL, exclude: 'if (bareCover(coverClass(p.xz))) { d.alive = 0.0; return; }' });
 // the shade is taken over the whole walk (its middle, and a box as wide as the ground), not the autumn wood's 330 m
 const shade = createShade(renderer, shared, forest.shade, { sun, centre: [-40, 10, 20], box: [270, 270], back: 500, far: 1000 });
 lap('shade');

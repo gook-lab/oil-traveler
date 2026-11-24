@@ -253,6 +253,33 @@ export function frameShare(cover, ground, x, z, a, cls) {
   return n ? h / n : 0;
 }
 
+/** Scene scale of the ground (land.js VS): near and midground heights are scaled alike, so the angles match the frame. */
+const VS_SCENE = 0.5;
+/**
+ * The steepest elevation angle (degrees) toward the ridges of the midground grid (600 m to 2 km, mid = bakeMidground) from the
+ * start (x, z) along bearing a. hc is the near height at the start (metres, absolute); the eye is 1.6 m above it.
+ */
+export function ridgeDeg(mid, hc, x, z, a) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = 1.6;
+  let best = -90;
+  // the ridges far off: from 600 m out (a cliff at hand is not a ridge, and would hide the sky)
+  for (let d = 600; d <= mid.half; d += mid.step) {
+    const i = Math.round((x + sx * d + mid.half) / mid.step), j = Math.round((z + sz * d + mid.half) / mid.step);
+    if (i < 0 || j < 0 || i >= mid.n || j >= mid.n) break;
+    const e = Math.atan2(VS_SCENE * (mid.h[j * mid.n + i] - hc) - eye, d) * (180 / Math.PI);
+    if (e > best) best = e;
+  }
+  return best;
+}
+/** The highest ridge angle over the bearings (every 6 degrees) from (x, z); hc from the near square (metres). */
+export function ridgeNear(mid, near, N, STEP, x, z) { // capped at 20 degrees, as the ridge's rise is what reads
+  const i = Math.min(N - 1, Math.max(0, Math.round(x / STEP + N / 2))), j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / STEP)));
+  const hc = near[j * N + i];
+  let best = -90;
+  for (let a = 0; a < 360; a += 6) best = Math.max(best, ridgeDeg(mid, hc, x, z, a));
+  return Math.min(20, best);
+}
 /** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
 export function frameNear(cover, near, H0, x, z, cls) {
   const g = sceneGround(near, H0);
@@ -266,7 +293,7 @@ export function frameNear(cover, near, H0, x, z, cls) {
  * sea along its ray (out to 300 m). Otherwise the skyline rule of gazeBearing (bake.js), with a weight for rock seen
  * along the ray, so that a granite place looks at its domes. Returns degrees, or null without a cover.
  */
-export function chooseGaze(horizon, cover, near, vantage, H0) {
+export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
   if (!cover) return null;
   const g = sceneGround(near, H0);
   // sea in the first frame: the bearing with the most sea on its lower half
@@ -280,7 +307,10 @@ export function chooseGaze(horizon, cover, near, vantage, H0) {
   for (let a = 0; a < 360; a++) {
     const a2 = deg(horizon[a]), a5 = deg(horizon[360 + a]), a15 = deg(horizon[720 + a]);
     const layers = 1 + (a5 > a2 + margin ? 1 : 0) + (a15 > Math.max(a2, a5) + margin ? 1 : 0);
-    const key = layers * 100 + a15 + 600 * frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
+    // a mountain looks at the ridge that rises highest above it (the midground), and at the rock it can see
+    let ridge = 0;
+    if (mid) { const i = Math.round(vantage.x / NEAR_STEP + N / 2), j = Math.round(N / 2 - vantage.z / NEAR_STEP); ridge = Math.min(20, ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, a)); }
+    const key = layers * 100 + a15 + 600 * frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK) + 60 * ridge;
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;
