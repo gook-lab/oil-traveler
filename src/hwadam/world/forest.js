@@ -287,6 +287,9 @@ export function createForest(shared) {
         const a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * spread;
         treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, (some ? 2.3 : 3.4) + rand() * 1.2]);
       }
+      // travel broadleaves: two lobes low on the trunk (0.42 to 0.62 of the height), so the crown reaches down and the
+      // bare lower trunk does not read as a stick (the Bukhansan beech at 0.62 of its height)
+      if (CLEAR.fan && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, 2.2 + rand() * 1.0]);
     }
     // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
     // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
