@@ -330,6 +330,21 @@ function surfacesOf(p, ground) {
   };
   // the stone base, a little out from the posts
   face(wallPts(big ? 2.0 : STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
+  // a big hall has a stair of three steps up its south side (the side the walker sees from the courtyard): 4 m wide, 0.6 m
+  // deep each, 0.4 m high each, down to the base's top; the top step is the nearest the wall
+  if (big) {
+    const sides = [[R.ux, R.uz, R.hu], [-R.ux, -R.uz, R.hu], [R.vx, R.vz, R.hv], [-R.vx, -R.vz, R.hv]];
+    const [o0, o1, hd] = sides.reduce((best, c) => (c[1] > best[1] ? c : best));
+    const cx = R.cu * R.ux + R.cv * R.vx, cz = R.cu * R.uz + R.cv * R.vz;
+    const tg = [-o1, o0], W = 2;
+    const wp = (d, t, y) => [cx + o0 * (hd + d) + tg[0] * t, y, cz + o1 * (hd + d) + tg[1] * t];
+    const stoneC = (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r);
+    for (let j = 0; j < 3; j++) {
+      const d0 = 2.0 + 0.6 * j, d1 = d0 + 0.6, top = yb + stone - 0.4 * j, low = yb - 0.2;
+      out.push({ P00: wp(d0, -W, top), P10: wp(d0, W, top), P01: wp(d1, -W, top), P11: wp(d1, W, top), n: [0, 1, 0], cell: [1.6, 0.6], col: stoneC });
+      out.push({ P00: wp(d1, -W, low), P10: wp(d1, W, low), P01: wp(d1, -W, top), P11: wp(d1, W, top), n: [o0, 0, o1], cell: [1.6, 0.4], col: stoneC });
+    }
+  }
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
   // the white walls: the touches vary by 3% and lie upright (long strokes), so they do not read as a row of windows
   face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r)), true);
