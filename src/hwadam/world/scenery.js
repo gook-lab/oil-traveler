@@ -17,6 +17,8 @@ void makeDab(inout Dab d) {
   // moss on the top of some of them, more where the sun falls
   float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);
+  // the cap stroke is moss on top of the stone, so the stone reads as a rounded lump under the moss
+  c = mix(c, vec3(0.36, 0.5, 0.18) * (0.6 + 0.6 * lit), aData.w * 0.9);
   c = jitter(c, r.zxy, 0.5);
   float a = r.w * TAU;
   d.pos = aPos;
@@ -115,10 +117,13 @@ export function createScenery(shared, horizon, eyeY) {
   for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8]]) {
     const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
     // one brush mark shows only a sliver of its card, so each stone is a cluster of marks like the rest of the garden's stones
-    for (let j = 0; j < 4; j++) {
-      const ox = (rand() - 0.5) * size * 0.8, oz = (rand() - 0.5) * size * 0.8;
-      sp.push(x + ox, heightAt(x, z), z + oz);
-      sd.push(rand() * 1000, size * (0.8 + 0.4 * rand()), 0.5 + 0.2 * j / 3, 0);
+    // six marks per stone: the lower ones stone-grey, the top one (flag 1 in data.w) the moss cap
+    for (let j = 0; j < 6; j++) {
+      const ox = (rand() - 0.5) * size * 0.6, oz = (rand() - 0.5) * size * 0.6;
+      const cap = j === 5 ? 1 : 0;
+      sp.push(x + ox, heightAt(x, z) + (cap ? 0.12 : 0), z + oz);
+      // the grey marks are wider than the cap, so the stone keeps its grey rim under the moss
+      sd.push(rand() * 1000, cap ? size * 0.45 : size * (1.1 + 0.4 * rand()), cap ? 0.62 : 0.3 + 0.15 * j / 5, cap);
     }
     placed++;
   }
