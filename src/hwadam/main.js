@@ -550,6 +550,8 @@ document.getElementById('loading')?.remove();
 if (q.has('clean') || capture) document.getElementById('hint')?.remove();
 // the walk's place name and key line (travel HUD) are left out of the clean pictures too
 if (q.has('clean') || capture) document.querySelectorAll('.walk-name, .walk-keys').forEach((el) => el.remove());
+// the view button is HUD too: left out of the clean and capture pictures; ?hud keeps it (tools/view-check.mjs)
+if ((q.has('clean') || capture) && !q.has('hud')) document.getElementById('walk-view')?.remove();
 block.ready();
 window.lab.ready = true;
 // for the measuring tools

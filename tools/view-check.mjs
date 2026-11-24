@@ -29,8 +29,8 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const base = `http://127.0.0.1:${server.address().port}/`;
 
 const SCENES = [
-  { name: '화담 숲길', query: 'capture&scene=hwadam', firstDefault: false },
-  { name: 'travel 화담', query: 'capture&scene=travel&place=hwadam&name=화담숲', firstDefault: true },
+  { name: '화담 숲길', query: 'capture&hud&scene=hwadam', firstDefault: false },
+  { name: 'travel 화담', query: 'capture&hud&scene=travel&place=hwadam&name=화담숲', firstDefault: true },
 ];
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true, args: ['--mute-audio', '--ignore-gpu-blocklist', process.platform === 'darwin' ? '--use-angle=metal' : '--use-angle=d3d11', '--enable-gpu'] });
