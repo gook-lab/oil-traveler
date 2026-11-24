@@ -69,7 +69,10 @@ function tileLoader(sources) {
  * can explain (net, source, water, noway).
  */
 // the example pins whose first bearing is fixed by hand (degrees; temporary until the general rule for mountains works)
-const PIN_GAZE = { '37.6588,126.9772': 210 }; // 북한산 예시 핀 — bearing sweep (cover-shots --gaze, 30 degree steps), see PLAN.md
+const PIN_GAZE = {
+  '37.6588,126.9772': 210, // 북한산 예시 핀 — bearing sweep (cover-shots --gaze, 30 degree steps), see PLAN.md
+  '33.3943,126.2396': 40, // 협재 예시 핀 — 임시 (시선 후보 40 · 50 · 200 · 240 중 물 0.25 단언을 지키는 40), see PLAN.md
+};
 
 export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, gaze: fixedGaze = null, onProgress = () => {} }) {
   const sources = new Set();

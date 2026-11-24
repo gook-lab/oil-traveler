@@ -23,10 +23,10 @@ const FULL = [
   { name: 'bukhansan', query: `scene=travel&place=37.6588,126.9772&name=${encodeURIComponent('북한산')}&clean` },
   { name: 'hyeopjae', query: `scene=travel&place=33.3943,126.2396&name=${encodeURIComponent('협재')}&clean` },
 ];
-// --gaze <deg>: a bearing sweep check: only the bukhansan place, with its first bearing fixed (?gaze=, named -g<deg>)
+// --gaze <deg> [--place <name>]: a bearing sweep check: only the bukhansan place (or --place), with its first bearing fixed (?gaze=, named -g<deg>)
 const gazeFix = flag('gaze', '');
 const PLACES = gazeFix
-  ? FULL.filter((p) => p.name === 'bukhansan').map((p) => ({ name: `${p.name}-g${gazeFix}`, query: `${p.query}&gaze=${gazeFix}` }))
+  ? FULL.filter((p) => p.name === flag('place', 'bukhansan')).map((p) => ({ name: `${p.name}-g${gazeFix}`, query: `${p.query}&gaze=${gazeFix}` }))
   : hide
   ? FULL.filter((p) => p.name === flag('place', 'hwadam')).map((p) => ({ name: `${p.name}-hide-${hide.replace(/,/g, '-')}${flag('extra', '') ? '-x' : ''}`, query: `${p.query}&hide=${hide}${flag('extra', '') ? `&${flag('extra', '')}` : ''}` }))
   : FULL;
