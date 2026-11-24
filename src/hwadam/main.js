@@ -13,7 +13,7 @@ import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING
 import { loadHorizon } from './world/horizon.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
-import { createSky } from '../world/sky.js';
+import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
 import { createKick } from '../world/kick.js';
 import { createScenery } from './world/scenery.js';
