@@ -1,0 +1,25 @@
+{
+  "model_id": "music_v1",
+  "tracks": [
+    {
+      "key": "map",
+      "seconds": 90,
+      "prompt": "Gentle solo piano with a soft clarinet, French impressionist style, unhurried and warm, an autumn afternoon spent planning a journey over an old painted map, light rubato, no drums, no vocals, ends softly so it can loop"
+    },
+    {
+      "key": "forest",
+      "seconds": 120,
+      "prompt": "Impressionist chamber piece for harp, flute and soft strings, an autumn forest walk with leaves drifting through low golden light, flowing arpeggios, calm and wondering, no percussion, no vocals, soft ending so it can loop"
+    },
+    {
+      "key": "mountain",
+      "seconds": 90,
+      "prompt": "Spacious and contemplative pastoral for small orchestra, a slow French horn over sustained strings and sparse piano, high granite ridges in clear autumn air, wide and open, no drums, no vocals, soft ending so it can loop"
+    },
+    {
+      "key": "sea",
+      "seconds": 90,
+      "prompt": "Light impressionist seaside piece in a gentle three-four waltz, nylon-string guitar, celesta and soft strings, a sunlit autumn shore with turquoise shallows, airy and calm, no drums, no vocals, soft ending so it can loop"
+    }
+  ]
+}
