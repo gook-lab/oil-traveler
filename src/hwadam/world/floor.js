@@ -161,7 +161,7 @@ void makeDab(inout Dab d) {
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
   float cls = coverClass(xz);
-  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, basalt = abs(cls - 10.0) < 0.5;
+  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, basalt = abs(cls - 11.0) < 0.5;
   if (!(sand || rock || built || water || basalt)) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33) { d.alive = 0.0; return; }

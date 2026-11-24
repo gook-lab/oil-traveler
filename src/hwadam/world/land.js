@@ -258,7 +258,7 @@ export function createLand(shared) {
             // the mountain's rock is pale granite, lit in coarse strokes with some dark seams
             c = mix(vec3(0.66, 0.62, 0.58), vec3(0.86, 0.8, 0.76), strokeV) * (0.9 + 0.15 * sqn);
           }
-        } else if (abs(cls - 10.0) < 0.5) {
+        } else if (abs(cls - 11.0) < 0.5) {
           // the Jeju lava shore (T2, the user's rule): almost black, with a faint warm cast, pocked
           c = mix(vec3(0.17, 0.16, 0.155), vec3(0.27, 0.255, 0.25), strokeV) * (0.85 + 0.3 * sqn);
         } else if (abs(cls - 8.0) < 0.5) {

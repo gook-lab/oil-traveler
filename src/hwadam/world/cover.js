@@ -7,9 +7,9 @@
 import * as THREE from 'three';
 import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
 
-// BASALT (10): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
-export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, BASALT: 10 };
-export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'basalt'];
+// BASALT (11): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
+export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, BASALT: 11 }; // 10 is the paved class of feat/buildings (its name sits in COVER_NAMES, not here)
+export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved', 'basalt'];
 /** Higher wins where two features overlap (water over everything, buildings over the land under them). */
 const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
 const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
@@ -65,7 +65,7 @@ bool wetCover(vec2 xz) {
   return false;
 }
 bool bareCover(float c) {
-  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5;
+  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 11.0) < 0.5;
 }
 `;
 /** Class at world (x, z), nearest node (x east, z south as in land.js). NONE when no place is set. */
