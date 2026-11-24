@@ -6,7 +6,7 @@
 .tm[hidden] { display: none; }
 .tm-canvas { position: absolute; inset: 0; }
 .tm-search {
-  position: absolute; left: 16px; top: 16px; z-index: 2; display: flex; gap: 6px;
+  position: absolute; left: 16px; top: 44px; z-index: 2; display: flex; gap: 6px;
   width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
 }
 .tm-search input {
@@ -18,22 +18,19 @@
   background: #5b4636; border: 0; padding: 9px 13px; border-radius: 3px;
 }
 .tm-status {
-  position: absolute; left: 16px; top: 62px; z-index: 2; margin: 0; max-width: min(380px, calc(100vw - 32px));
+  position: absolute; left: 16px; top: 96px; z-index: 2; margin: 0; max-width: min(380px, calc(100vw - 32px));
   padding: 4px 8px; background: rgba(252, 248, 238, 0.85); border-radius: 3px; font-size: 13px;
 }
 .tm-status:empty { display: none; }
 .tm-status.warn { color: #8a3a1c; }
 .tm-card {
-  position: absolute; left: 50%; bottom: 58px; z-index: 2; transform: translateX(-50%);
   display: flex; gap: 12px; align-items: center; padding: 10px 14px; box-sizing: border-box; max-width: calc(100vw - 32px);
   background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 4px;
 }
 .tm-card[hidden] { display: none; }
 .tm-label { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-go { background: #8a3a1c; }
-.tm-preset { position: absolute; left: 16px; bottom: 58px; z-index: 2; }
-.tm-preset[hidden] { display: none; }
-.tm-back { position: absolute; left: 16px; top: 62px; z-index: 3; }
+.tm-back { position: absolute; left: 16px; top: 96px; z-index: 3; }
 .tm-back[hidden] { display: none; }
 .tm-credit {
   position: absolute; right: 8px; bottom: 6px; z-index: 2; margin: 0; font-size: 11px; color: #4a3d33;
@@ -71,3 +68,72 @@
 /* the pins on the map: a chosen spot (brown, with a white ring) and where the wanderer is (blue) */
 .tm-pin { width: 18px; height: 18px; border-radius: 50%; background: #8a3a1c; border: 3px solid #fdf8ec; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
 .tm-pin.tm-own { background: #2f5a7a; width: 14px; height: 14px; }
+
+/* search focus and results (palette: the brown of the pin and the warm paper) */
+.tm-search input:focus { outline: 2px solid #8a3a1c; outline-offset: 1px; border-color: #8a3a1c; }
+.tm-results {
+  position: absolute; left: 16px; top: 96px; z-index: 3; margin: 0; padding: 4px 0;
+  width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+  background: rgba(252, 248, 238, 0.97); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 3px;
+}
+.tm-results[hidden] { display: none; }
+.tm-results button {
+  display: block; width: 100%; text-align: left; padding: 8px 12px; background: none; color: #2a211b;
+  border: 0; border-radius: 0; font: 14px Georgia, serif;
+}
+.tm-results button:hover, .tm-results button:focus { background: rgba(138, 58, 28, 0.12); outline: none; }
+/* the bar at the bottom: the card (the chosen spot) and the recommended place beside it */
+.tm-bar {
+  position: absolute; left: 50%; bottom: 56px; z-index: 2; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+}
+.tm-recommend {
+  margin: 0; padding: 6px 10px; font-size: 13px; background: rgba(252, 248, 238, 0.9); border-radius: 3px;
+}
+.tm-recommend span { color: #5b4636; margin-right: 6px; }
+.tm-recommend button { padding: 6px 10px; font-size: 12px; background: #5b4636; }
+.tm-recommend[hidden] { display: none; }
+#tm-canvas canvas { cursor: crosshair; }
+
+/* the header line: always on, short */
+.tm-head {
+  position: absolute; left: 16px; top: 12px; z-index: 2; display: flex; gap: 10px; align-items: baseline;
+  padding: 6px 10px; background: rgba(252, 248, 238, 0.9); border-radius: 3px; font-size: 13px; color: #2a211b;
+}
+.tm-head b { font-weight: normal; letter-spacing: 0.06em; color: #8a3a1c; }
+/* the search field with its clear button */
+.tm-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.tm-field input { padding-right: 34px; }
+.tm-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; padding: 0;
+  background: none; color: #5b4636; font-size: 18px; line-height: 1;
+}
+.tm-clear[hidden] { display: none; }
+/* results: always open, each a name with its region and kind */
+.tm-results { background: rgba(252, 248, 238, 0.97); }
+.tm-count { margin: 0; padding: 6px 12px 2px; font-size: 12px; color: #5b4636; }
+.tm-results ul { margin: 0; padding: 0; list-style: none; max-height: min(52vh, 360px); overflow: auto; }
+.tm-results li + li { border-top: 1px solid rgba(70, 52, 40, 0.12); }
+.tm-results button { display: block; }
+.tm-results button b { display: block; font-weight: normal; font-size: 15px; color: #2a211b; }
+.tm-results button span { display: block; font-size: 12px; color: #6b5a4b; }
+/* the card: the name large, the region under it; the go button is the one solid action */
+.tm-card { gap: 14px; }
+.tm-name { min-width: 0; }
+.tm-label { font-size: 17px; color: #2a211b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
+.tm-sub { margin: 0; font-size: 12px; color: #6b5a4b; }
+.tm-go { background: #8a3a1c; padding: 10px 16px; font-size: 14px; }
+/* the recommended place: an outline, text only */
+.tm-recommend { background: none; box-shadow: none; }
+.tm-recommend button { background: none; color: #5b4636; border: 1px solid rgba(91, 70, 54, 0.45); }
+/* paper grain over the map (a noise sheet made in the page, no file) */
+.tm-canvas { position: absolute; }
+.tm-canvas::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.22;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.36  0 0 0 0 0.25  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@media (max-width: 600px) {
+  .tm-head { left: 12px; right: 12px; flex-wrap: wrap; }
+  .tm-results { left: 12px; right: 12px; width: auto; }
+  .tm-status { left: 12px; }
+}

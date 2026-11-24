@@ -128,19 +128,55 @@ async function openPlace(query, { shot, coverage = false } = {}) {
           if (cur) total += cur[1] - cur[0];
           return total / (2 * half);
         };
-        // the skyline: the 15 km ridge at each column's bearing (the baked horizon, 0 north clockwise) against the wood
+        // the skyline (the farthest band at each column's bearing) against the wood, and the far ranges: the separate
+        // silhouettes per column (a band's top 3 px or more above the nearer ones). Tops are scaled as the world's ground.
+        const VS = 0.5, nb = hz.length / 360;
         const bearingFwd = (Math.atan2(fwd.x, -fwd.z) * 180) / Math.PI;
+        const pxPerTan = (innerHeight / 2) / Math.tan((cam.fov * Math.PI) / 360);
         let visible = 0;
+        const layerCounts = [];
         for (let c = 0; c < C; c++) {
           const th = (-half + ((c + 0.5) / C) * 2 * half) * (180 / Math.PI);
           const b = (((Math.round(bearingFwd + th) % 360) + 360) % 360);
-          const ridge = hz[720 + b];
-          if (occ[c] < ridge) visible++;
+          const far = Math.atan(Math.tan(hz[(nb - 1) * 360 + b]) * VS);
+          if (occ[c] < far) visible++;
+          // silhouettes, nearest band first: a band counts when its top is 3 px or more above the last counted one
+          let layers = 1, last = Math.tan(Math.atan(Math.tan(hz[b]) * VS));
+          for (let k = 1; k < nb; k++) {
+            const t = Math.tan(Math.atan(Math.tan(hz[k * 360 + b]) * VS));
+            if ((t - last) * pxPerTan >= 3) { layers++; last = t; }
+          }
+          layerCounts.push(layers);
+        }
+        layerCounts.sort((a, b) => a - b);
+        const ridgeLayers = { median: layerCounts[Math.floor(C / 2)], max: layerCounts[C - 1], atLeast2: +(layerCounts.filter((n) => n >= 2).length / C).toFixed(4) };
+        // the mid-ground (2 km, src/travel/midground.js): the share of the frame's width where its ground rises above the eye
+        let midRiseShare = null;
+        if (L.place.mid) {
+          const mid = L.place.mid, H0 = L.place.way.startHeight, VS = 0.5;
+          const top = new Float64Array(C).fill(-Infinity);
+          for (let j = 0; j < mid.n; j++) for (let i = 0; i < mid.n; i++) {
+            const x = -mid.half + i * mid.step, z = -mid.half + j * mid.step;
+            const dx = x - cam.position.x, dz = z - cam.position.z, d = Math.hypot(dx, dz);
+            if (d < 300 || d > mid.half) continue; // the land's square (up to 256 m) is drawn by the land
+            const depth = dx * fwd.x + dz * fwd.z;
+            if (depth <= 0) continue;
+            const off = Math.atan2(dx * right.x + dz * right.z, depth);
+            if (Math.abs(off) > half) continue;
+            const col = Math.min(C - 1, Math.max(0, Math.floor(((off + half) / (2 * half)) * C)));
+            const ang = Math.atan2((mid.h[j * mid.n + i] - H0) * VS - cam.position.y, d);
+            if (ang > top[col]) top[col] = ang;
+          }
+          let up = 0;
+          for (let c = 0; c < C; c++) if (top[c] > 0) up++;
+          midRiseShare = +(up / C).toFixed(4);
         }
         const feet = L.player.feet;
         return {
+          midRiseShare,
           spawn: { x: +feet.x.toFixed(1), z: +feet.z.toFixed(1), y: +feet.y.toFixed(2) }, // where he starts (from the pin)
           skylineShare: +(visible / C).toFixed(4), // share of the frame width where the far ridge shows above the wood
+          ridgeLayers, // far-range silhouettes per column (median, max, share of columns with 2 or more)
           nearShare: +union(ivNear).toFixed(4), // trunks within 15 m: the ones that block the first view
           allShare: +union(iv).toFixed(4), // every trunk in view, the far wood included
           trunksInView: iv.length, trunksWithin15m: ivNear.length,
@@ -180,17 +216,6 @@ else {
   if (wayMax > TOL.wayMax) failures.push(`way max ${wayMax} m > ${TOL.wayMax}`);
 }
 
-// 2. Hwadam point with the runtime zooms: how far the far bands move
-const real = await openPlace(`scene=hwadam&place=${HWADAM.lat},${HWADAM.lon}&name=${encodeURIComponent('화담숲')}&clean`);
-if (!real.ready) failures.push(`hwadam (runtime zooms) did not reach a frame: ${real.status}`);
-else {
-  const bandsDeg = [0, 1, 2].map((b) => {
-    const s = stats(real.place.horizon.slice(b * 360, b * 360 + 360), bakedHorizon.slice(b * 360, b * 360 + 360));
-    return { maxDeg: +deg(s.max).toFixed(3), meanDeg: +deg(s.mean).toFixed(3) };
-  });
-  report.horizonVsBaked_runtimeZooms = { zooms: real.place.meta.zooms, bands_2km_5km_15km: bandsDeg, ms: real.ms };
-}
-
 // 3. Hwadam (travel), 북한산 and 제주 reach their first frame (named places geocoded at run time) (and capture the start panel once, on the first)
 const named = [];
 for (const q of ['북한산 국립공원', '제주 협재해수욕장']) {
@@ -209,6 +234,8 @@ for (const [i, g] of named.entries()) {
     row.gazeDeg = gazeBearing(r.place.horizon);
     row.firstFrame = r.coverage;
     row.skylineShare = r.coverage.skylineShare;
+    row.midRiseShare = r.coverage.midRiseShare;
+    row.ridgeLayers = r.coverage.ridgeLayers;
     row.spawnFromPin = r.coverage.spawn;
     // the skyline gate: 30% for the places with relief; the flat coast is recorded only (its skyline is one layer)
     if (g.q !== '제주 협재해수욕장' && r.coverage.skylineShare < 0.3) failures.push(`${g.q}: the far ridge shows over ${(r.coverage.skylineShare * 100).toFixed(1)}% of the first frame (target 30%)`);

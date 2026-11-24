@@ -32,8 +32,8 @@ const failures = [];
 const report = {};
 
 await page.goto(`${base}?scene=travel`);
-await page.waitForSelector('.tm-status', { timeout: 60000 });
-await page.waitForFunction(() => document.querySelector('.maplibregl-canvas') && document.querySelector('.tm-status')?.textContent.includes('지도'), null, { timeout: 60000 });
+await page.waitForSelector('.tm-head', { timeout: 60000 });
+await page.waitForFunction(() => document.querySelector('.maplibregl-canvas'), null, { timeout: 60000 });
 await page.waitForTimeout(4000); // tiles and glyphs
 report.canvas = await page.evaluate(() => { const c = document.querySelector('.maplibregl-canvas'); return c ? { w: c.width, h: c.height } : null; });
 await page.screenshot({ path: join(shotDir, 'map-start.png') });
@@ -47,8 +47,14 @@ await page.screenshot({ path: join(shotDir, 'map-pin.png') });
 // search: the result flies the map and shows the card
 await page.fill('#tm-q', '북한산 국립공원');
 await page.press('#tm-q', 'Enter');
-await page.waitForFunction(() => document.querySelector('.tm-label')?.textContent.includes('북한산'), null, { timeout: 30000 }).catch(() => failures.push('search did not set the card'));
-await page.waitForTimeout(3000);
+// the search gives a short list (3 to 5 results); the first is picked
+// the search always gives a list (one result too); a result is picked from it
+await page.waitForSelector('.tm-results button', { timeout: 30000 }).catch(() => failures.push('search gave no list'));
+report.resultCount = await page.evaluate(() => document.querySelectorAll('.tm-results button').length);
+await page.screenshot({ path: join(shotDir, 'map-results.png') });
+await page.click('.tm-results button').catch(() => failures.push('no result to pick'));
+await page.waitForFunction(() => /북한산/.test(document.querySelector('.tm-label')?.textContent ?? ''), null, { timeout: 30000 }).catch(() => failures.push('search did not set the card'));
+await page.waitForTimeout(7000); // the terrain tiles and the flight of the map
 report.searched = await page.evaluate(() => document.querySelector('.tm-label')?.textContent ?? '');
 report.markers = await page.evaluate(() => [...document.querySelectorAll('.maplibregl-marker')].map((m) => ({ t: m.style.transform, display: getComputedStyle(m).display })));
 await page.screenshot({ path: join(shotDir, 'map-search.png') });
