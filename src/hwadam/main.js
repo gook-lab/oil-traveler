@@ -410,13 +410,37 @@ window.lab = {
     for (let t = 0; t <= 50; t += 1) worst = Math.max(worst, eye - heightAt(camera.position.x + f.x * t, camera.position.z + f.z * t));
     return +worst.toFixed(1);
   },
+  /** T2 check: the midground's height (absolute m) within r m of (x, z): min, max, and the cells counted. */
+  midSpan: (x, z, r) => {
+    const md = place.mid; if (!md) return null;
+    let lo = Infinity, hi = -Infinity, n = 0;
+    for (let j = 0; j < md.n; j++) for (let i = 0; i < md.n; i++) {
+      const cx = -md.half + i * md.step, cz = -md.half + j * md.step;
+      if (Math.hypot(cx - x, cz - z) > r) continue;
+      const v = md.h[j * md.n + i]; lo = Math.min(lo, v); hi = Math.max(hi, v); n++;
+    }
+    return { min: +lo.toFixed(1), max: +hi.toFixed(1), n, step: md.step };
+  },
+  /** T2 check: the meshes with a given vertex count, with their parent, material, box and visibility. */
+  meshesWithVerts: (n) => {
+    const out = [];
+    scene.traverse((o) => {
+      const cnt = o.geometry?.attributes?.position?.count;
+      if (cnt !== n) return;
+      o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox, c = b.getCenter(new THREE.Vector3()), s = b.getSize(new THREE.Vector3());
+      let vis = true; for (let p = o; p; p = p.parent) if (!p.visible) vis = false;
+      out.push({ inScene: scene.children.indexOf(o.parent) >= 0, sceneIdx: scene.children.indexOf(o.parent), kids: o.parent?.children.length, name: o.name, parent: o.parent?.name || o.parent?.type || '', parentType: o.parent?.type, mat: o.material?.type, vert: cnt, index: o.geometry.index?.count ?? 0, center: [c.x, c.y, c.z].map((v) => +v.toFixed(0)), size: [s.x, s.y, s.z].map((v) => +v.toFixed(0)), visible: vis, frustumCulled: o.frustumCulled, renderOrder: o.renderOrder, uniforms: o.material?.uniforms ? Object.keys(o.material.uniforms).slice(0, 8) : [] });
+    });
+    return out;
+  },
   /** T2 check: what the picture shows at a screen point (u, v from the top-left): the first visible meshes hit by a ray. */
   pick: (u, v) => {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(u * 2 - 1, 1 - v * 2), camera);
     const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
     const hits = ray.intersectObjects(scene.children, true).filter((h) => shown(h.object)).slice(0, 4);
-    return hits.map((h) => ({ d: +h.distance.toFixed(1), type: h.object.type, name: h.object.name || (h.object.parent && h.object.parent.name) || '', mat: h.object.material?.type ?? '', vert: h.object.geometry?.attributes?.position?.count ?? 0 }));
+    return hits.map((h) => ({ at: [+h.point.x.toFixed(0), +h.point.z.toFixed(0), +h.point.y.toFixed(1)], d: +h.distance.toFixed(1), type: h.object.type, name: h.object.name || (h.object.parent && h.object.parent.name) || '', mat: h.object.material?.type ?? '', vert: h.object.geometry?.attributes?.position?.count ?? 0 }));
   },
   /** T2 check: the trees whose trunk is in the frame (300 m), with their screen place (u, v in 0..1, from the top-left) and shape. */
   frameTrees: () => {
