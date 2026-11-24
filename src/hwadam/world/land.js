@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
+import { setCover, hasCover, coverTexture, coniferShare, COVER_GLSL } from './cover.js';
 export { noise, rng, segW };
 
 /** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
@@ -60,6 +61,8 @@ export function setPlace(place) {
   NEAR_STEP = place.meta.nearStep;
   near = place.near;
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
+  // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
+  setCover(place.cover ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0);
   START.x = place.way.start[0]; START.z = place.way.start[1];
   CLEARING.x = place.way.goal[0]; CLEARING.z = place.way.goal[1];
   const WAY = place.way.points;
@@ -136,7 +139,9 @@ export async function prepareLand(pause) {
       land[k + 1] = Math.round(255 * clearingAt(x, z));
       land[k + 2] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + 0.6 * noise(x / 17 + 9, z / 17) + 0.3 * noise(x / 5, z / 5 + 4))));
       // along the way: the nearest sample's place on it (0 at the first point, 1 at the last)
-      land[k + 3] = Math.round(255 * (label[idx] >= 0 ? label[idx] / (way.length - 1) : 0));
+      // a place with its land cover (T2) is painted as the maple climb throughout (autumn ground, no garden moss):
+      // the walk's parts mean nothing there
+      land[k + 3] = hasCover() ? 128 : Math.round(255 * (label[idx] >= 0 ? label[idx] / (way.length - 1) : 0));
     }
   }
 }
@@ -153,6 +158,7 @@ export function createLand(shared) {
   const tHeight = new THREE.DataTexture(heights, N, N, THREE.RedFormat, THREE.FloatType);
   tHeight.minFilter = tHeight.magFilter = THREE.LinearFilter;
   tHeight.needsUpdate = true;
+  shared.tCover = { value: coverTexture() };
   const tLand = new THREE.DataTexture(land, N, N);
   tLand.minFilter = tLand.magFilter = THREE.LinearFilter;
   tLand.needsUpdate = true;
@@ -176,6 +182,7 @@ export function createLand(shared) {
     fragmentShader: /* glsl */ `
       ${COMMON}
       ${SEG_GLSL}
+      ${COVER_GLSL}
       in vec3 vWorld;
       layout(location = 0) out vec4 outC;
       void main() {
@@ -192,6 +199,14 @@ export function createLand(shared) {
         vec3 c = mix(deep, bright, lit);
         c = mix(c, mix(vec3(0.21, 0.17, 0.2), vec3(0.6, 0.47, 0.33), lit), m.r); // the way itself, worn bare
         c *= 0.78 + 0.3 * texture(tNoise, vWorld.xz / 9.0).r;
+        // the ground of a place (T2): sea, sand, rock and built-up ground laid in square dabs of their own colours
+        float cls = coverClass(vWorld.xz);
+        vec2 sq2 = floor(vWorld.xz / 0.5 + (texture(tNoise, vWorld.xz / 2.3).rg - 0.5) * 1.4) * 0.5;
+        float sqn = texture(tNoise, sq2 / 9.0).r;
+        if (abs(cls - 9.0) < 0.5) c = mix(vec3(0.08, 0.34, 0.4), vec3(0.2, 0.62, 0.58), sqn) * (0.85 + 0.25 * lit);
+        else if (abs(cls - 6.0) < 0.5) c = mix(vec3(0.82, 0.72, 0.54), vec3(0.94, 0.86, 0.68), sqn);
+        else if (abs(cls - 5.0) < 0.5) c = mix(vec3(0.5, 0.46, 0.45), vec3(0.76, 0.68, 0.64), sqn);
+        else if (abs(cls - 8.0) < 0.5) c = mix(vec3(0.58, 0.5, 0.44), vec3(0.78, 0.7, 0.6), sqn);
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
   });

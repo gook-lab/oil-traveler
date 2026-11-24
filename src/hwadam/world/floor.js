@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { groundRings } from '../../oilpaint/ground.js';
 import { segW, SEG_GLSL } from './segments.js';
+import { COVER_GLSL } from './cover.js';
 
 // leaf litter by kind: 0 moss-green, 1 crimson, 2 vermilion, 3 birch yellow, 4 the bare way, 5 gold grass gone down
 export const LITTER = /* glsl */ `
@@ -42,6 +43,8 @@ void makeDab(inout Dab d) {
   float lod;
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
+  // no litter on sea, sand, rock or built-up ground (T2): the ground's own paint shows there
+  if (bareCover(coverClass(xz))) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   vec3 Nn = normalAt(xz);
   vec4 m = texture(tLand, landUv(xz));
@@ -105,6 +108,7 @@ void makeDab(inout Dab d) {
   float lod;
   d.alive = ringGrow(distance(foot, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
+  if (bareCover(coverClass(foot))) { d.alive = 0.0; return; }
   vec4 m = texture(tLand, landUv(foot));
   vec4 sw = segW(m.a);
   // it grows in drifts, keeps off the way, and fills the clearing
@@ -145,8 +149,8 @@ void makeDab(inout Dab d) {
 `;
 
 export function createFloor(shared) {
-  const carpetRings = groundRings(shared, { head: LITTER + SEG_GLSL, body: carpet, per: 3, n: 192, cell0: 0.14, levels: 6, minPx: [5, 9], maxPx: [4000, 4000], cells: [0, 8] });
-  const growthRings = groundRings(shared, { head: LITTER + SEG_GLSL, body: growth, per: 6, n: 96, cell0: 0.42, levels: 4, minPx: [2.5, 12], maxPx: [60, 420], cells: [0, 4] });
+  const carpetRings = groundRings(shared, { head: LITTER + SEG_GLSL + COVER_GLSL, body: carpet, per: 3, n: 192, cell0: 0.14, levels: 6, minPx: [5, 9], maxPx: [4000, 4000], cells: [0, 8] });
+  const growthRings = groundRings(shared, { head: LITTER + SEG_GLSL + COVER_GLSL, body: growth, per: 6, n: 96, cell0: 0.42, levels: 4, minPx: [2.5, 12], maxPx: [60, 420], cells: [0, 4] });
   const group = new THREE.Group();
   group.add(carpetRings.group, growthRings.group);
   return { group, follow(x, z) { carpetRings.follow(x, z); growthRings.follow(x, z); } };

@@ -8,6 +8,7 @@ import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
 import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
+import { hasCover, coverAt, coniferChance, NO_TREE } from './cover.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
@@ -76,13 +77,17 @@ function plant() {
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
     if (inFan(x, z)) return;
+    // a place's land cover (T2): no tree on water, sand, rock or built-up ground
+    if (hasCover() && NO_TREE.has(coverAt(x, z))) return;
     const r = (type === BIRCH ? 0.13 + rand() * 0.08 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
       : type === MAPLE ? MAPLE_LEAVES[Math.floor(rand() * MAPLE_LEAVES.length)]
       : type === OAK ? (rand() < 0.5 ? 1 : 3)
       : BEECH_LEAVES[Math.floor(rand() * BEECH_LEAVES.length)];
-    trees.push({ x, z, y: heightAt(x, z), type, tier, r, h, family, seed: rand() * 1000, lean: [(rand() - 0.5) * 0.09, (rand() - 0.5) * 0.09] });
+    // a place's conifers (T2): not birch; drawn as a tall narrow cone in the moss green of the palette
+    const conifer = type !== BIRCH && hasCover() && rand() < coniferChance();
+    trees.push({ x, z, y: heightAt(x, z), type, tier, r, h: conifer ? 19 + rand() * 9 : h, family: conifer ? 4 : family, conifer, seed: rand() * 1000, lean: [(rand() - 0.5) * 0.09, (rand() - 0.5) * 0.09] });
   };
   const G = 7.2;
   for (let gz = -40; gz <= 40; gz++) {
@@ -180,7 +185,7 @@ export function createForest(shared) {
 
   for (const t of trees) {
     const full = t.tier === 0, some = t.tier === 1;
-    const top = t.h * (t.type === BIRCH ? 0.95 : 0.8);
+    const top = t.h * (t.type === BIRCH ? 0.95 : t.conifer ? 0.97 : 0.8);
     // --- trunk ---
     const rings = full ? 9 : some ? 5 : 3;
     const pts = [], radii = [];
@@ -205,7 +210,15 @@ export function createForest(shared) {
     const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
     const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
     const treeLobes = [];
-    if (full) {
+    if (t.conifer) {
+      // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
+      const steps = full ? 9 : 6;
+      for (let i = 0; i < steps; i++) {
+        const u = i / steps, y = t.y + t.h * (0.22 + 0.72 * u);
+        const lr = Math.max(0.9, spread * 0.55 * (1 - u) + 0.9);
+        treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
+      }
+    } else if (full) {
       const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;

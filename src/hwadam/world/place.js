@@ -3,6 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
+import { fetchCover } from './cover.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
 import nearUrl from '../data/near.bin?url';
@@ -71,12 +72,22 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, name, onProgr
   await prefetchSkyline(terrain, lat, lon, view, zooms);
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms);
+  // the land cover (T2): a failure leaves the place painted as plain ground, and the walk still opens
+  let cover = null, coverCounts = null, coverError = '';
+  try {
+    onProgress(0.85, 'cover');
+    ({ grid: cover, counts: coverCounts } = await fetchCover({ lat, lon, near, onProgress: (f) => onProgress(0.85 + 0.14 * f, 'cover') }));
+  } catch (e) {
+    coverError = e.message;
+    cover = null;
+  }
   onProgress(1, 'done');
   const meta2 = {
+    cover: cover ? coverCounts : null, coverError,
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands: BANDS, eye,
     zooms, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
-  return { source: 'runtime', name, near, horizon, way, meta: meta2 };
+  return { source: 'runtime', name, near, horizon, way, meta: meta2, cover };
 }
 
 /** Looks a typed address up in OpenStreetMap search (Nominatim). Returns null when nothing matches. */
