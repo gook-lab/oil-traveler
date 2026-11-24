@@ -153,6 +153,8 @@ const kick = createKick(shared);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
+if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
 const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
 if (midMesh) scene.add(midMesh);

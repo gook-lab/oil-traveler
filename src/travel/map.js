@@ -24,7 +24,9 @@ const kindText = (s) => String(s || '').replace(/\s*·\s*장소$/, '').replace(/
 let overlay = null, map = null, maplibre = null, chosen = null, onBack = null, ready = false;
 let pickMarker = null, pickOn = false; // the chosen spot is a draggable paint dab (a MapLibre marker)
 let pins = { pick: null, own: null }; // { lat, lon } or null
-let lastReverse = 0;
+let lastReverse = 0, lastList = [];
+// read by tools/travel-check.mjs: the pick, the last results and the highest-spot rule, as the page holds them
+const testHooks = () => ({ pick: () => pins.pick, results: () => lastList, highestSpot });
 export const mapOpen = () => !!overlay && !overlay.hidden;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -117,7 +119,7 @@ async function ensureMap() {
     <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
-        <input id="tm-q" type="text" autocomplete="off" placeholder="주소나 장소 이름" aria-label="주소나 장소 이름" />
+        <input id="tm-q" type="text" autocomplete="off" placeholder="예: 북한산, 협재해변, 화담숲" aria-label="주소나 장소 이름" />
         <button type="button" class="tm-clear" aria-label="검색어 지우기" hidden>×</button>
       </div>
       <button type="submit">찾기</button>
@@ -158,6 +160,7 @@ async function ensureMap() {
     choose(e.lngLat.lat, e.lngLat.lng, coords(e.lngLat.lat, e.lngLat.lng), true);
   });
   wire();
+  globalThis.__travelTest = testHooks();
   return map;
 }
 
@@ -199,6 +202,7 @@ function status(text, warn = false) {
 
 /** Search results as a list, always (one result too): name, region and kind. Picking one flies there. */
 function showResults(list) {
+  lastList = list;
   const box = overlay.querySelector('.tm-results');
   box.innerHTML = `<p class="tm-count">${list.length}건 · 줄을 누르면 그곳으로 가요</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><span class="tm-num">${i + 1}</span><span class="tm-txt"><b>${esc(r.label)}</b><small>${esc(kindText(r.sub))}</small></span><span class="tm-pick">고르기 ›</span></button></li>`).join('')}</ul>`;
   box.hidden = false;
