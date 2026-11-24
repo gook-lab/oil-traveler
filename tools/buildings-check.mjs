@@ -17,10 +17,14 @@ const root = resolve(here, flag('dist', 'dist'));
 const outDir = resolve(here, flag('out', 'shots/bldg-r1'));
 mkdirSync(outDir, { recursive: true });
 
-const PLACES = [
+const ALL = [
   { name: 'gyeongbokgung', lat: 37.5788, lon: 126.9770, label: '경복궁' },
   { name: 'myeongdong', lat: 37.5636, lon: 126.9826, label: '명동' },
 ];
+const only = flag('only', '');
+const PLACES = ALL.filter((p) => !only || p.name === only);
+const t0 = Date.now();
+const step = (what) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${what}`);
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.bin': 'application/octet-stream', '.mjs': 'text/javascript' };
 const server = createServer((req, res) => {
@@ -66,35 +70,73 @@ for (const p of PLACES) {
   const page = await browser.newPage({ viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 });
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('pageerror', (e) => step(`${p.name}: pageerror ${e.message.slice(0, 200)}`));
+  page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') step(`${p.name}: console.${m.type()} ${m.text().slice(0, 200)}`); });
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text().slice(0, 240)}`); });
   const q = `scene=travel&place=${p.lat},${p.lon}&name=${encodeURIComponent(p.label)}&clean`;
+  step(`${p.name}: goto`);
   await page.goto(`${base}?${q}`);
+  step(`${p.name}: loaded, waiting for ready`);
   await page.waitForFunction(() => window.lab?.ready || document.querySelector('.place-status.warn'), null, { timeout: 300000 });
   const ready = await page.evaluate(() => !!window.lab?.ready);
+  step(`${p.name}: ready=${ready}`);
   if (!ready) { bad++; console.log(JSON.stringify({ place: p.name, ready: false, problems })); await page.close(); continue; }
   await page.waitForTimeout(3000);
   const report = await page.evaluate(() => {
     const lab = window.lab;
     const f = lab.player.feet;
     const c = lab.clearance(f.x, f.z);
-    return { colliders: lab.physics.colliders.len(), stats: lab.buildings, feet: [+f.x.toFixed(1), +f.z.toFixed(1)], clearance: c, coverMeta: lab.place?.meta?.cover ?? null };
+    const F = lab.player.feet;
+    const trees30 = lab.trees.filter((q) => Math.hypot(q.x - F.x, q.z - F.z) < 30);
+    const byClass = {};
+    for (const q of trees30) { const k = lab.coverAt(q.x, q.z); byClass[k] = (byClass[k] || 0) + 1; }
+    const probe = { feetClass: lab.coverAt(F.x, F.z), treesWithin30: trees30.length, treesByClass: byClass, forestCounts: lab.counts };
+    return { probe, colliders: lab.physics.colliders.len(), stats: lab.buildings, feet: [+f.x.toFixed(1), +f.z.toFixed(1)], clearance: c, coverMeta: lab.place?.meta?.cover ?? null };
   });
   const share = await page.evaluate(frameShare);
   report.frameShare = share;
   const report0 = {};
+  step(`${p.name}: report done, shooting start`);
   await page.screenshot({ path: join(outDir, `${p.name}.png`) });
+  step(`${p.name}: shot 1`);
   // the courtyard view: from the start toward the place's centre (the palace's throne hall for Gyeongbokgung)
-  const spot = await page.evaluate(() => {
+  // the centre view: 40 m from the target, facing it, on the side toward the courtyard (the south) where the ground is clear.
+  // Gyeongbokgung's target is the largest hall footprint (Geunjeongjeon in the data, about 0.8, -51 m); elsewhere the pin
+  const tgt = p.name === 'gyeongbokgung' ? [0.8, -51.4] : [0, 0];
+  const spot = await page.evaluate((tg) => {
     const L = window.lab;
-    for (const R of [40, 30, 50, 25, 60]) for (let a = 0; a < 360; a += 15) {
+    let best = null;
+    for (let a = 0; a < 360; a += 10) {
+      const r = (a * Math.PI) / 180, x = tg[0] + Math.sin(r) * 40, z = tg[1] + Math.cos(r) * 40;
+      const c = L.clearance(x, z);
+      if (!c.inBuilding && c.d >= 3.5 && (!best || z > best.z)) best = { x, z };
+    }
+    if (!best) return null;
+    L.teleport(best.x, L.heightAt(best.x, best.z), tg[0], tg[1]);
+    return [+best.x.toFixed(1), +best.z.toFixed(1)];
+  }, tgt);
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: join(outDir, `${p.name}-centre.png`) });
+  // the street: a clear spot 14 to 26 m from the centre, facing along the street (90 degrees from the centre)
+  const street = await page.evaluate(() => {
+    const L = window.lab;
+    // the look-ahead: the longest run of clear ground (30 m at most) in the 8 directions along the street
+    const run = (x, z, dx, dz) => { let t = 0; for (; t < 30; t += 1) { const c = L.clearance(x + dx * t, z + dz * t); if (c.inBuilding || c.d < 2) break; } return t; };
+    for (const R of [18, 22, 14, 26]) for (let a = 0; a < 360; a += 15) {
       const r = (a * Math.PI) / 180, x = Math.sin(r) * R, z = Math.cos(r) * R;
       const c = L.clearance(x, z);
-      if (!c.inBuilding && c.d >= 3.5) { L.teleport(x, L.heightAt(x, z), 0, 0); return [+x.toFixed(1), +z.toFixed(1)]; }
+      if (!c.inBuilding && c.d >= 4) {
+        let best = null;
+        for (let k = 0; k < 8; k++) { const b = (k * Math.PI) / 4, dx = Math.sin(b), dz = Math.cos(b), n = run(x, z, dx, dz); if (!best || n > best.n) best = { n, dx, dz }; }
+        L.teleport(x, L.heightAt(x, z), x + best.dx, z + best.dz);
+        return [+x.toFixed(1), +z.toFixed(1), best.n];
+      }
     }
     return null;
   });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: join(outDir, `${p.name}-centre.png`) });
+  await page.screenshot({ path: join(outDir, `${p.name}-street.png`) });
+  report0.street = street;
   report0.spot = spot;
   // the wall test: from 5 m off the nearest outline, walk straight into it for 6 s; the feet must stay out of it
   const wall = await page.evaluate(() => {
@@ -136,7 +178,9 @@ for (const p of PLACES) {
     return { probeFromStartToi: probe, groundAtStart: +gy.toFixed(2), first, startedAt: [+best.sx.toFixed(1), +best.sz.toFixed(1)], toward: [+best.mx.toFixed(1), +best.mz.toFixed(1)], minWallDistance: +minD.toFixed(2), frames: 360, enteredFrames: entered };
   });
   report.wallTest = wall;
+  step(`${p.name}: wall test done`);
   report.centreSpot = report0.spot;
+  report.streetSpot = report0.street;
   report.place = p.name;
   report.problems = problems;
   if (problems.length) bad++;

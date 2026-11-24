@@ -15,7 +15,7 @@ export const DAB_CAP = 8000;
 export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250 };
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
-const NEAR_M = 80;
+const NEAR_M = 80, NEAR_STEP = 1.5, NEAR_CAP = 12000;
 const EAVE = 1.2, LIFT = 0.9, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
 // the cells of the solid mesh, in metres: along a wall, and up it
 const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
@@ -194,12 +194,17 @@ const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], 
 const quadNormal = (s) => { const n = norm3(cross3(sub3(s.P10, s.P00), sub3(s.P01, s.P00))); return n[1] < 0 ? [-n[0], -n[1], -n[2]] : n; };
 const polyCentre = (pts) => centroid(pts.map((q) => [q[0], q[1]]));
 
-/** The spacing of the dabs for a surface: half as far apart within NEAR_M of the start. */
+/** The spacing of the dabs for a surface: the near spacing within NEAR_M of the start, else the base spacing. */
 function dabStep(s, base, near) {
   if (!near) return base;
-  const c = s.poly ? polyCentre(s.poly) : [bil(s, 0.5, 0.5)[0], bil(s, 0.5, 0.5)[2]];
-  return Math.hypot(c[0] - near.x, c[1] - near.z) < NEAR_M ? base * 0.5 : base;
+  return isNear(s, near) ? near.st : base;
 }
+/** True for a surface whose centre lies within NEAR_M of the start. */
+function isNear(s, near) {
+  const c = s.poly ? polyCentre(s.poly) : [bil(s, 0.5, 0.5)[0], bil(s, 0.5, 0.5)[2]];
+  return Math.hypot(c[0] - near.x, c[1] - near.z) < NEAR_M;
+}
+
 
 /**
  * The buildings of the cover as a group: the solid mesh and the dabs laid over it; plus the collision boxes, one on
@@ -207,16 +212,19 @@ function dabStep(s, base, near) {
  * (land.js heightAt); `cover` is the object fetchCover returned; `near` is the start ({ x, z }) for the denser dabs.
  */
 export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
+  const T = [performance.now()];
   const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? []);
   const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
+  T.push(performance.now());
   // the spacing: the touches cover the area of the walls and roofs, at most `cap` of them
   let area = 0;
   for (const b of built) for (const s of b.out) area += s.poly ? Math.abs(area2(s.poly)) : len3(sub3(s.P10, s.P00)) * len3(sub3(s.P01, s.P00));
-  // the exact count of touches at a base spacing: widen it until the count is under the cap
-  const countAt = (st) => {
+  // the exact count of touches at a spacing, for the surfaces near the start (which) or the rest
+  const countAt = (st, which) => {
     let n = 0;
     for (const b of built) for (const s of b.out) {
-      const d = dabStep(s, st, near);
+      if (near && isNear(s, near) !== (which === 'near')) continue;
+      const d = which === 'near' ? st : st;
       if (s.poly) {
         const xs = s.poly.map((q) => q[0]), zs = s.poly.map((q) => q[1]);
         for (let x = Math.min(...xs) + d / 2; x < Math.max(...xs); x += d) for (let z = Math.min(...zs) + d / 2; z < Math.max(...zs); z += d) if (inside(s.poly, x, z)) n++;
@@ -226,8 +234,13 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     }
     return n;
   };
+  let nearSt = NEAR_STEP;
+  if (near) {
+    for (let guard = 0; guard < 60 && countAt(nearSt, 'near') > NEAR_CAP; guard++) nearSt *= 1.03;
+    near.st = nearSt;
+  }
   let base = Math.max(1.1, Math.sqrt(area / cap));
-  for (let guard = 0; guard < 60 && countAt(base) > cap; guard++) base *= 1.03;
+  for (let guard = 0; guard < 60 && countAt(base, 'far') > cap; guard++) base *= 1.03;
 
   // ---- the solid mesh: each surface cut into cells of one colour, the roofs as triangles ----
   const spos = [], scol = [];
@@ -241,7 +254,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     }
     const [cu, cv] = s.cell;
     const nu = Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
-    const N0 = s.n;
+    const N0 = s.n ?? quadNormal(s);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
       const u0 = i / nu, u1 = (i + 1) / nu, v0 = j / nv, v1 = (j + 1) / nv;
       const off = (P) => P.map((x, k) => x + N0[k] * 0.02);
@@ -250,6 +263,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
       vert(A, c); vert(B, c); vert(C, c); vert(A, c); vert(C, c); vert(D, c);
     }
   }
+  T.push(performance.now());
   const solidGeo = new THREE.BufferGeometry();
   solidGeo.setAttribute('position', new THREE.Float32BufferAttribute(spos, 3));
   solidGeo.setAttribute('color', new THREE.Float32BufferAttribute(scol, 3));
@@ -273,7 +287,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
           if (!inside(s.poly, x, z)) continue;
           const r = rnd(id, k * 13 + z);
           const col = s.col(0, 0, r).map((c) => c * lightOf(s.n) * (0.92 + 0.16 * r));
-          push([x, s.y + 0.03, z], [1, 0, 0], [st * 1.25, st * 1.25], s.n, [col, col.map((c) => c * 0.9)], 0.03, id + r);
+          push([x, s.y + 0.03, z], [1, 0, 0], [st * 0.95, st * 0.95], s.n, [col, col.map((c) => c * 0.9)], 0.03, id + r);
         }
         return;
       }
@@ -286,11 +300,13 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const P = bil(s, u, v);
         const col = s.col(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
-        push(P.map((x, k) => x + N0[k] * 0.04), D, [(L2 / nv) * 1.25, (L1 / nu) * 1.25], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
+        // a touch fills its cell and no more, so it stays inside its face
+        push(P.map((x, k) => x + N0[k] * 0.04), D, [(L2 / nv) * 0.95, (L1 / nu) * 0.95], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
   }
   const count = hh.length;
+  T.push(performance.now());
   const dabMeshObj = (() => {
     if (!count) return null;
     const geo = dabGeometry(count, {
@@ -323,7 +339,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
     historic: plans.filter((p) => p.historic).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
-    nearStep: +(base * 0.5).toFixed(2), paintedArea: Math.round(area),
+    nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
+    msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),
   };
   const group = new THREE.Group();
   group.add(solid);

@@ -12,7 +12,7 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
-import { viewShares, COVER_GLSL } from './world/cover.js';
+import { viewShares, COVER_GLSL, coverAt } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -322,7 +322,7 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
-  buildingPlans: bld?.plans ?? [], physics,
+  buildingPlans: bld?.plans ?? [], coverAt, physics,
   clearance: (x, z) => clearance(bld?.plans ?? [], x, z),
   /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
   /** T2: of the trees with any part in the frame, the share whose crown's lower edge (55% of the height) is in it. */

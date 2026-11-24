@@ -164,7 +164,7 @@ void makeDab(inout Dab d) {
   bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, paved = abs(cls - 10.0) < 0.5;
   if (!(sand || rock || built || paved)) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
-  if (q.w < 0.33) { d.alive = 0.0; return; }
+  if (q.w < 0.33 && !paved) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   vec3 Nn = normalAt(xz);
   float lit = woodSunAt(P + vec3(0.0, 0.2, 0.0)) * clamp(dot(Nn, uSunDir) * 2.4, 0.0, 1.0);
@@ -189,7 +189,9 @@ void makeDab(inout Dab d) {
   float a = atan(down.y, down.x) + (q.x - 0.5) * 0.7;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
-  d.size = uCell0 * vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w) * lod;
+  // paved ground is covered: the stones are larger and no cell is left bare
+  float grow = paved ? 1.6 : 1.0;
+  d.size = uCell0 * vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w) * grow * lod;
   d.c1 = hazed(c, P);
   d.c2 = hazed(jitter(c, q.wzy, 0.5), P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37 + 2.0;

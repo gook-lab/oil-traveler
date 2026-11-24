@@ -1,11 +1,11 @@
 // Paved ground of a place (T4): the ground that bore trees and litter becomes stone, gravel and asphalt (class PAVED,
 // cover.js) where the city is built up, along its roads, and in the courtyards of a palace or a temple. Three rules,
-// each a fixed number: a node is dense when the buildings cover at least DENSE of the 61 m square about it; a road is
-// its width (cover.js ROAD_WIDTH) about its centreline; a courtyard is within COURT_M of a castle or Buddhist temple
-// point. Only ground that is plain (none, grass, farm, wood) is paved; water, sand, rock and built-up ground keep theirs.
+// each a fixed number: a node is dense when the buildings cover at least 0.2 of the 61 m square about it; a road is
+// its width (cover.js ROAD_WIDTH) about its centreline; a courtyard is within 120 m of a castle or Buddhist temple point
+// point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
-export const PAVING = { dense: 0.25, half: 15, courtM: 90 };
+export const PAVING = { dense: 0.2, half: 15, courtM: 120 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
 const inside = (pts, x, z) => {
@@ -73,7 +73,9 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
   const counts = { dense: 0, road: 0, court: 0, paved: 0 };
   const hist = new Array(10).fill(0);
   for (let k = 0; k < N * N; k++) {
-    if (!PLAIN.has(out[k])) continue;
+    // a palace or temple court is stone even where the sea strip (sand) lies by its pond
+    const sandCourt = out[k] === 6 && court[k] === 1;
+    if (!PLAIN.has(out[k]) && !sandCourt) continue;
     hist[Math.min(9, Math.floor(densityAt(S, N, k, h) * 10))]++;
     if (bld[k]) continue;
     const byDense = dense[k] === 1, byRoad = road[k] === 1, byCourt = court[k] === 1;
