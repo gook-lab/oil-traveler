@@ -6,6 +6,9 @@ import * as THREE from 'three';
 import { COMMON, EXTENT } from '../oilpaint/common.js';
 import { VS } from '../hwadam/world/land.js';
 
+// check only: ?midzone=0|1|2 keeps just one distance zone (0.5-1, 1-1.5, 1.5-2 km), to read its colour alone
+const MIDZONE = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('midzone')) || '-1';
+
 /**
  * Builds the ring-shaped mesh (a hole where the land is). `mid` is { n, step, half, h }, `H0` the zero of the scaled
  * ground (the entrance height, as land.js uses it). Returns a Mesh for the scene.
@@ -71,9 +74,18 @@ export function createMidground(shared, mid, H0) {
         float lit = clamp(dot(normalize(vN), uSunDir) * 1.4 + 0.25, 0.0, 1.0);
         vec3 c = mix(base * 0.55, base * 1.25 + vec3(0.06, 0.04, 0.0), lit);
         c *= 0.9 + 0.2 * texture(tNoise, vWorld.xz / 7.0).r;
+        // the distance from the eye in three zones: the near ground keeps the autumn colour, the next goes a little deeper
+        // and cooler, the farthest goes cooler and paler, so the ground reads as ground receding and not as one grey plane
+        float dist = length(vWorld.xz - cameraPosition.xz);
+        float zone = smoothstep(1000.0, 2000.0, dist);
+        int z = dist < 1000.0 ? 0 : dist < 1500.0 ? 1 : 2;
+        if (${MIDZONE.replace(/[^0-9-]/g, '') || '-1'} >= 0 && z != ${MIDZONE.replace(/[^0-9-]/g, '') || '-1'}) discard;
+        // the near ground keeps its autumn colour; the far ground is a little deeper and cooler, then the haze below takes the rest
+        c *= mix(1.0, 0.9, zone);
+        c = mix(c, c * vec3(0.9, 0.97, 1.08), 0.6 * zone);
         // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
         vec3 air = airColour(normalize(vWorld - cameraPosition));
-        outC = vec4(mix(c, air, 0.4 * mistBetween(vWorld)), 1.0);
+        outC = vec4(mix(c, air, mix(0.12, 0.6, zone) * mistBetween(vWorld)), 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(geometry, material);
