@@ -141,24 +141,6 @@ export async function prepareLand(pause) {
   }
 }
 /** Height of the ground at (x, z), read from the same map the picture uses. */
-/**
- * A vantage point near the pin (travel start): the highest ground within `radius` metres of the pin, over the square's
- * inner part, with a small pull toward the pin itself. A hill gives the first view down over the valley; a flat place
- * gives the pin. Needs prepareLand() first (it reads the heights).
- */
-export function vantageNear(radius = 150, step = 10) {
-  let best = { x: 0, z: 0, h: -Infinity, score: -Infinity };
-  for (let z = -radius; z <= radius; z += step) {
-    for (let x = -radius; x <= radius; x += step) {
-      const d = Math.hypot(x, z);
-      if (d > radius || Math.abs(x) > EXTENT - 20 || Math.abs(z) > EXTENT - 20) continue;
-      const h = heightAt(x, z), score = h - 0.02 * d;
-      if (score > best.score) best = { x, z, h, score };
-    }
-  }
-  return { x: best.x, z: best.z, h: best.h };
-}
-
 export function heightAt(x, z) {
   const fx = Math.min(N - 1.001, Math.max(0, ((x + EXTENT) / (2 * EXTENT)) * (N - 1)));
   const fz = Math.min(N - 1.001, Math.max(0, ((z + EXTENT) / (2 * EXTENT)) * (N - 1)));

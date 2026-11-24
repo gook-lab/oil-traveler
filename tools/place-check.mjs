@@ -162,7 +162,7 @@ async function openPlace(query, { shot, coverage = false } = {}) {
 }
 
 // 1. Hwadam point, with the baked settings: must reproduce the baked files
-const same = await openPlace(`scene=hwadam&place=${HWADAM.lat},${HWADAM.lon}&zooms=13,13,13&name=${encodeURIComponent('화담숲')}&clean`);
+const same = await openPlace(`scene=hwadam&place=${HWADAM.lat},${HWADAM.lon}&zooms=13,13,13&view=goal&name=${encodeURIComponent('화담숲')}&clean`); // the baked skyline's point: the goal
 if (!same.ready) failures.push(`hwadam (13,13,13) did not reach a frame: ${same.status} ${same.problems.join(' | ')}`);
 else {
   const nearStats = stats(same.place.near, bakedNear);

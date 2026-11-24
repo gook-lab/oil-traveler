@@ -9,7 +9,7 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, vantageNear } from './world/land.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
 import { mountPlacePanel } from './start-panel.js';
@@ -127,7 +127,7 @@ await turn();
 const gazeDeg = travel ? gazeBearing(place.horizon) : null;
 const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
 // the travel start: a vantage point near the pin (highest ground within 150 m); the pin itself on flat ground
-const vantage = travel ? vantageNear(150, 10) : { x: 0, z: 0 };
+const vantage = travel ? place.meta.vantage : { x: 0, z: 0 }; // the start, from the same near square as the skyline
 Object.assign(CLEAR, {
   x: vantage.x, z: vantage.z, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
