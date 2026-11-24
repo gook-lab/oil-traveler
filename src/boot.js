@@ -4,7 +4,8 @@ import { SCENE, showScene } from './scenes.js';
 document.documentElement.dataset.scene = SCENE;
 const q = new URLSearchParams(location.search);
 const switcher = document.getElementById('scenes');
-if (q.has('capture') || q.has('clean')) switcher?.remove();
+// the traveller is its own page: the buttons for the three older pictures stay off it (their addresses still work)
+if (q.has('capture') || q.has('clean') || SCENE === 'travel') switcher?.remove();
 for (const button of switcher?.querySelectorAll('button') ?? []) {
   button.classList.toggle('on', button.dataset.scene === SCENE);
   button.addEventListener('click', () => showScene(button.dataset.scene));

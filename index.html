@@ -1,9 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Oil paint</title>
+    <title>유화 여행자</title>
+    <meta name="description" content="지도에서 고른 곳을 유화 붓 자국으로 칠해 1인칭으로 걷는 탐험" />
+    <meta property="og:title" content="유화 여행자" />
+    <meta property="og:description" content="지도에서 고른 곳을 유화 붓 자국으로 칠해 1인칭으로 걷는 탐험" />
     <meta property="og:image" content="cover.jpg" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="cover.jpg" />
@@ -22,11 +25,39 @@
       #scenes button { font: 13px/1 Georgia, serif; letter-spacing: 0.04em; color: #f3e3c3; background: rgba(28, 20, 18, 0.55); border: 1px solid rgba(243, 227, 195, 0.25);
         padding: 8px 12px; border-radius: 3px; cursor: pointer; }
       #scenes button.on { background: rgba(243, 227, 195, 0.9); color: #1c1512; cursor: default; }
+      #fail { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(28, 20, 18, 0.88); color: #f3e3c3; z-index: 50;
+        font: 16px/1.6 system-ui, sans-serif; text-align: center; padding: 24px; }
+      #fail[hidden] { display: none; }
+      #fail p { margin: 0 0 16px; max-width: 30em; }
+      #fail button { font: inherit; color: #1c1512; background: #f3e3c3; border: 0; border-radius: 6px; padding: 10px 18px; cursor: pointer; }
     </style>
   </head>
   <body>
     <div id="view"></div>
-    <div id="loading">Mixing paint</div>
+    <div id="loading">물감을 섞는 중이에요</div>
+    <div id="fail" role="alert" hidden><div><p id="fail-msg"></p><button id="fail-retry" type="button">다시 불러오기</button></div></div>
+    <script>
+      // Failure notices that must work before the modules load (a script that fails to load, no WebGL2), and the graphics
+      // device dropping out later. The loop's own exceptions are caught in each scene's loop and come here through __fail.
+      (() => {
+        const box = document.getElementById('fail'), msg = document.getElementById('fail-msg'), retry = document.getElementById('fail-retry');
+        const show = (text, canRetry = true) => {
+          msg.textContent = text; retry.hidden = !canRetry; box.hidden = false; document.getElementById('loading')?.remove();
+        };
+        window.__fail = show;
+        retry.addEventListener('click', () => location.reload());
+        addEventListener('error', (e) => {
+          if (!document.getElementById('loading')) return; // started: only the loop's exceptions count from here
+          if ((e.target && e.target.tagName === 'SCRIPT') || e.error) show('그림을 불러오지 못했어요. 새로고침해 주세요.');
+        }, true);
+        let gl = null;
+        try { gl = document.createElement('canvas').getContext('webgl2'); } catch { gl = null; }
+        if (!gl) show('이 브라우저에서는 그림을 그릴 수 없어요. WebGL2 를 켤 수 있는 브라우저로 열어 주세요.', false);
+        else gl.getExtension('WEBGL_lose_context')?.loseContext();
+        document.addEventListener('webglcontextlost', () => show('그래픽 장치가 잠시 끊겼어요. 돌아오면 이어서 그려요.', false), true);
+        document.addEventListener('webglcontextrestored', () => { box.hidden = true; }, true);
+      })();
+    </script>
     <div id="scenes"><button data-scene="aurora" tabindex="-1">Aurora</button><button data-scene="autumn" tabindex="-1">Autumn wood</button><button data-scene="hwadam" tabindex="-1">Hwadam walk</button></div>
     <div id="hint">Click to look · WASD move · Shift sprint · Space jump · wheel to step back</div>
     <script type="module" src="/src/boot.js"></script>

@@ -621,3 +621,12 @@ T1 의 세 장소는 같은 화담 가을 숲으로 보였습니다(비평 치�
 ### 로컬 기본 장면
 
 - 장면 이름이 없는 주소(`/`)는 원본 오로라 장면을 엽니다(src/scenes.js). 배포판은 vercel.json 이 `?scene=travel` 로 보내지만 로컬은 아닙니다. 다음 통합 커밋에서 기본값을 travel 로 바꿉니다.
+- 11/24 밤 반영: 기본값을 travel 로 바꿨습니다(src/scenes.js). 옛 장면 버튼 셋은 travel 화면에서 뺐고, 주소(?scene=aurora · autumn · hwadam)로는 그대로 열립니다. Patch 틀 검사(tools/switch.mjs)는 틀 주소에 scene=aurora 를 적어 그대로 둡니다.
+
+### 공개 데모 점검 — 배포 전 (2026-11-24 밤, guk-lab-docs playbooks/game-demo-release.md)
+
+- 시작 화면: index.html 인라인 "물감을 섞는 중이에요". 제목 · 설명 메타는 "유화 여행자".
+- 실패 화면: index.html 인라인 안내(모듈 받기 실패 · WebGL2 없음 · 그래픽 장치 끊김과 복구), 세 장면 루프의 try/catch → `window.__fail`. 404 는 public/404.html. 확인 도구 `tools/fail-check.mjs`(잠금 안) 10개 통과.
+- 소리: 첫 클릭 · 키 입력에서 AudioContext 를 엶(src/music.js). 지도 핀 클릭이 첫 입력이 됩니다.
+- 판 기록 수집: 해당 없음(점수 · 판이 없는 탐험).
+- 용량 · 휴대폰: dist 17.1 MB(음악 6.0 · 번들 7.0 · 인물 3.5). 휴대폰은 터치 이동이 없어 지도에서 핀만 고를 수 있고 걷지 못합니다 — 다음 묶음(사용자 동의로 미룸).
