@@ -17,8 +17,12 @@ export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea:
 const DAB_M = 1.5, ROOF_DAB_M = 3;
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
-const NEAR_M = 80, NEAR_STEP = 1.5, NEAR_CAP = 12000;
-const EAVE = 1.2, LIFT = 0.9, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
+// the near zone: within 120 m of the start, touches 3 m apart; the cap is 16000 (r20: 14807 touches at 120 m)
+const NEAR_M = 120, NEAR_STEP = 3, NEAR_CAP = 16000;
+const EAVE = 1.8, LIFT = 0.9, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
+// a traditional hall: the walls are at most 5 m (or 0.4 of the height), the rest is roof; a hall with a short side of 15 m
+// or more stands on a stone base of 1.2 m
+const WALL_MAX = 5, WALL_FRAC = 0.4, BIG_SIDE = 15, BIG_STONE = 1.2;
 // the cells of the solid mesh, in metres: along a wall, and up it
 const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
 
@@ -118,7 +122,13 @@ export function planBuildings(list, heritage) {
     const unknown = b.h === UNKNOWN;
     plans.push({ pts, R, rect: +rect.toFixed(3), area: Math.round(A), h0: b.h > 0 ? b.h : 6, unknown, mh: b.mh ?? 0, colour: b.colour, c, historic, ccw: area2(pts) > 0 });
   }
+  // outlines that stand on each other (a part and its building, or a duplicate): when 80% or more of the smaller lies
+  // inside the other, only the taller stands (the part, as its height is the part's), the larger on a tie
+  const dropped = dropOverlaps(plans);
+  const kept = plans.filter((p) => !dropped.has(p));
   // the heights of the known buildings, for the fill of the modern ones
+  plans.length = 0; plans.push(...kept);
+  plans.overlapDropped = dropped.size;
   const known = plans.filter((p) => !p.unknown);
   for (const p of plans) {
     if (p.unknown) {
@@ -139,6 +149,36 @@ export function planBuildings(list, heritage) {
   return plans;
 }
 
+/** The share of the smaller outline inside the other, sampled on a 12 by 12 grid over its bounding box. */
+function overlapShare(a, b) {
+  const sm = Math.abs(a.area) <= Math.abs(b.area) ? a : b, big = sm === a ? b : a;
+  const bx = (pts) => [Math.min(...pts.map((q) => q[0])), Math.max(...pts.map((q) => q[0])), Math.min(...pts.map((q) => q[1])), Math.max(...pts.map((q) => q[1]))];
+  const [x0, x1, z0, z1] = bx(sm.pts);
+  let inS = 0, both = 0;
+  for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
+    const x = x0 + ((i + 0.5) / 12) * (x1 - x0), z = z0 + ((j + 0.5) / 12) * (z1 - z0);
+    if (!inside(sm.pts, x, z)) continue;
+    inS++;
+    if (inside(big.pts, x, z)) both++;
+  }
+  return inS ? both / inS : 0;
+}
+/** The plans that stand on another (see planBuildings); a Set of the ones to drop. */
+function dropOverlaps(plans) {
+  const drop = new Set();
+  const box = plans.map((p) => { const xs = p.pts.map((q) => q[0]), zs = p.pts.map((q) => q[1]); return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)]; });
+  for (let i = 0; i < plans.length; i++) for (let j = i + 1; j < plans.length; j++) {
+    if (drop.has(plans[i]) || drop.has(plans[j])) continue;
+    const [a0, a1, b0, b1] = box[i], [c0, c1, d0, d1] = box[j];
+    if (a1 < c0 || c1 < a0 || b1 < d0 || d1 < b0) continue;
+    if (overlapShare(plans[i], plans[j]) < 0.8) continue;
+    const [p, q] = [plans[i], plans[j]];
+    const keepP = p.h0 !== q.h0 ? p.h0 > q.h0 : Math.abs(area2(p.pts)) >= Math.abs(area2(q.pts));
+    drop.add(keepP ? q : p);
+  }
+  return drop;
+}
+
 /**
  * The surfaces of one building: quads (P00, P10, P01, P11: bilinear, u along P10, v along P01), each with its outward
  * normal, its cell size for the solid mesh and its colour function (u, v, r) -> [r, g, b]; and the flat polygons (roofs).
@@ -150,7 +190,8 @@ function surfacesOf(p, ground) {
     const yb = gMin + p.mh, yt = gMin + p.h;
     const base = hexRGB(p.colour);
     const bh = rnd(p.c[0], p.c[1]);
-    const wallC = p.wall ? [0.86, 0.84, 0.78] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
+    // a palace wall (a walled court's ring): ochre-grey, with a band of red tiles along its top (the coping)
+    const wallC = p.wall ? [0.74, 0.62, 0.46] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
     const roofC = [0.3, 0.3, 0.31];
     for (let k = 0; k < p.pts.length; k++) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
@@ -163,6 +204,7 @@ function surfacesOf(p, ground) {
         col: (u, v, r) => {
           const fy = v * H, row = fy % FLOOR_H, x = u * L;
           const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
+          if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
           // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
           return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
         },
@@ -174,25 +216,26 @@ function surfacesOf(p, ground) {
   // traditional: the wall box, the stone base, the eaves, and the hip roof of tiles
   const R = p.R;
   const yb = gMin;
-  const stone = Math.min(STONE_MAX, 0.25 * p.h);
-  const roofH = Math.min(Math.max(0.3 * 2 * R.hv, 1.2), 0.4 * p.h);
-  const yEave = Math.max(yb + stone + 0.3, yb + p.h - roofH);
+  const big = 2 * Math.min(R.hu, R.hv) >= BIG_SIDE;
+  const stone = big ? BIG_STONE : Math.min(STONE_MAX, 0.25 * p.h);
+  const yEave = yb + stone + Math.min(WALL_MAX, WALL_FRAC * p.h); // the top of the walls; the roof is the rest
   const yTop = yb + p.h;
   const wallPts = (pad) => [rectPt(R, -R.hu - pad, -R.hv - pad), rectPt(R, R.hu + pad, -R.hv - pad), rectPt(R, R.hu + pad, R.hv + pad), rectPt(R, -R.hu - pad, R.hv + pad)];
   // four faces of a box with the given corners, from y0 to y1, each coloured by col(u, v, r, L, k)
   // dabCol (optional): the colour of the touches on the face, when it differs from the solid cells (posts stay in the body)
-  const face = (ptsA, y0, y1, col, cell, dabCol = null) => {
+  const face = (ptsA, y0, y1, col, cell, dabCol = null, vertical = false) => {
     for (let k = 0; k < 4; k++) {
       const a = ptsA[k], b = ptsA[(k + 1) % 4];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       const n = [ez / L, 0, -ex / L];
-      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k), dabCol: dabCol ? (u, v, r) => dabCol(u, v, r, L, k) : null });
+      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k), dabCol: dabCol ? (u, v, r) => dabCol(u, v, r, L, k) : null, vertical });
     }
   };
   // the stone base, a little out from the posts
   face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
-  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.94 + 0.12 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.94 + 0.12 * r)));
+  // the white walls: the touches vary by 3% and lie upright (long strokes), so they do not read as a row of windows
+  face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r)), true);
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
   const posts = wallPts(0), eaveW = wallPts(EAVE);
   for (let k = 0; k < 4; k++) {
@@ -270,6 +313,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     // near.fixed: a spacing given by the caller (the count at 3 m, for the check); else the spacing that keeps under the cap
     if (near.fixed) nearSt = near.fixed;
     else for (let guard = 0; guard < 60 && countAt(nearSt, 'near') > NEAR_CAP; guard++) nearSt *= 1.03;
+    if (countAt(nearSt, 'near') > NEAR_CAP) console.warn(`buildings: near touches over the cap at ${nearSt.toFixed(2)} m`);
     near.st = nearSt;
   }
   let base = Math.max(1.1, Math.sqrt(area / cap));
@@ -327,7 +371,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
       }
       const L1 = len3(sub3(s.P10, s.P00)), L2 = len3(sub3(s.P01, s.P00));
       const nu = Math.max(1, Math.round(L1 / st)), nv = Math.max(1, Math.round(L2 / st));
-      const D = norm3(sub3(s.P10, s.P00)), N0 = s.n ?? quadNormal(s);
+      // a vertical face's touches run up it (the long side is the height); the rest run along the face
+      const D = s.vertical ? [0, 1, 0] : norm3(sub3(s.P10, s.P00)), N0 = s.n ?? quadNormal(s);
       for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
         const u = (i + 0.5) / nu, v = (j + 0.5) / nv;
         const r = rnd(id + i * 0.31, j * 0.77 + 1.3);
@@ -336,7 +381,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
         // a touch fills its cell and no more, so it stays inside its face
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
-        push(P.map((x, k) => x + N0[k] * 0.04), D, [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
+        const S = s.vertical ? [Math.min(L2 / nv, 2.5) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
+        push(P.map((x, k) => x + N0[k] * 0.04), D, S, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
   }
@@ -372,7 +418,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
-    walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    overlapDropped: plans.overlapDropped ?? 0, walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
     nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
     msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),
