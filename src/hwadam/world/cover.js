@@ -167,12 +167,20 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
-  // basalt (Jeju only, before the inferred sand so that it takes the 6 to 12 m strip): the untagged land (none, grass)
-  // 6 to 12 m inland from the sea, below 10 m high. OSM's own sand and beaches stay sand (their class is already set)
+  // basalt (Jeju only, before the inferred sand): the untagged land (none, grass) at the water's edge, 0 to 6 m from the
+  // water and below 10 m high. Only the waterline strip: the sand is inferred over the rest of the beach (15 m), so the
+  // lava does not take the beach. OSM's own sand and beaches stay sand (their class is already set)
   if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
-    if (nearWater(sea, i, j, 6) && !nearWater(sea, i, j, 3)) out[k] = COVER.BASALT;
+    if (nearWater(sea, i, j, 3)) out[k] = COVER.BASALT;
+  }
+  // a few blocks stand in the shallow water beside the land (a lava shelf under the sea): every 24th shallow sea cell
+  // with land within 4 m (2 nodes)
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (out[k] !== COVER.WATER || near[k] <= -1 || (i * 7 + j * 3) % 24 !== 0) continue;
+    if (landWithin(out, i, j, 2)) out[k] = COVER.BASALT;
   }
   // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -194,6 +202,16 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
   return { grid: out, depth: dep, counts };
+}
+
+// true when a cell within r nodes is land (not water) of the grid
+function landWithin(out, i, j, r) {
+  for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    const a = i + di, b = j + dj;
+    if (a < 0 || b < 0 || a >= N || b >= N) continue;
+    if (out[b * N + a] !== COVER.WATER) return true;
+  }
+  return false;
 }
 
 function nearWater(sea, i, j, r) {
