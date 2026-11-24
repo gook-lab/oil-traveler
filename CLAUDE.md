@@ -19,7 +19,7 @@ CHROME="$(find ~/Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64 -pa
 
 도구들은 맥에서 ANGLE Metal 을 씁니다(원본은 Windows d3d11).
 
-프레임을 재는 `--time` 측정은 다른 레포(oil-shooter)와 GPU 를 나눠 쓰면 숫자가 부풉니다. 재기 전에 `mkdir ~/sonix/toy/.gpu-measure.lock` 으로 잠그고, 끝나면 `rmdir` 합니다. mkdir 이 실패하면 30초 기다렸다가 다시 시도합니다. 스틸 촬영만 할 때는 잠그지 않습니다.
+프레임을 재는 `--time` 측정은 다른 레포(oil-shooter)와 GPU 를 나눠 쓰면 숫자가 부풉니다. 측정은 `tools/with-gpu-lock.sh <명령>` 으로만 돌립니다. 이 스크립트가 `~/sonix/toy/.gpu-measure.lock` 을 잡고, 직접 잡은 잠금만 풉니다. 잠금을 손으로 `rmdir` 하지 않습니다(남의 잠금을 지운 일이 있었음). 스틸 촬영만 할 때는 잠그지 않습니다.
 
 ## 검증 — 화면만 보는 비평가
 
