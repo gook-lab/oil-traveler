@@ -30,7 +30,7 @@ export function createRanges(shared, horizon, bands, ex, ey, ez, VS) {
     const index = [];
     for (let a = 0; a < 360; a++) {
       const p = a * 2, q = p + 1, r = p + 2, s = p + 3;
-      index.push(p, r, q, q, r, s);
+      index.push(p, q, r, q, s, r); // counter-clockwise seen from inside the ring: the front faces the eye
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
