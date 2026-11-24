@@ -12,7 +12,9 @@ import { SUN } from '../oilpaint/common.js';
 
 /** The most touches on the buildings of a place; the spacing of the dabs grows to keep under it. */
 export const DAB_CAP = 8000;
-export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250 };
+export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea: 1500, wallH: 3.4 };
+/** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
+const DAB_M = 1.5, ROOF_DAB_M = 3;
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
 const NEAR_M = 80, NEAR_STEP = 1.5, NEAR_CAP = 12000;
@@ -114,7 +116,7 @@ export function planBuildings(list, heritage) {
     const rect = A / R.area;
     const historic = heritage.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) <= RULE.heritageM);
     const unknown = b.h === UNKNOWN;
-    plans.push({ pts, R, rect: +rect.toFixed(3), h0: b.h > 0 ? b.h : 6, unknown, mh: b.mh ?? 0, colour: b.colour, c, historic, ccw: area2(pts) > 0 });
+    plans.push({ pts, R, rect: +rect.toFixed(3), area: Math.round(A), h0: b.h > 0 ? b.h : 6, unknown, mh: b.mh ?? 0, colour: b.colour, c, historic, ccw: area2(pts) > 0 });
   }
   // the heights of the known buildings, for the fill of the modern ones
   const known = plans.filter((p) => !p.unknown);
@@ -128,6 +130,10 @@ export function planBuildings(list, heritage) {
       p.filled = true;
     } else p.h = p.h0;
     p.trad = p.historic && p.h <= RULE.maxH && p.rect >= RULE.rect;
+    // a historic outline that is not a rectangle and covers 1500 m2 or more (a palace's walled court, or its ring of
+    // walls) stands as a wall ring at 3.4 m: no roof plane, which would cover the court with a plate
+    p.wall = p.historic && p.rect < RULE.rect && p.area >= RULE.wallArea;
+    if (p.wall) p.h = RULE.wallH;
   }
   return plans;
 }
@@ -143,7 +149,7 @@ function surfacesOf(p, ground) {
     const yb = gMin + p.mh, yt = gMin + p.h;
     const base = hexRGB(p.colour);
     const bh = rnd(p.c[0], p.c[1]);
-    const wallC = base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
+    const wallC = p.wall ? [0.86, 0.84, 0.78] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
     const roofC = [0.3, 0.3, 0.31];
     for (let k = 0; k < p.pts.length; k++) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
@@ -155,13 +161,13 @@ function surfacesOf(p, ground) {
         P00: [a[0], yb, a[1]], P10: [b[0], yb, b[1]], P01: [a[0], yt, a[1]], P11: [b[0], yt, b[1]], n, cell: WALL_CELL,
         col: (u, v, r) => {
           const fy = v * H, row = fy % FLOOR_H, x = u * L;
-          const win = row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
+          const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
           return win ? [0.12, 0.15, 0.18] : wallC;
         },
       });
     }
-    out.push({ poly: p.pts, y: yt, n: [0, 1, 0], col: () => roofC });
-    return { out, yb, yt, kind: 'modern' };
+    if (!p.wall) out.push({ poly: p.pts, y: yt, n: [0, 1, 0], col: () => roofC });
+    return { out, yb, yt, kind: p.wall ? 'wall' : 'modern' };
   }
   // traditional: the wall box, the stone base, the eaves, and the hip roof of tiles
   const R = p.R;
@@ -310,7 +316,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
           if (!inside(s.poly, x, z)) continue;
           const r = rnd(id, k * 13 + z);
           const col = s.col(0, 0, r).map((c) => c * lightOf(s.n) * (0.92 + 0.16 * r));
-          push([x, s.y + 0.03, z], [1, 0, 0], [st * 0.95, st * 0.95], s.n, [col, col.map((c) => c * 0.9)], 0.03, id + r);
+          const roofS = Math.min(st, ROOF_DAB_M) * 0.95;
+        push([x, s.y + 0.03, z], [1, 0, 0], [roofS, roofS], s.n, [col, col.map((c) => c * 0.9)], 0.03, id + r);
         }
         return;
       }
@@ -324,7 +331,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const col = (s.dabCol ?? s.col)(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
         // a touch fills its cell and no more, so it stays inside its face
-        push(P.map((x, k) => x + N0[k] * 0.04), D, [(L2 / nv) * 0.95, (L1 / nu) * 0.95], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
+        // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
+        push(P.map((x, k) => x + N0[k] * 0.04), D, [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95], N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
   }
@@ -360,7 +368,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
-    historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
     nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
     msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),

@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
 import { applyPaving } from './paved.js';
+import { lowerTown } from './townground.js';
 
 export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10 };
 export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved'];
@@ -212,12 +213,16 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   }
   // paved ground (T4) before the rock: stone in a town is paved, and rock is for the natural rock alone
   applyPaving(out, { buildings, heritage, roads, N, STEP: NEAR_STEP });
+  // the town ground: the built-up nodes drop to the low ground around them (the DSM's roofs and trees are not ground)
+  // (the rock is judged on the ground before the town step, so the edge of a lowered town is not a cliff of rock)
+  const natural = near.slice();
+  const town = lowerTown(near, out, N, NEAR_STEP);
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
     const k = j * N + i;
     if (out[k] !== COVER.NONE && out[k] !== COVER.GRASS && out[k] !== COVER.ROCK) continue;
-    if (near[k] <= 0.5) continue;
-    const dx = (near[k + 1] - near[k - 1]) / (2 * NEAR_STEP), dz = (near[k + N] - near[k - N]) / (2 * NEAR_STEP);
+    if (natural[k] <= 0.5) continue;
+    const dx = (natural[k + 1] - natural[k - 1]) / (2 * NEAR_STEP), dz = (natural[k + N] - natural[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
   }
   onProgress(1, 'cover');
@@ -225,7 +230,7 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts, buildings, heritage };
+  return { grid: out, depth: dep, counts, buildings, heritage, town };
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */

@@ -5,7 +5,7 @@
 // point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
-export const PAVING = { dense: 0.1, half: 15, courtM: 120 };
+export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.05 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
 const inside = (pts, x, z) => {
@@ -70,7 +70,7 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
       if (Math.hypot((i - N / 2) * STEP - p[0], -(j - N / 2) * STEP - p[1]) <= PAVING.courtM) court[j * N + i] = 1;
     }
   }
-  const counts = { dense: 0, road: 0, court: 0, paved: 0 };
+  const counts = { dense: 0, road: 0, court: 0, none: 0, paved: 0 };
   const hist = new Array(10).fill(0);
   for (let k = 0; k < N * N; k++) {
     // a palace or temple court is stone even where the sea strip (sand) lies by its pond
@@ -78,11 +78,13 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
     if (!PLAIN.has(out[k]) && !sandCourt) continue;
     hist[Math.min(9, Math.floor(densityAt(S, N, k, h) * 10))]++;
     if (bld[k]) continue;
-    const byDense = dense[k] === 1, byRoad = road[k] === 1, byCourt = court[k] === 1;
+    // bare ground (none) with a building within the 61 m square is town: stone, not an empty patch
+    const byDense = dense[k] === 1, byRoad = road[k] === 1, byCourt = court[k] === 1, byNone = out[k] === 0 && densityAt(S, N, k, h) >= PAVING.noneNear;
     if (byDense) counts.dense++;
     if (byRoad) counts.road++;
     if (byCourt) counts.court++;
-    if (byDense || byRoad || byCourt) { out[k] = PAVED; counts.paved++; }
+    if (byNone) counts.none++;
+    if (byDense || byRoad || byCourt || byNone) { out[k] = PAVED; counts.paved++; }
   }
   counts.histDeciles = hist;
   return counts;

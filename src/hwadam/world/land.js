@@ -256,6 +256,9 @@ export function createLand(shared) {
           }
         } else if (abs(cls - 8.0) < 0.5) {
           c = mix(vec3(0.56, 0.48, 0.42), vec3(0.78, 0.7, 0.6), sqn) * (0.9 + 0.2 * strokeV);
+        } else if (abs(cls - 10.0) < 0.5) {
+          // paved ground (paved.js): the stone's own grey under the dabs, so no autumn red shows between the stones
+          c = mix(vec3(0.52, 0.5, 0.47), vec3(0.66, 0.64, 0.6), strokeV) * (0.9 + 0.15 * sqn);
         }
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
