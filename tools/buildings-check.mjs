@@ -141,6 +141,26 @@ for (const p of PLACES) {
   }, tgt);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: join(outDir, `${p.name}-centre.png`) });
+  // the side view (Gyeongbokgung): from the east end of the hall, 22 m out past its gable, facing west, so the gable
+  // triangle and the ridge line read edge-on (the hall's long side runs east-west)
+  if (p.name === 'gyeongbokgung') {
+    const sideSpot = await page.evaluate((tg) => {
+      const L = window.lab;
+      // the first spot east of the gable (22 to 60 m out, so the eave does not fill the frame) that is 3.5 m clear
+      for (let d = 22; d <= 60; d += 1) {
+        const x = tg[0] + 33.6 + d, z = tg[1];
+        const c = L.clearance(x, z);
+        if (c.inBuilding || c.d < 3.5) continue;
+        L.teleport(x, z, tg[0], tg[1]);
+        return [+x.toFixed(1), +z.toFixed(1), d];
+      }
+      return null;
+    }, [2.2, -80.9]);
+    step(`${p.name}: side spot ${JSON.stringify(sideSpot)}`);
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: join(outDir, `${p.name}-side.png`) });
+    step(`${p.name}: side shot`);
+  }
   // the street: a clear spot 14 to 26 m from the start (the walker's own town, so its walls are within 80 m of the start)
   const street = await page.evaluate(() => {
     const L = window.lab;
