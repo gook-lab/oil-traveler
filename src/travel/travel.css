@@ -159,3 +159,11 @@
   .tm-results { left: 12px; right: 12px; width: auto; }
   .tm-status { left: 12px; }
 }
+
+/* the view toggle (src/travel/view-toggle.js): the walk's HUD colours, in the corner away from the keys */
+.walk-view {
+  position: fixed; right: 16px; bottom: 16px; z-index: 5; cursor: pointer;
+  font: 13px/1 Georgia, serif; letter-spacing: 0.03em; color: #f3e3c3;
+  background: rgba(28, 20, 18, 0.55); border: 0; border-radius: 3px; padding: 8px 12px;
+}
+.walk-view:hover { background: rgba(28, 20, 18, 0.72); }

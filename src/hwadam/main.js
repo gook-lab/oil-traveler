@@ -16,6 +16,7 @@ import { viewShares, COVER_GLSL } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
+import { mountViewToggle } from '../travel/view-toggle.js';
 import { walkSong } from '../travel/walk-song.js';
 import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
@@ -235,11 +236,21 @@ function respawn() {
 }
 
 const size = new THREE.Vector2();
-// travel: through his eyes by default (V toggles back to the third person), as in src/night/main.js
-let first = 0, firstKey = travel;
+// the view: first person (his eyes) or third (behind him). V, the button and the wheel switch it in both walks. The
+// choice is kept in this browser; a scene's own first view (travel: first, the baked walk: third) is only the default.
+const VIEW_KEY = 'oil-forest-view';
+const FOLLOW_NEAR = 2.8; // the nearest third-person distance (the clamp in src/figure/camera.js)
+const readView = () => { try { const v = localStorage.getItem(VIEW_KEY); return v == null ? null : v === '1'; } catch { return null; } };
+const saveView = (v) => { try { localStorage.setItem(VIEW_KEY, v ? '1' : '0'); } catch { /* blocked: this visit only */ } };
+let firstKey = readView() ?? travel;
+let first = firstKey ? 1 : 0;
+const typingNow = () => { const t = document.activeElement; return t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || !!t?.isContentEditable; };
+const viewButton = mountViewToggle(() => setView(!firstKey));
+function setView(v) { firstKey = v; saveView(v); viewButton.set(v); }
+viewButton.set(firstKey);
 // the song of the walk: travel picks it by the land round the start (src/travel/walk-song.js); M to the map and back
 let walkKey = 'forest';
-const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
+const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3(), headAt = new THREE.Vector3();
 /** M: the map, centred on where he is (the lat/lon of his place in the baked square). */
 function openFromWalk() {
   const c = place.meta.center, p = player.feet;
@@ -249,9 +260,9 @@ function openFromWalk() {
   openMap({ lat, lon, pin: { lat: c.lat, lon: c.lon }, back: () => playMusic(walkKey) });
 }
 addEventListener('keydown', (e) => {
-  if (!travel || mapOpen()) return;
-  if (e.code === 'KeyV') firstKey = !firstKey;
-  if (e.code === 'KeyM') openFromWalk();
+  if (mapOpen() || typingNow() || e.repeat) return;
+  if (e.code === 'KeyV') setView(!firstKey);
+  if (e.code === 'KeyM' && travel) openFromWalk();
 });
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
@@ -288,8 +299,15 @@ function tick(dt) {
   figure.bodyDabs.update();
   kick.update(dt, root, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) }, player.speed, onGround, heightAt);
 
-  follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
-  if (travel) {
+  // the wheel: one more notch in from the third person's nearest distance is the first person; out of the first, the
+  // third person again at that nearest distance. In the first person the wheel does not move the follow distance.
+  let zoom = mapOpen() ? 0 : inp.zoom;
+  if (zoom < 0 && !firstKey && follow.want <= FOLLOW_NEAR + 1e-6) { setView(true); zoom = 0; }
+  else if (zoom > 0 && firstKey) { setView(false); zoom = 0; }
+  else if (firstKey) zoom = 0;
+  follow.update(dt, root, inp.look, zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
+  headAt.set(root.x, root.y + 1.6, root.z);
+  {
     // through his eyes: the eye comes forward into his head and looks where the mouse has it look
     first += ((firstKey ? 1 : 0) - first) * (1 - Math.exp(-6 * dt));
     const fp = first * first * (3 - 2 * first);
@@ -303,7 +321,7 @@ function tick(dt) {
     }
     man.object.visible = figure.dabs.visible = fp < 0.5;
     camera.fov = 46 + 18 * fp;
-    camera.near = 0.3 - 0.2 * fp;
+    camera.near = travel ? 0.3 - 0.2 * fp : 0.2; // the baked walk keeps its own near plane (0.2) in both views
     camera.updateProjectionMatrix();
   }
   camera.updateMatrixWorld(true);
@@ -370,6 +388,8 @@ window.lab = {
   },
   /** A fixed view for stills: eye and what it looks at. Call with nothing to go back to following him. */
   view(eye, target) { follow.free = eye ? { position: new THREE.Vector3(...eye), target: new THREE.Vector3(...target) } : null; },
+  /** For the view check: first person or not, the mix (0 third .. 1 first), the eye's distance from his head, the follow distance, the map. */
+  viewState() { return { firstPerson: firstKey, mix: first, headDist: camera.position.distanceTo(headAt), follow: follow.want, mapOpen: mapOpen() }; },
 };
 
 // --- warming up: every shader is built and drawn once, and the GPU has caught up, before anyone is let in ---
