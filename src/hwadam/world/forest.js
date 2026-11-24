@@ -11,7 +11,7 @@ import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
-const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -192, -230], [-192, -175, -192, -230]];
+const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -155, -175], [-192, -175, -168, -143]];
 
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
@@ -124,7 +124,7 @@ function plant() {
   const BC = { x: -150, z: -74 }, BT = { x: -158, z: -92 };
   const bl = Math.hypot(BT.x - BC.x, BT.z - BC.z), bfx = (BT.x - BC.x) / bl, bfz = (BT.z - BC.z) / bl;
   for (let i = 0; i < 900; i++) {
-    const dist = 10 + rand() * 30, lat = (rand() - 0.5) * 12;
+    const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     add(x, z, BIRCH, 2);

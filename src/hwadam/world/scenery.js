@@ -101,7 +101,7 @@ export function createScenery(shared, horizon, eyeY) {
   for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8]]) {
     const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
     sp.push(x, heightAt(x, z), z);
-    sd.push(rand() * 1000, size, 0.42, 0); // a stone of its size, with its height set high so it reads as a body
+    sd.push(rand() * 1000, size, 0.7, 0); // a stone of its size, its height above the garden's mounds so it is not buried
     placed++;
   }
 

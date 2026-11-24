@@ -62,7 +62,9 @@ void makeDab(inout Dab d) {
   d.pos = P;
   // the garden's litter is short, round touches (moss); elsewhere the leaves are long
   float shrink = mix(1.0, 0.7, sw.y);
-  d.size = uCell0 * vec2((1.05 + 0.5 * r.z) * mix(1.0, 0.6, sw.x), mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x) * shrink) * lod;
+  // the moss touches are as wide as they are long: round, not blades
+  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.6, sw.x);
+  d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x) * shrink, wide, sw.x)) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37;
@@ -118,7 +120,7 @@ void makeDab(inout Dab d) {
   vec2 lean = fan * mix(0.9 + 1.3 * f.y, 0.12 + 0.4 * f.y, grass) + uWind.xy * (0.08 + 0.6 * gust + sway);
   d.dir = normalize(vec3(lean.x, 1.0, lean.y));
   d.pos = P - vec3(0.0, 0.02, 0.0);
-  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass) * mix(1.0, 0.4, sw.x);
+  float tall = mix(0.45, 0.85, f.z) * mix(1.0, 1.3, m.g) * mix(0.72, 1.0, grass) * mix(1.0, 0.4, sw.x) * mix(1.0, 0.55, sw.y);
   // a frond is a broad curved stroke that arches over; a blade of grass a thin straight one
   d.size = vec2(mix(0.17, 0.04, grass) * big * (0.8 + 0.5 * f.x), tall);
   d.cell = grass > 0.5 ? floor(f.y * 2.99) : (f.x > 0.5 ? 3.0 : 7.0);
