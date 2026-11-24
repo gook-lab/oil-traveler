@@ -304,7 +304,18 @@ function surfacesOf(p, ground) {
               if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
             }
             // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
-            return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.95 + 0.1 * r));
+            return wallC.map((c) => c * (0.95 + 0.1 * r));
+          },
+          // the dabs paint the glass: a dark blue-grey touch on a window cell, long and low (the wall shows between them)
+          jit: true,
+          // a window: a long dark-glass touch that is not moved off its row (the rows of windows stay rows)
+          jitWin: (u, v) => { const fy = v * H, row = fy % FLOOR_H, x = s0 + u * Lk; return !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5; },
+          dabCol: (u, v, r) => {
+            const fy = v * H, x = s0 + u * Lk;
+            const shop = !p.wall && fy < FLOOR_H && fy > 0.8 && fy < 2.8;
+            if (shop) return [0.2 + 0.08 * r, 0.27 + 0.06 * r, 0.33 + 0.05 * r];
+            if (!p.wall && ((fy % FLOOR_H) > 1.0 && (fy % FLOOR_H) < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5)) return [0.2 + 0.08 * r, 0.27 + 0.06 * r, 0.34 + 0.06 * r];
+            return wallC.map((c) => c * (0.9 + 0.2 * r));
           },
         });
       }
@@ -525,8 +536,24 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
       for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
         const u = (i + 0.5) / nu, v = (j + 0.5) / nv;
         const r = rnd(id + i * 0.31, j * 0.77 + 1.3);
-        const P = bil(s, u, v);
-        const col = (s.dabCol ?? s.col)(u, v, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r));
+        // a modern facade's touches: jittered in place (+-40% of a cell), larger or smaller (0.7 to 1.4 times), turned
+        // (+-15 degrees), each a little darker or lighter, and every other row offset by half a cell (no grid shows)
+        let uu = u, vv = v, sz = 1, Dk = D;
+        if (s.jit) {
+          const a1 = rnd(id + i * 0.91, j * 1.7 + 0.4) - 0.5, a2 = rnd(j * 0.53 + i, id * 0.1 + 2.2) - 0.5;
+          const a3 = rnd(id * 0.3 + i * 0.7, j * 0.2 + 5) - 0.5, a4 = rnd(i * 1.3 + 3, j * 0.9 + id * 0.01);
+          const win = s.jitWin?.(u, v) ?? false;
+          uu = Math.min(0.98, Math.max(0.02, u + (j % 2 ? 0.5 / nu : 0) + (a1 * 0.8) / nu));
+          vv = win ? v : Math.min(0.98, Math.max(0.02, v + (a2 * 0.8) / nv));
+          sz = win ? 1.3 : 0.7 + 0.7 * a4;
+          const t = Math.tan(a3 * 2 * (15 * Math.PI / 180));
+          const perp = cross3(N0, D);
+          Dk = norm3([D[0] + perp[0] * t, D[1] + perp[1] * t, D[2] + perp[2] * t]);
+        }
+        const P = bil(s, uu, vv);
+        const colFn = s.dabCol ?? s.col;
+        const tone = s.jit ? 0.86 + 0.28 * rnd(id * 0.7 + i, j * 1.1 + 0.3) : 1;
+        const col = colFn(uu, vv, r).map((c) => c * lightOf(N0) * (0.93 + 0.14 * r) * tone);
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
         // a touch fills its cell and no more, so it stays inside its face
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
@@ -535,7 +562,10 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const S = dense
           ? [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)]
           : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
-        push(P.map((x, k) => x + N0[k] * 0.04), D, S, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
+        const winDab = s.jit && s.jitWin?.(u, v);
+        // a window touch runs along the row: twice as long as wide
+        const S2 = s.jit ? (winDab ? [Math.max(S[0], S[1] * 2) * sz, S[1] * sz] : [S[0] * sz, S[1] * sz]) : S;
+        push(P.map((x, k) => x + N0[k] * 0.04), Dk, S2, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
   }
