@@ -12,7 +12,8 @@ const STONE = /* glsl */ `
 void makeDab(inout Dab d) {
   vec4 r = hash4(aData.x);
   float lit = sunAt(aPos + vec3(0.0, 0.5, 0.0));
-  vec3 c = paint3(vec3(0.5, 0.5, 0.46), vec3(0.33, 0.35, 0.32), vec3(0.14, 0.17, 0.16), lit, r.x);
+  // lighter than the green floor by about 15 L*, so the stones read against the moss (measured in shots/work/m3-r6)
+  vec3 c = paint3(vec3(0.66, 0.66, 0.6), vec3(0.44, 0.46, 0.42), vec3(0.18, 0.2, 0.19), lit, r.x);
   // moss on the top of some of them, more where the sun falls
   float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);
@@ -36,7 +37,7 @@ void makeDab(inout Dab d) {
 const RINGS = [
   { r: 330, top: 95, seed: 3.1, col: [0.17, 0.23, 0.26], count: 3600, size: 40 },
   { r: 480, top: 160, seed: 11.7, col: [0.27, 0.36, 0.44], count: 1800, size: 55 },
-  { r: 640, top: 230, seed: 23.9, col: [0.42, 0.5, 0.62], count: 700, size: 70 },
+  { r: 640, top: 230, seed: 23.9, col: [0.3, 0.37, 0.48], count: 700, size: 70 },
 ];
 const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes, near to far
 const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
@@ -66,7 +67,8 @@ function slopeDir(k, az, horizon, eyeY, r) {
 
 const RANGE = /* glsl */ `
 ${RING_COL}
-const float RING_AIR[3] = float[3](0.25, 0.45, 0.65);
+// air perspective per ring: the farther ring fades toward the sky, but keeps a step darker than it (0.65 made it vanish)
+const float RING_AIR[3] = float[3](0.25, 0.35, 0.35);
 `;
 
 export function createScenery(shared, horizon, eyeY) {
@@ -112,6 +114,42 @@ export function createScenery(shared, horizon, eyeY) {
     minPx: [3, 6], maxPx: [300, 420], cells: [0, 4],
   }), 5);
   group.add(stoneMesh);
+
+  // --- the sun gaps: where the canopy opens on the sun, the sky shows as a flat cream patch. A few hundred pale leaves
+  // hang in the sky round the sun's direction, far beyond the trees, so the gap has touches in it (no shared sky changed)
+  const sun = shared.uSunDir.value;
+  const gp = [], gd = [];
+  for (let i = 0; i < 320; i++) {
+    const v = [sun.x + (rand() - 0.5) * 0.7, sun.y + (rand() - 0.5) * 0.5, sun.z + (rand() - 0.5) * 0.7];
+    const L = Math.hypot(v[0], v[1], v[2]) || 1;
+    if (v[1] / L < 0.02) continue;
+    gp.push(v[0] / L, v[1] / L, v[2] / L);
+    gd.push(rand() * 1000, 0.6 + 0.8 * rand(), rand(), rand());
+  }
+  const sunMesh = dabMesh(dabGeometry(gd.length / 4, { aPos: [new Float32Array(gp), 3], aData: [new Float32Array(gd), 4] }), dabMaterial(shared, {
+    head: /* glsl */ `in vec3 aPos; in vec4 aData;`,
+    body: /* glsl */ `
+void makeDab(inout Dab d) {
+  vec4 r = hash4(aData.x);
+  vec3 v = normalize(aPos);
+  vec3 c = paint3(vec3(0.98, 0.92, 0.62), vec3(0.94, 0.78, 0.4), vec3(0.62, 0.44, 0.22), 1.0, r.x);
+  c = mix(c, vec3(0.92, 0.56, 0.24), step(0.6, r.y) * 0.7);
+  d.pos = cameraPosition + v * 420.0;
+  d.dir = vec3(cos(r.z * TAU), 0.0, sin(r.z * TAU));
+  d.size = vec2(16.0 + 22.0 * aData.y, 7.0 + 8.0 * aData.y);
+  d.lie = 0.0;
+  d.nrm = vec3(0.0, 1.0, 0.0);
+  d.height = 0.0;
+  d.lift = 0.0;
+  d.c1 = hazed(c, d.pos);
+  d.c2 = hazed(c * 1.1, d.pos);
+  d.seed = aData.x;
+  d.turnabout = 0.0;
+}
+`,
+    minPx: [2, 4], maxPx: [40, 60], cells: [0, 4],
+  }), 2);
+  group.add(sunMesh);
 
   // --- the ranges: far ring first. Each is a wall from -20 up to its skyline, with strokes over it ---
   const SEG = 360;

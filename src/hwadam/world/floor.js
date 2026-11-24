@@ -76,8 +76,9 @@ void makeDab(inout Dab d) {
   // the garden's litter is short, round touches (moss); elsewhere the leaves are long
   float shrink = mix(1.0, 0.7, sw.y);
   // the moss touches are as wide as they are long: round, not blades
-  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.6, sw.x);
-  d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x) * shrink, wide, sw.x)) * lod;
+  // the moss touches vary in width and length more (0.7x to 1.3x of the base), so no two read as one stamp
+  float wide = (1.05 + 0.5 * r.z) * mix(1.0, 0.6 * (0.7 + 0.6 * r.y), sw.x);
+  d.size = uCell0 * vec2(wide, mix(mix(1.7 + 0.9 * r.w, 0.8 + 0.7 * r.w, sw.x) * shrink, wide, sw.x)) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37;
