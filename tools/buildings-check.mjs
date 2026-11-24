@@ -99,6 +99,8 @@ for (const p of PLACES) {
     probe.noneNearAt = noneNear.slice(0, 12);
     probe.feetXZ = [+F.x.toFixed(2), +F.z.toFixed(2)];
     probe.vantage = lab.place?.meta?.vantage ?? null;
+    // the floating check: a building's base (the lowest ground under its outline, plus its raised minimum) above the ground at its centre
+    probe.floating = lab.buildingPlans.filter((p) => { const gMin = Math.min(...p.pts.map((q) => lab.heightAt(q[0], q[1])), lab.heightAt(p.c[0], p.c[1])); return gMin + (p.mh ?? 0) - lab.heightAt(p.c[0], p.c[1]) > 0.5; }).length;
     const SYM = { 0: '.', 1: 'g', 2: 'f', 3: 'w', 4: 'T', 5: 'R', 6: 's', 7: 'i', 8: 'B', 9: '~', 10: 'P' };
     const rowsOut = [];
     for (let dz = 8; dz >= -8; dz -= 2) { let row = ''; for (let dx = -8; dx <= 8; dx += 2) row += (dx === 0 && dz === 0) ? '@' : SYM[lab.coverAt(F.x + dx, F.z + dz)] ?? '?'; rowsOut.push(row); }

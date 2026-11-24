@@ -19,12 +19,16 @@ const DAB_M = 1.5, ROOF_DAB_M = 3;
 export const CLEAR_M = 3;
 // the near zone: within 120 m of the start, touches 3 m apart; the cap is 16000 (r20: 14807 touches at 120 m)
 const NEAR_M = 120, NEAR_STEP = 3, NEAR_CAP = 16000;
-const EAVE = 1.8, LIFT = 0.9, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
+const EAVE = 1.8, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
 // a traditional hall: the walls are at most 5 m (or 0.4 of the height), the rest is roof; a hall with a short side of 15 m
 // or more stands on a stone base of 1.2 m
 const WALL_MAX = 5, WALL_FRAC = 0.4, BIG_SIDE = 15, BIG_STONE = 1.2;
 // the cells of the solid mesh, in metres: along a wall, and up it
 const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
+/** The thickness of a palace wall (m). */
+const WALL_T = 0.9;
+/** The roof of a traditional hall: N by N quads, and the lift of its eave corners (m). */
+const ROOF_N = 10, CORNER_LIFT = 1.5;
 
 // one touch per instance: the attributes below fill in its Dab
 const HEAD = /* glsl */ `
@@ -125,10 +129,21 @@ export function planBuildings(list, heritage) {
   // outlines that stand on each other (a part and its building, or a duplicate): when 80% or more of the smaller lies
   // inside the other, only the taller stands (the part, as its height is the part's), the larger on a tie
   const dropped = dropOverlaps(plans);
+  // a sliver under 3 m across and over 20 m high is a part's fragment (a pile), not a building: not drawn
+  const piles = plans.filter((p) => 2 * Math.min(p.R.hu, p.R.hv) < 3 && p.h > 20);
+  for (const p of piles) dropped.add(p);
   const kept = plans.filter((p) => !dropped.has(p));
+  kept.piles = piles.length;
+  // a part raised off the ground (its minimum height above 0.5 m) with nothing under it floats in the air: it stands
+  // on the ground instead (the count is plans.mhReset)
+  let mhReset = 0;
+  for (const p of kept) if ((p.mh ?? 0) > 0.5 && !kept.some((q) => q !== p && q.h >= p.mh - 0.5 && overlapShare(p, q) >= 0.5)) { p.mh = 0; mhReset++; }
+  kept.mhReset = mhReset;
   // the heights of the known buildings, for the fill of the modern ones
   plans.length = 0; plans.push(...kept);
-  plans.overlapDropped = dropped.size;
+  plans.overlapDropped = dropped.size - piles.length;
+  plans.piles = piles.length;
+  plans.mhReset = mhReset;
   const known = plans.filter((p) => !p.unknown);
   for (const p of plans) {
     if (p.unknown) {
@@ -216,6 +231,9 @@ function dropOverlaps(plans) {
     if (a1 < c0 || c1 < a0 || b1 < d0 || d1 < b0) continue;
     if (overlapShare(plans[i], plans[j]) < 0.8) continue;
     const [p, q] = [plans[i], plans[j]];
+    // stacked parts (a lower one and an upper one over the same footprint) do not share a height range: both stand
+    const lo = Math.max(p.mh ?? 0, q.mh ?? 0), hi = Math.min(p.h, q.h);
+    if (hi - lo <= 0.5) continue;
     const keepP = p.h0 !== q.h0 ? p.h0 > q.h0 : Math.abs(area2(p.pts)) >= Math.abs(area2(q.pts));
     drop.add(keepP ? q : p);
   }
@@ -234,7 +252,11 @@ function surfacesOf(p, ground) {
     const base = hexRGB(p.colour);
     const bh = rnd(p.c[0], p.c[1]);
     // a palace wall (a walled court's ring): ochre-grey, with a band of red tiles along its top (the coping)
-    const wallC = p.wall ? [0.74, 0.62, 0.46] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : bh < 0.7 ? [0.5, 0.49, 0.46] : [0.48, 0.32, 0.26];
+    // a block's facade: its own colour when the data gives one, else one of the city's: pale stone, beige, blue-grey glass,
+    // grey concrete, a brown brick
+    const PAL = [[0.8, 0.78, 0.73], [0.6, 0.67, 0.72], [0.86, 0.83, 0.77], [0.5, 0.5, 0.49], [0.55, 0.42, 0.34]];
+    const pick = PAL[Math.floor(rnd(p.c[0] + 3.1, p.c[1] - 1.7) * PAL.length)];
+    const wallC = p.wall ? [0.74, 0.62, 0.46] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : pick;
     const roofC = [0.3, 0.3, 0.31];
     for (let k = 0; k < p.pts.length; k++) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
@@ -248,12 +270,25 @@ function surfacesOf(p, ground) {
         if (Lk < 0.25) continue;
         const A = [a[0] + (ex * s0) / L, a[1] + (ez * s0) / L], B = [a[0] + (ex * s1) / L, a[1] + (ez * s1) / L];
         const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L];
+        if (p.wall) {
+          // the wall has a thickness of 0.9 m: its inner face and a coping of red tiles on top (so it is not a sheet)
+          const T = WALL_T, Ai = [A[0] - n[0] * T, A[1] - n[2] * T], Bi = [B[0] - n[0] * T, B[1] - n[2] * T];
+          out.push({ P00: [Ai[0], yb, Ai[1]], P10: [Bi[0], yb, Bi[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [-n[0], 0, -n[2]], cell: WALL_CELL, col: () => wallC.map((c) => c * (0.9 + 0.2 * 0.5)) });
+          out.push({ P00: [A[0], yt, A[1]], P10: [B[0], yt, B[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [0, 1, 0], cell: [3, 0.9], col: () => [0.6, 0.24, 0.16] });
+        }
         out.push({
           P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: WALL_CELL,
           col: (u, v, r) => {
             const fy = v * H, row = fy % FLOOR_H, x = s0 + u * Lk;
             const win = !p.wall && row > 1.0 && row < 2.3 && x % 3.2 > 0.7 && x % 3.2 < 2.5 && r < 0.85;
             if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
+            if (!p.wall) {
+              if (fy < FLOOR_H && fy > 0.8 && fy < 2.8) { // the shopfront: dark glass, with warm lights here and there
+                if (r > 0.82 && x % 4.6 > 1.2 && x % 4.6 < 2.2) return [0.95, 0.78, 0.45];
+                return [0.18, 0.24, 0.28];
+              }
+              if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
+            }
             // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
             return win ? [0.12, 0.15, 0.18] : wallC.map((c) => c * (0.9 + 0.2 * r));
           },
@@ -282,7 +317,7 @@ function surfacesOf(p, ground) {
     }
   };
   // the stone base, a little out from the posts
-  face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
+  face(wallPts(big ? 2.0 : STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
   // the white walls, with a red post every 3.2 m (a column half a metre wide)
   // the white walls: the touches vary by 3% and lie upright (long strokes), so they do not read as a row of windows
   face(wallPts(0), yb + stone, yEave, (u, v, r, L) => ((u * L) % 3.2 < 0.5 ? [0.5, 0.17, 0.12] : [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r))), TRAD_WALL_CELL, (u, v, r) => [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r)), true);
@@ -291,21 +326,31 @@ function surfacesOf(p, ground) {
   for (let k = 0; k < 4; k++) {
     const a = posts[k], b = posts[(k + 1) % 4], ea = eaveW[k], eb = eaveW[(k + 1) % 4];
     const P00 = [a[0], yEave - 0.05, a[1]], P10 = [b[0], yEave - 0.05, b[1]], P01 = [ea[0], yEave - 0.05, ea[1]], P11 = [eb[0], yEave - 0.05, eb[1]];
-    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u) => (Math.floor(u * 8) % 2 ? [0.2, 0.42, 0.38] : [0.62, 0.2, 0.14]) });
+    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u) => (Math.floor(u * 8) % 2 ? [0.13, 0.28, 0.25] : [0.4, 0.13, 0.09]) });
   }
-  // the hip roof: long planes along u, hip ends, the corners lifted by LIFT
-  const eu = R.hu + EAVE, ev = R.hv + EAVE, ru = Math.max(0, eu - ev);
-  const E = (su, sv) => [(R.cu + su * eu) * R.ux + (R.cv + sv * ev) * R.vx, yEave + LIFT, (R.cu + su * eu) * R.uz + (R.cv + sv * ev) * R.vz];
-  const Rg = (su) => [(R.cu + su * ru) * R.ux + R.cv * R.vx, yTop, (R.cu + su * ru) * R.uz + R.cv * R.vz];
-  const tileC = (u, v, r) => (v > 0.85 ? [0.2, 0.22, 0.27] : mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], r));
-  // each plane is split at the middle of its eave, which sits on the wall top (no gap), so the corners alone lift
-  const Mu = (sv) => [R.cu * R.ux + (R.cv + sv * ev) * R.vx, yEave, R.cu * R.uz + (R.cv + sv * ev) * R.vz];
-  const Mv = (su) => [(R.cu + su * eu) * R.ux + R.cv * R.vx, yEave, (R.cu + su * eu) * R.uz + R.cv * R.vz];
-  const plane = (p0, p1, p2, p3) => out.push({ P00: p0, P10: p1, P01: p2, P11: p3, cell: ROOF_CELL, col: tileC });
-  plane(E(-1, -1), Mu(-1), Rg(-1), Rg(0)); plane(Mu(-1), E(1, -1), Rg(0), Rg(1));
-  plane(E(-1, 1), Mu(1), Rg(-1), Rg(0)); plane(Mu(1), E(1, 1), Rg(0), Rg(1));
-  plane(E(-1, -1), Mv(-1), Rg(-1), Rg(-1)); plane(Mv(-1), E(-1, 1), Rg(-1), Rg(-1));
-  plane(E(1, -1), Mv(1), Rg(1), Rg(1)); plane(Mv(1), E(1, 1), Rg(1), Rg(1));
+  // the hip roof, as a curved surface: the eaves rise toward the corners (the upturned eaves, 1.5 m at the corner), and the
+  // roof is steep at the ridge and flat at the eave (a concave curve, t ** 1.6 of the way up). Its ridge is a line of
+  // the length eu - ev. The surface is cut into N by N quads, each a surface of its own (lit, dabbed like the rest)
+  const eu = R.hu + EAVE, ev = R.hv + EAVE, rr = Math.max(0, eu - ev);
+  const roofAt = (su, sv) => {
+    const a = su * eu, b = sv * ev;
+    const dist = ev - Math.max(Math.abs(b), Math.max(0, Math.abs(a) - rr)); // 0 at the eave, ev at the ridge
+    const t = Math.min(1, Math.max(0, dist / ev));
+    const cornerF = Math.min(1, Math.max(0, (Math.abs(a) - rr) / ev)) * Math.min(1, Math.abs(b) / ev);
+    const y = yEave + (yTop - yEave) * Math.pow(t, 1.6) + CORNER_LIFT * cornerF;
+    const [x, z] = rectPt(R, a, b);
+    return [x, y, z];
+  };
+  const N = ROOF_N;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const s0 = -1 + (2 * i) / N, s1 = -1 + (2 * (i + 1)) / N, t0 = -1 + (2 * j) / N, t1 = -1 + (2 * (j + 1)) / N;
+    const sc = (s0 + s1) / 2 * eu; // the centre across the roof, in metres: the tile grooves run down the slope at its lines
+    const ridge = roofAt((s0 + s1) / 2, (t0 + t1) / 2)[1] > yTop - 0.3; // the ridge's tiles are darker
+    out.push({
+      P00: roofAt(s0, t0), P10: roofAt(s1, t0), P01: roofAt(s0, t1), P11: roofAt(s1, t1), cell: [9, 9],
+      col: (u, v, r) => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], r).map((c) => c * (0.9 + 0.1 * Math.sin(sc * 9)) * (ridge ? 0.7 : 1)),
+    });
+  }
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
@@ -431,7 +476,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         const c2 = col.map((c) => c * (0.9 + 0.2 * rnd(j, i + 0.5)));
         // a touch fills its cell and no more, so it stays inside its face
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
-        const S = s.vertical ? [Math.min(L2 / nv, 2.5) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
+        // a vertical stroke: up to 1.5 m long and 0.6 m across (the 2.5 m strokes read as blobs at close range)
+        const S = s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
         push(P.map((x, k) => x + N0[k] * 0.04), D, S, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
@@ -468,7 +514,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
-    overlapDropped: plans.overlapDropped ?? 0, wallCutRuns: plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.length, 0) : 0), 0), wallCutM: +plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.reduce((q, [s, e]) => q + (e - s), 0), 0) : 0), 0).toFixed(1), walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
+    piles: plans.piles ?? 0, floating: plans.filter((p) => (p.mh ?? 0) > 0.5 && !plans.some((q) => q !== p && q.h >= p.mh - 0.5 && overlapShare(p, q) >= 0.5)).length, mhReset: plans.mhReset ?? 0, overlapDropped: plans.overlapDropped ?? 0, wallCutRuns: plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.length, 0) : 0), 0), wallCutM: +plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.reduce((q, [s, e]) => q + (e - s), 0), 0) : 0), 0).toFixed(1), walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
     nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
     msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),
