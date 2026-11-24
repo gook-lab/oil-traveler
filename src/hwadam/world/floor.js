@@ -48,6 +48,12 @@ void makeDab(inout Dab d) {
   c1 = mix(c1, gl, grassy);
   // here and there a wet leaf in the shade gives back the sky
   if (lit < 0.2 && q.w > 0.93) c1 = mix(vec3(0.34, 0.36, 0.52), vec3(0.2, 0.17, 0.26), q.z);
+  // round mounds of moss in the garden, 1 to 2 m across
+  float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
+  // the moss garden carries no leaves: its carpet is moss, dark green in the hollows to light green on the crowns
+  vec3 mossC = mix(vec3(0.14, 0.26, 0.1), vec3(0.5, 0.74, 0.26), max(hump, q.w * 0.6)) * (0.55 + 0.6 * lit);
+  c1 = mix(c1, mossC, sw.x);
+  c2 = mix(c2, mossC * 0.92, sw.x);
   c1 = jitter(c1, r.wzy, 0.5);
   c2 = jitter(c2, q.wzy, 0.5);
   // leaves lie any way round, though those that fell together lie much alike
@@ -55,7 +61,8 @@ void makeDab(inout Dab d) {
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
   // the garden's litter is short, round touches (moss); elsewhere the leaves are long
-  d.size = uCell0 * vec2(1.05 + 0.5 * r.z, mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x)) * lod;
+  float shrink = mix(1.0, 0.7, sw.y);
+  d.size = uCell0 * vec2((1.05 + 0.5 * r.z) * mix(1.0, 0.6, sw.x), mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x) * shrink) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37;
@@ -64,9 +71,8 @@ void makeDab(inout Dab d) {
   d.nrm = Nn;
   // in the moss garden the cushions rise into hummocks: some tufts stand up to 0.12 m higher
   // round mounds of moss in the garden, 1 to 2 m across: the crown of each is bright green, its hollow dark
-  float hump = smoothstep(0.42, 0.7, texture(tNoise, xz / 1.4).r);
   c1 = mix(c1, mix(vec3(0.2, 0.3, 0.1), vec3(0.62, 0.78, 0.26), hump), sw.x * 0.85);
-  d.height = ((0.03 + 0.07 * q.z) + sw.x * (0.12 * q.w + 0.3 * hump)) * pow(lod, 0.35);
+  d.height = ((0.03 + 0.07 * q.z) + sw.x * (0.12 * q.w + 0.45 * hump)) * pow(lod, 0.35);
   d.glaze = 1.0;
 }
 `;

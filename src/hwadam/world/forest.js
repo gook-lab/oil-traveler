@@ -120,18 +120,14 @@ function plant() {
     near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
     if (type === MAPLE) near.h *= 0.32; // low trees: their crowns meet over the path, not far above it
   }
-  // the birch stretch is close set: a second pass of birches, 3.5 to 12 m off the way where its weight is high
-  for (let i = 0; i < 700; i++) {
-    const k = 60 + Math.floor(rand() * 90);
-    const [wx, wz] = way[k];
-    const [nx, nz] = way[k + 1];
-    const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
-    const off = (3.5 + rand() * 8.5) * (rand() < 0.5 ? -1 : 1);
-    const x = wx + (-dz / len) * off, z = wz + (dx / len) * off;
+  // the birch view's sight: a close set of birches 10 to 40 m ahead of its camera, along its line and 6 m to either side
+  const BC = { x: -150, z: -74 }, BT = { x: -158, z: -92 };
+  const bl = Math.hypot(BT.x - BC.x, BT.z - BC.z), bfx = (BT.x - BC.x) / bl, bfz = (BT.z - BC.z) / bl;
+  for (let i = 0; i < 900; i++) {
+    const dist = 10 + rand() * 30, lat = (rand() - 0.5) * 12;
+    const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
-    const sw = segW(pathT(x, z));
-    if (sw[2] < 0.4 || rand() < 0.3) continue;
-    add(x, z, BIRCH, wayDist(x, z) < 22 ? 0 : wayDist(x, z) < 60 ? 1 : 2);
+    add(x, z, BIRCH, 2);
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
@@ -335,7 +331,7 @@ export function createForest(shared) {
         if (k == 1) {
           d.dir = cross(aDir, Nn);
           // the birch's white bark is cut across by dark lenticel rows, and a few black scars
-          float row = fract(aPos.y * 3.1 + r.x * 0.2);
+          float row = fract(aPos.y * (2.2 + 1.8 * r.z) + r.x * 0.2); // the rows are not all one spacing
           if (row < 0.12 && r.y < 0.55) c = vec3(0.15, 0.12, 0.14);
           else if (r.y < 0.16) c = vec3(0.13, 0.11, 0.15);
         }
@@ -348,8 +344,9 @@ export function createForest(shared) {
         d.turnabout = 1.0;
         d.pos = aPos;
         d.size = vec2(aData.y, aData.w);
-        d.c1 = hazed(c, aPos);
-        d.c2 = hazed(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
+        // the birch stand is not hazed: its trunks read white against the wood
+        d.c1 = k == 1 ? c : hazed(c, aPos);
+        d.c2 = k == 1 ? c * 1.08 : hazed(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
         d.seed = aData.x;
         d.lift = 0.5;
       }`,
