@@ -15,6 +15,8 @@ export const DAB_CAP = 8000;
 export const RULE = { heritageM: 250, maxH: 30, rect: 0.9, range: 250, wallArea: 1500, wallH: 3.4, knownModernH: 20 };
 /** The largest mark (m) of an oil touch on a wall, and on a roof: a far wall gets wider spacing, not bigger marks. */
 const DAB_M = 1.5, ROOF_DAB_M = 3;
+// the dense wall touches (T3 round 2): 1.2 m spacing within 60 m of the start, each mark 1.5 times its cell (overlapping)
+const WALL_DENSE_M = 60, WALL_DENSE_ST = 1.2, WALL_DENSE_MARK = 1.6, DENSE_OVERLAP = 1.5;
 /** The walker keeps this far from any outline (the start, and the test of the walls). */
 export const CLEAR_M = 3;
 // the near zone: within 120 m of the start, touches 3 m apart; the cap is 16000 (r20: 14807 touches at 120 m)
@@ -405,12 +407,14 @@ const polyCentre = (pts) => centroid(pts.map((q) => [q[0], q[1]]));
 /** The spacing of the dabs for a surface: the near spacing within NEAR_M of the start, else the base spacing. */
 function dabStep(s, base, near) {
   if (!near) return base;
+  // a wall within WALL_DENSE_M of the start takes the dense spacing (overlapping touches cover the face, as floor.js does)
+  if (near.wallSt && !s.poly && isNear(s, near, WALL_DENSE_M)) return near.wallSt;
   return isNear(s, near) ? near.st : base;
 }
 /** True for a surface whose centre lies within NEAR_M of the start. */
-function isNear(s, near) {
+function isNear(s, near, r = near.radius ?? NEAR_M) {
   const c = s.poly ? polyCentre(s.poly) : [bil(s, 0.5, 0.5)[0], bil(s, 0.5, 0.5)[2]];
-  return Math.hypot(c[0] - near.x, c[1] - near.z) < (near.radius ?? NEAR_M);
+  return Math.hypot(c[0] - near.x, c[1] - near.z) < r;
 }
 
 
@@ -449,6 +453,8 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     else for (let guard = 0; guard < 60 && countAt(nearSt, 'near') > NEAR_CAP; guard++) nearSt *= 1.03;
     if (countAt(nearSt, 'near') > NEAR_CAP) console.warn(`buildings: near touches over the cap at ${nearSt.toFixed(2)} m`);
     near.st = nearSt;
+    // the dense wall spacing (1.2 m within 60 m, the wall's own marks overlap); near.wallFixed overrides it for a check
+    near.wallSt = near.wallFixed ?? WALL_DENSE_ST;
   }
   let base = Math.max(1.1, Math.sqrt(area / cap));
   for (let guard = 0; guard < 60 && countAt(base, 'far') > cap; guard++) base *= 1.03;
@@ -523,7 +529,10 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         // a touch fills its cell and no more, so it stays inside its face
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
         // a vertical stroke: up to 1.5 m long and 0.6 m across (the 2.5 m strokes read as blobs at close range)
-        const S = s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
+        const dense = near?.wallSt && !s.poly && st === near.wallSt;
+        const S = dense
+          ? [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)]
+          : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
         push(P.map((x, k) => x + N0[k] * 0.04), D, S, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });
