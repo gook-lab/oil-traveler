@@ -289,7 +289,8 @@ export function createForest(shared) {
       }
     }
     // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
-    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : 11;
+    // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
+    const perLobe = full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : CLEAR.fan && t.type !== BIRCH ? 26 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);
