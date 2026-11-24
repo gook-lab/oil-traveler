@@ -293,7 +293,7 @@ function surfacesOf(p, ground) {
           out.push({ P00: [A[0], yt, A[1]], P10: [B[0], yt, B[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [0, 1, 0], cell: [3, 0.9], col: () => [0.6, 0.24, 0.16] });
         }
         out.push({
-          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: WALL_CELL,
+          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7],
           col: (u, v, r) => {
             const fy = v * H, x = s0 + u * Lk;
             // the bands are set by the world height (yb + fy) and the facade's run, not by the cell: every building's
@@ -577,8 +577,9 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         // the mark is at most DAB_M across; the spacing (nu, nv) is what grows with the wall
         // a vertical stroke: up to 1.5 m long and 0.6 m across (the 2.5 m strokes read as blobs at close range)
         const dense = near?.wallSt && !s.poly && (st === near.wallSt || st === FAR_WALL_ST || st < base);
+        // a dense touch on the modern facade is wide and low: 2.2 times its cell across, at most 1.0 m high (the band is 1.3 m)
         const S = dense
-          ? [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)]
+          ? (s.jit ? [Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L2 / nv * DENSE_OVERLAP, 1.0)] : [Math.min(L2 / nv * DENSE_OVERLAP, WALL_DENSE_MARK), Math.min(L1 / nu * DENSE_OVERLAP, WALL_DENSE_MARK)])
           : s.vertical ? [Math.min(L2 / nv, 1.5) * 0.95, Math.min(L1 / nu, 0.6) * 0.95] : [Math.min(L2 / nv, DAB_M) * 0.95, Math.min(L1 / nu, DAB_M) * 0.95];
         const S2 = s.jit ? [S[0] * sz, S[1] * sz] : S;
         push(P.map((x, k) => x + N0[k] * 0.04), Dk, S2, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
