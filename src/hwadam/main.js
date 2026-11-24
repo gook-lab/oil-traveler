@@ -19,6 +19,7 @@ import { createMidground } from '../travel/midground.js';
 import { createRanges } from '../travel/ranges.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
+import { makeLane } from '../travel/lane.js';
 import { createSky } from '../world/sky.js';
 import { createLeaves } from '../world/leaves.js';
 import { createKick } from '../world/kick.js';
@@ -134,7 +135,9 @@ Object.assign(CLEAR, {
   x: vantage.x, z: vantage.z, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
-const forest = createForest(shared);
+// travel (runtime places): no tree may stand above the skyline the ranges show, in the sight lane beyond 300 m
+const lane = travel && place.source === 'runtime' ? makeLane(place.horizon, place.meta.bands, vantage, heightAt(vantage.x, vantage.z) + 1.6, VS, gazeRad) : null;
+const forest = createForest(shared, lane);
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);

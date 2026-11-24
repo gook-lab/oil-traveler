@@ -71,7 +71,8 @@ const inFan = (x, z) => FANS.some(({ a, d }) => {
   return r > 0.01 && r < 30 && (dx * d[0] + dz * d[1]) / r > 0.9063;
 });
 
-function plant() {
+// lane (optional, travel only): (tree) => scale, 1 keeps the tree, a smaller scale lowers it, 0 leaves it out
+function plant(lane) {
   const rand = rng(4471);
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
@@ -165,11 +166,19 @@ function plant() {
   };
   const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
   for (const t of kept) if (inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
-  return kept;
+  if (!lane) return kept;
+  const out = [];
+  for (const t of kept) {
+    const s = lane(t);
+    if (s <= 0) continue;
+    if (s < 1) { t.h *= s; t.r *= s; }
+    out.push(t);
+  }
+  return out;
 }
 
-export function createForest(shared) {
-  const trees = plant();
+export function createForest(shared, lane) {
+  const trees = plant(lane);
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
   const barkDabs = []; // pos 3, dir 3, nrm 3, data 4 (seed, across, kind, along)

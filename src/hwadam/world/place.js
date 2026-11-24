@@ -104,11 +104,11 @@ const subOf = (r) => [regionOf(r.address), kindOf(r)].filter(Boolean).join(' · 
  * box } where box is the result's own bounding box ([[west, south], [east, north]]) when it has one.
  */
 /**
- * The highest point of a box ([[west, south], [east, north]]), sampled on a 41 x 41 grid from the terrain tiles at zoom 10.
+ * The highest point of a box ([[west, south], [east, north]]), sampled on a 41 x 41 grid from the terrain tiles at zoom 11 (at zoom 10 some tiles mix in ETOPO1, which the source guard refuses).
  * A park's search point can sit on its edge; this moves the pin to where the ground is highest inside it.
  */
 export async function highestSpot(box) {
-  const [[w, s], [e, n]] = box, z = 10;
+  const [[w, s], [e, n]] = box, z = 11;
   const lat = (s + n) / 2, lon = (w + e) / 2;
   const radius = Math.max(((n - s) * 110940) / 2, ((e - w) * 111320 * Math.cos((lat * Math.PI) / 180)) / 2);
   const terrain = new Terrain(tileLoader(new Set()));
