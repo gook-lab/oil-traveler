@@ -84,7 +84,7 @@ export const DAY = {
 };
 
 /** palettes: any of DAY's to paint him otherwise (another hour, other clothes). */
-export async function createFigure(shared, onProgress, palettes = {}) {
+export async function createFigure(shared, onProgress, palettes = {}, look = {}) {
   const { CLOAK, HAT, SHIRT, TROUSERS, SKIN, BOOTS, HAIR, EYES } = { ...DAY, ...palettes };
   const own = (p) => `vec3(${p[3] ?? p[0]})`;
   const man = await loadMan({ base: './figure/', onProgress });
@@ -107,6 +107,7 @@ export async function createFigure(shared, onProgress, palettes = {}) {
   const hat = new THREE.Mesh(new THREE.LatheGeometry(profile, 22), paint(shared, HAT, { grain: 3 }));
   hat.position.set(0, 1.805, -0.012);
   hat.rotation.x = -0.1;
+  if (look.smallBrim) hat.scale.set(0.55, 1, 0.55); // a cap's narrow brim, for the hiker
   hat.layers.enable(1);
   man.object.add(hat);
   hat.updateMatrixWorld(true);
@@ -200,7 +201,7 @@ export async function createFigure(shared, onProgress, palettes = {}) {
   if (skin) parts.push({
     mesh: skin, count: 230, accept: (p) => p.y > 1.52 || Math.abs(p.x) > 0.37,
     style: (p, n) => (Math.abs(p.x) > 0.37
-      ? { pal: 2, size: Math.abs(p.x) > 0.78 ? [0.022, 0.04] : [0.034, 0.08], dir: OUT }
+      ? { pal: look.longSleeves ? 0 : 2, size: Math.abs(p.x) > 0.78 ? [0.022, 0.04] : [0.034, 0.08], dir: OUT }
       : { pal: 2, size: [0.028, 0.05], dir: new THREE.Vector3().crossVectors(UP, n).add(new THREE.Vector3(0, 0.3, 0)) }),
   });
   if (shoes) parts.push({ mesh: shoes, count: 70, style: () => ({ pal: 3, size: [0.045, 0.085], dir: FWD }) });
@@ -228,5 +229,5 @@ export async function createFigure(shared, onProgress, palettes = {}) {
     cloakGeometry.attributes.normal.needsUpdate = true;
   }
 
-  return { man, hat, cloak, cloakMesh, dabs, updateCloak, cloakDabs };
+  return { man, hat, cloak, cloakMesh, dabs, updateCloak, cloakDabs, bodyDabs };
 }

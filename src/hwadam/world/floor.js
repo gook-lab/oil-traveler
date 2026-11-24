@@ -54,7 +54,8 @@ void makeDab(inout Dab d) {
   float a = (texture(tNoise, xz / 6.3).a * 1.2 + q.y * 0.8) * TAU;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
-  d.size = uCell0 * vec2(1.05 + 0.5 * r.z, 1.7 + 0.9 * r.w) * lod;
+  // the garden's litter is short, round touches (moss); elsewhere the leaves are long
+  d.size = uCell0 * vec2(1.05 + 0.5 * r.z, mix(1.7 + 0.9 * r.w, 1.05 + 0.4 * r.w, sw.x)) * lod;
   d.c1 = hazed(c1, P);
   d.c2 = hazed(c2, P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37;

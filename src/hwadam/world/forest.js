@@ -80,11 +80,12 @@ function plant() {
   for (let gz = -40; gz <= 40; gz++) {
     for (let gx = -40; gx <= 40; gx++) {
       const x = (gx + 0.15 + rand() * 0.7) * G, z = (gz + 0.15 + rand() * 0.7) * G - 8;
-      const corridor = Math.hypot(Math.max(0, Math.abs(x) - 10), Math.max(0, Math.abs(z + 8) - 100));
+      // how far from the way: the tiers of the wood and its edge follow the real walk (not the autumn wood's straight line)
+      const corridor = wayDist(x, z);
       // the wood is close set among the birches, and opens toward the ridge view
       const sw = segW(pathT(x, z));
-      if (corridor > 185 || (sw[3] > 0.5 && rand() < 0.6) || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
-      const wd = corridor < 60 ? wayDist(x, z) : 99;
+      if (corridor > 150 || (sw[3] > 0.5 && rand() < 0.6) || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
+      const wd = corridor;
       if (wd < 3.5 || clearingAt(x, z) > 0.25) continue;
       // the kind of tree is drawn by the part of the walk it stands in: the weights of the four parts mixed into
       // the chance of each kind (beech is what is left over)
@@ -93,7 +94,7 @@ function plant() {
       const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
       const u = rand();
       const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
-      add(x, z, type, corridor < 40 ? 0 : corridor < 92 ? 1 : 2);
+      add(x, z, type, corridor < 22 ? 0 : corridor < 60 ? 1 : 2);
     }
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
@@ -117,7 +118,7 @@ function plant() {
     const near = trees[trees.length - 1];
     near.toward = Math.atan2(wz - z, wx - x);
     near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
-    if (type === MAPLE) near.h *= 0.6;
+    if (type === MAPLE) near.h *= 0.32; // low trees: their crowns meet over the path, not far above it
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };

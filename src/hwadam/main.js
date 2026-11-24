@@ -11,6 +11,7 @@ import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
 import { loadHorizon } from './world/horizon.js';
+import { pinDabs } from '../oilpaint/pins.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -77,10 +78,12 @@ const say = (value, label) => { told = Math.max(told, value); block.progress(tol
 // an autumn hiker: a teal-indigo windbreaker (shirt), dark olive trousers, a slate cap; no cloak
 const HIKER = {
   SHIRT: [[0.22, 0.56, 0.62], [0.12, 0.36, 0.48], [0.06, 0.18, 0.3]],
-  TROUSERS: [[0.3, 0.32, 0.2], [0.2, 0.22, 0.14], [0.1, 0.11, 0.08]],
-  HAT: [[0.3, 0.3, 0.36], [0.18, 0.18, 0.24], [0.08, 0.08, 0.13]],
+  TROUSERS: [[0.7, 0.6, 0.42], [0.55, 0.46, 0.3], [0.34, 0.28, 0.2]],
+  HAT: [[0.9, 0.74, 0.5], [0.7, 0.52, 0.32], [0.42, 0.3, 0.2]],
+  BOOTS: [[0.36, 0.24, 0.16], [0.22, 0.15, 0.1], [0.1, 0.07, 0.06]],
 };
-const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), HIKER);
+const BAG = [[0.56, 0.4, 0.22], [0.36, 0.26, 0.16], [0.18, 0.13, 0.1]];
+const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), HIKER, { longSleeves: true, smallBrim: true });
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
@@ -117,6 +120,13 @@ const figure = await figureComing;
 const { man } = figure;
 figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no cloak
 scene.add(man.object, figure.dabs);
+// a small pack on his upper back: an invisible box on the spine carries its own paint (pins follow the box)
+const pack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.46, 0.24), new THREE.MeshBasicMaterial());
+pack.visible = false;
+man.bones.spine_03.add(pack);
+pack.position.set(0, 0.02, 0.26);
+const packDabs = pinDabs(shared, [BAG], [{ mesh: pack, count: 420, style: () => ({ pal: 0, size: [0.07, 0.12], dir: new THREE.Vector3(0, 1, 0) }) }]);
+scene.add(packDabs.mesh);
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
 const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
@@ -183,6 +193,9 @@ function tick(dt) {
   const onGround = player.grounded && player.mode !== 'jump' && player.mode !== 'air';
   animator.placeFeet(dt, (x, z, from) => player.ground(x, z, from, 1.4), root.y, onGround ? 1 : 0);
   man.object.updateMatrixWorld(true);
+  // the paint on him follows the pose he is in now (the cloth is not used in this walk)
+  figure.bodyDabs.update();
+  packDabs.update();
   kick.update(dt, root, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) }, player.speed, onGround, heightAt);
 
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
@@ -197,7 +210,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, heightAt, respawn, way,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way,
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

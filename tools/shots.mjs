@@ -34,10 +34,10 @@ export const VIEWS = {
   ground: [0, 70, -2, 50, { run: 0, view: [[4, 2.2, 74], [-6, 0, 40]] }],
   // the hwadam walk, one or more to each part of the way (use --query "scene=hwadam")
   moss: [-8, 98, -26, 82, { run: 0 }],
-  maple: [-75, -6, -89, -25, { run: 0, pitch: 0.3 }],
+  maple: [-75, -6, -89, -25, { run: 0, pitch: -0.35 }],
   birch: [-150, -74, -158, -92, { run: 0, pitch: 0.12 }],
   ridge: [-192, -190, -192, -230, { run: 0 }],
-  ridgeUp: [-192, -175, -192, -230, { run: 0, pitch: 0.18, dist: 6 }],
+  ridgeUp: [-192, -175, -192, -230, { run: 0, pitch: -0.15, dist: 6 }],
   // the hiker close up, from behind on the garden's way (the wanderer's own clothes)
   hiker: [-8, 98, -26, 82, { run: 0, dist: 2.6, pitch: 0.05 }],
 };
