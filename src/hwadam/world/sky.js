@@ -9,11 +9,13 @@ const SKY = /* glsl */ `
 vec3 skyColour(vec3 v) {
   float sunward = max(dot(v, uSunDir), 0.0);
   vec3 low = airColour(v);
-  vec3 high = mix(vec3(0.56, 0.68, 0.84), vec3(0.8, 0.84, 0.82), sunward * sunward);
+  // a clear autumn sky: bluer and lighter overhead, paler toward the sun
+  vec3 high = mix(vec3(0.5, 0.68, 0.9), vec3(0.84, 0.9, 0.86), sunward * sunward);
   vec3 c = mix(low, high, smoothstep(0.0, 0.75, v.y));
   c = mix(c, vec3(1.0, 0.95, 0.78), pow(sunward, 24.0) * 0.9);
   // the hwadam sky is lighter along the horizon, so the far ridges (darker, see scenery.js) stand out from it by about 15 L*
-  c = mix(c, vec3(0.9, 0.9, 0.88), 0.55 * (1.0 - smoothstep(0.0, 0.3, v.y)));
+  // and warm and bright along the horizon, where the far ranges meet it
+  c = mix(c, vec3(1.0, 0.96, 0.86), 0.6 * (1.0 - smoothstep(0.0, 0.3, v.y)));
   return c;
 }
 `;
@@ -59,7 +61,8 @@ export function createSky(shared) {
         vec3 level = normalize(cross(vec3(0.0, 1.0, 0.0), v));
         vec3 ring = normalize(cross(uSunDir, v) + 1e-4);
         d.dir = normalize(mix(level, ring, 0.45) + vec3(0.0, (r.x - 0.5) * 0.5, 0.0));
-        d.size = vec2(46.0 + 40.0 * r.y, 150.0 + 130.0 * r.z);
+        // thinner touches than before (the thick grey paint of the old sky is gone)
+        d.size = vec2(26.0 + 22.0 * r.y, 110.0 + 100.0 * r.z);
         vec3 c = skyColour(v);
         d.c1 = jitter(c, r.yzw, 0.22);
         d.c2 = jitter(c * 1.05, r.wxy, 0.3);
