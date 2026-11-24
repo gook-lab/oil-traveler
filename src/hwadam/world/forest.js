@@ -142,11 +142,11 @@ function plant() {
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     add(x, z, BIRCH, 2);
   }
-  // a place with a cover (T2): conifers stand at the sides of the first view, 16 to 32 m out and 28 to 34 degrees off
+  // a place with a cover (T2): conifers stand at the sides of the first view, 32 to 44 m out and 28 to 34 degrees off
   // the sight, so that the first frame has pines in its near field (they are not lowered with the sight band)
   if (hasCover() && CLEAR.fan) {
     for (let i = 0; i < 60; i++) {
-      const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 16 + rand() * 16;
+      const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 32 + rand() * 12;
       const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
       const before = trees.length;
       add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);

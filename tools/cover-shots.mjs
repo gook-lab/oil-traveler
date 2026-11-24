@@ -16,11 +16,13 @@ const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i
 const root = resolve(here, flag('dist', 'dist'));
 const outDir = resolve(here, flag('out', 'shots/cover'));
 mkdirSync(outDir, { recursive: true });
-const PLACES = [
+// --hide <parts>: a check capture of the forest (the hwadam pin) with those parts switched off (?hide=, e.g. ranges)
+const hide = flag('hide', '');
+const PLACES = (hide ? [{ name: `hwadam-hide-${hide.replace(/,/g, '-')}`, query: `scene=travel&place=37.3419823,127.2885772&name=${encodeURIComponent('화담숲')}&clean&hide=${hide}` }] : [
   { name: 'hwadam', query: `scene=travel&place=37.3419823,127.2885772&name=${encodeURIComponent('화담숲')}&clean` },
   { name: 'bukhansan', query: `scene=travel&place=37.6588,126.9772&name=${encodeURIComponent('북한산')}&clean` },
   { name: 'hyeopjae', query: `scene=travel&place=33.3943,126.2396&name=${encodeURIComponent('협재')}&clean` },
-];
+]);
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.bin': 'application/octet-stream', '.mjs': 'text/javascript' };
 const server = createServer((req, res) => {
@@ -56,6 +58,8 @@ for (const p of PLACES) {
     const deg = (r) => Math.round((r * 180) / Math.PI);
     return { gaze: window.lab.place.meta.gaze, vantage: window.lab.place.meta.vantage, camBearing: Math.round(bearing), camPitch: Math.round((Math.asin(d.y) * 180) / Math.PI), followYaw: deg(window.lab.follow.yaw), playerYaw: deg(window.lab.player.yaw) };
   }) : null;
+  const crowns = ready && p.name === 'hwadam' ? await page.evaluate(() => window.lab.crownView()) : null;
+  if (crowns) console.log(`  crowns ${JSON.stringify(crowns)}`);
   const conifers = ready ? await page.evaluate(() => window.lab.coniferView()) : null;
   console.log(`  conifers ${JSON.stringify(conifers)}`);
   // the skyline the first view looks at: the highest elevation (degrees) of the skyline's three bands within 20 degrees
