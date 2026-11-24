@@ -1,0 +1,161 @@
+/* The map (src/travel/map.js) and the walk's HUD (src/travel/hud.js). Warm paper and cream type, to sit next to the paint. */
+.tm {
+  position: fixed; inset: 0; z-index: 10; background: #efe7d2;
+  font: 14px/1.5 Georgia, serif; color: #2a211b;
+}
+.tm[hidden] { display: none; }
+.tm-canvas { position: absolute; inset: 0; }
+.tm-search {
+  position: absolute; left: 16px; top: 44px; z-index: 2; display: flex; gap: 6px;
+  width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+}
+.tm-search input {
+  flex: 1; min-width: 0; padding: 9px 12px; font: 14px Georgia, serif; color: #2a211b;
+  background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.3); border-radius: 3px;
+}
+.tm button {
+  font: 13px/1 Georgia, serif; letter-spacing: 0.03em; cursor: pointer; color: #f6eedc;
+  background: #5b4636; border: 0; padding: 9px 13px; border-radius: 3px;
+}
+.tm-status {
+  position: absolute; left: 16px; top: 96px; z-index: 2; margin: 0; max-width: min(380px, calc(100vw - 32px));
+  padding: 4px 8px; background: rgba(252, 248, 238, 0.85); border-radius: 3px; font-size: 13px;
+}
+.tm-status:empty { display: none; }
+.tm-status.warn { color: #8a3a1c; }
+.tm-card {
+  display: flex; gap: 12px; align-items: center; padding: 10px 14px; box-sizing: border-box; max-width: calc(100vw - 32px);
+  background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 4px;
+}
+.tm-card[hidden] { display: none; }
+.tm-label { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-go { background: #8a3a1c; }
+.tm-back { position: absolute; left: 16px; top: 96px; z-index: 3; }
+.tm-back[hidden] { display: none; }
+.tm-credit {
+  position: absolute; right: 8px; bottom: 6px; z-index: 2; margin: 0; font-size: 11px; color: #4a3d33;
+  background: rgba(252, 248, 238, 0.7); padding: 2px 6px; border-radius: 2px;
+}
+.tm-credit a { color: #4a3d33; }
+
+/* the walk's HUD */
+.walk-name {
+  position: fixed; left: 16px; top: 16px; z-index: 5; max-width: 60vw; box-sizing: border-box;
+  padding: 6px 12px; color: #f3e3c3; font: 14px/1.4 Georgia, serif;
+  background: rgba(28, 20, 18, 0.55); border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.walk-name[hidden] { display: none; }
+.walk-keys {
+  position: fixed; left: 16px; top: 52px; z-index: 5; margin: 0; font-size: 12px; color: #e8d8b8;
+  background: rgba(28, 20, 18, 0.45); padding: 3px 8px; border-radius: 2px;
+}
+.walk-edge {
+  position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(236, 228, 210, 0) 45%, rgba(236, 228, 210, 0.85) 100%);
+}
+.walk-edge-hint {
+  position: fixed; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+  color: #2a211b; font: 15px/1.4 Georgia, serif; background: rgba(252, 248, 238, 0.85); padding: 8px 14px; border-radius: 3px;
+  white-space: nowrap;
+}
+/* the chosen spot: one dab of paint, a lopsided blob (CSS only). The marker wrapper gets the placement MapLibre
+   gives its own markers, since the library stylesheet is not loaded here */
+.maplibregl-marker { position: absolute; top: 0; left: 0; will-change: transform; }
+.tm-dab {
+  width: 30px; height: 26px; cursor: grab; box-sizing: border-box;
+  background: radial-gradient(ellipse at 40% 35%, #b3562f 0 35%, #8a3a1c 62%, #6c2a14 100%);
+  border: 2px solid rgba(253, 248, 236, 0.9);
+  border-radius: 54% 46% 50% 50% / 48% 56% 44% 52%;
+  box-shadow: 0 0 0 1px rgba(70, 40, 20, 0.35), 2px 3px 4px rgba(40, 25, 15, 0.35);
+}
+.tm-dab:active { cursor: grabbing; }
+@media (max-width: 600px) {
+  .tm-search { left: 12px; right: 12px; width: auto; top: 12px; }
+  .tm-status { left: 12px; top: 58px; }
+  .tm-back { left: 12px; top: 96px; }
+  .tm-credit { font-size: 10px; }
+}
+
+/* the pins on the map: a chosen spot (brown, with a white ring) and where the wanderer is (blue) */
+.tm-pin { width: 18px; height: 18px; border-radius: 50%; background: #8a3a1c; border: 3px solid #fdf8ec; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.tm-pin.tm-own { background: #2f5a7a; width: 14px; height: 14px; }
+
+/* search focus and results (palette: the brown of the pin and the warm paper) */
+.tm-search input:focus { outline: 2px solid rgba(70, 52, 40, 0.55); outline-offset: 1px; border-color: rgba(70, 52, 40, 0.55); }
+.tm-results {
+  position: absolute; left: 16px; top: 96px; z-index: 3; margin: 0; padding: 4px 0;
+  width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+  background: rgba(252, 248, 238, 0.97); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 3px;
+}
+.tm-results[hidden] { display: none; }
+.tm-results button {
+  display: block; width: 100%; text-align: left; padding: 8px 12px; background: none; color: #2a211b;
+  border: 0; border-radius: 0; font: 14px Georgia, serif;
+}
+.tm-results button:hover, .tm-results button:focus { background: rgba(138, 58, 28, 0.12); outline: none; }
+.tm-results button { display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer; }
+.tm-num { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 22px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: #5b4636; color: #fdf8ec; font: bold 12px/1 Georgia, serif; }
+.tm-txt { flex: 1; min-width: 0; }
+.tm-txt b, .tm-txt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-pick { flex: none; font-size: 12px; color: #8a3a1c; }
+.tm-results button:hover .tm-pick, .tm-results button:focus .tm-pick { text-decoration: underline; }
+/* the paint edge: a faint canvas grain over the paper of the head and the card, in code (no image file) */
+.tm-head, .tm-card, .tm-results {
+  background-image: repeating-linear-gradient(97deg, rgba(70, 52, 40, 0.035) 0 2px, transparent 2px 7px), repeating-linear-gradient(12deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 5px);
+  box-shadow: 0 0 0 1px rgba(70, 52, 40, 0.08), 2px 3px 0 rgba(70, 52, 40, 0.06);
+}
+/* the bar at the bottom: the card (the chosen spot) and the recommended place beside it */
+.tm-bar {
+  position: absolute; left: 50%; bottom: 56px; z-index: 2; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+}
+.tm-recommend {
+  margin: 0; padding: 6px 10px; font-size: 13px; background: rgba(252, 248, 238, 0.9); border-radius: 3px;
+}
+.tm-recommend span { color: #5b4636; margin-right: 6px; }
+.tm-recommend button { padding: 6px 10px; font-size: 12px; background: #5b4636; }
+.tm-recommend[hidden] { display: none; }
+#tm-canvas canvas { cursor: crosshair; }
+
+/* the header line: always on, short */
+.tm-head {
+  position: absolute; left: 16px; top: 12px; z-index: 2; display: flex; gap: 10px; align-items: baseline;
+  padding: 6px 10px; background: rgba(252, 248, 238, 0.9); border-radius: 3px; font-size: 13px; color: #2a211b;
+}
+.tm-head b { font-weight: normal; letter-spacing: 0.06em; color: #8a3a1c; }
+/* the search field with its clear button */
+.tm-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.tm-field input { padding-right: 34px; }
+.tm-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; padding: 0;
+  background: none; color: #5b4636; font-size: 18px; line-height: 1;
+}
+.tm-clear[hidden] { display: none; }
+/* results: always open, each a name with its region and kind */
+.tm-results { background: rgba(252, 248, 238, 0.97); }
+.tm-count { margin: 0; padding: 6px 12px 2px; font-size: 12px; color: #5b4636; }
+.tm-results ul { margin: 0; padding: 0; list-style: none; max-height: min(52vh, 360px); overflow: auto; }
+.tm-results li + li { border-top: 1px solid rgba(70, 52, 40, 0.12); }
+.tm-results button { display: block; }
+.tm-results button b { display: block; font-weight: normal; font-size: 15px; color: #2a211b; }
+.tm-txt small { font-size: 12px; color: #6b5a4b; }
+/* the card: the name large, the region under it; the go button is the one solid action */
+.tm-card { gap: 14px; }
+.tm-name { min-width: 0; }
+.tm-label { font-size: 17px; color: #2a211b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52vw; }
+.tm-sub { margin: 0; font-size: 12px; color: #6b5a4b; }
+.tm-go { background: #8a3a1c; padding: 10px 16px; font-size: 14px; }
+/* the recommended place: an outline, text only */
+.tm-recommend { background: none; box-shadow: none; }
+.tm-recommend button { background: none; color: #5b4636; border: 1px solid rgba(91, 70, 54, 0.45); }
+/* paper grain over the map (a noise sheet made in the page, no file) */
+.tm-canvas { position: absolute; }
+.tm-canvas::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.3;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.07' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0.8 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@media (max-width: 600px) {
+  .tm-head { left: 12px; right: 12px; flex-wrap: wrap; }
+  .tm-results { left: 12px; right: 12px; width: auto; }
+  .tm-status { left: 12px; }
+}

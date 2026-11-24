@@ -9,8 +9,13 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING, VS as LAND_VS } from './world/land.js';
-import { loadHorizon } from './world/horizon.js';
+import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, VS } from './world/land.js';
+import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
+import { gazeBearing } from './world/bake.js';
+import { mountPlacePanel } from './start-panel.js';
+import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
+import { mountHud } from '../travel/hud.js';
+import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from './world/sky.js';
@@ -28,6 +33,8 @@ import { Follow } from '../figure/camera.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
+// ?scene=travel: the map is the start (no place named), the walk is first person, and M goes back to the map
+const travel = q.get('scene') === 'travel';
 // ?quality wins; otherwise Patch's performance mode, where there is one
 const lowQuality = () => (q.get('quality') ?? window.patch?.quality ?? 'high') === 'low';
 
@@ -85,11 +92,48 @@ const HIKER = {
 const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fetching the wanderer'), HIKER, { longSleeves: true, smallBrim: true });
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
+// the ground: the baked Hwadam data, or the place the address names (baked now, from the terrain tiles)
+// travel with no place named: the map is the start, and nothing below runs until a spot is picked (by navigation)
+if (travel && (!q.get('place') || q.get('err'))) await startMap({ err: q.get('err') ?? '', place: q.get('place') ?? '', name: q.get('name') ?? '' });
+const panel = travel ? { progress() {}, done() {}, fail() {} } : mountPlacePanel(q);
+let place;
+try {
+  const request = placeFromUrl(q);
+  place = request
+    ? await bakePlace({ ...request, onProgress: (f, what) => { panel.progress(f, what); say(0.01 + 0.02 * f, 'Fetching the ground'); } })
+    : await bakedPlace();
+} catch (err) {
+  if (travel) {
+    // back to the map, with the spot and the reason
+    const next = new URLSearchParams({ scene: 'travel', err: err.code ?? 'net' });
+    if (q.get('place')) next.set('place', q.get('place'));
+    if (q.get('name')) next.set('name', q.get('name'));
+    location.href = `${location.pathname}?${next.toString()}`;
+    await new Promise(() => {});
+  }
+  panel.fail(err);
+  throw err;
+}
+setPlace(place);
+panel.done(place.name);
+const hud = travel ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도' }) : null;
+if (travel) { const h = document.getElementById('hint'); if (h) h.textContent = 'Click to look · WASD move · Shift sprint · Space jump · V first / third person · M map'; }
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
 const land = createLand(shared);
 lap('land');
 say(0.1, 'Growing the wood');
 await turn();
+// travel: the start is the pin (the centre of the square). The first view looks along the skyline's most layered
+// bearing (src/hwadam/world/bake.js gazeBearing), and no trunk stands within 15 m of the pin nor in the 25 degree fan
+// out to 40 m along that view. The baked Hwadam walk keeps its own start and view (no clearing).
+const gazeDeg = travel ? gazeBearing(place.horizon) : null;
+const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
+// the travel start: a vantage point near the pin (highest ground within 150 m); the pin itself on flat ground
+const vantage = travel ? place.meta.vantage : { x: 0, z: 0 }; // the start, from the same near square as the skyline
+Object.assign(CLEAR, {
+  x: vantage.x, z: vantage.z, r: travel ? 15 : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
+  laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
+});
 const forest = createForest(shared);
 lap('forest');
 const floor = createFloor(shared);
@@ -101,18 +145,33 @@ lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
 const kick = createKick(shared);
-const horizon = await loadHorizon(); // the real skyline round the viewpoint (see tools/fetch-dem.mjs)
+const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
-// the far ranges: the real skyline of three horizon bands (2, 5, 15 km), each a mountain line at its own distance, from the eye
-const eyeY = heightAt(CLEARING.x, CLEARING.z) + 1.6;
-const ranges = createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, eyeY, CLEARING.z, LAND_VS);
-scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group, ranges.group ?? ranges);
+// the far ranges: the real skyline of three horizon bands (2, 5, 15 km), each a mountain line at its own distance, from the eye (M3, baked Hwadam walk)
+// travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
+const rangesMesh = travel
+  ? (place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, VS) : null)
+  : createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, heightAt(CLEARING.x, CLEARING.z) + 1.6, CLEARING.z, VS);
+if (rangesMesh) scene.add(rangesMesh);
+scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
+const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
+if (midMesh) scene.add(midMesh);
+// travel: the wall rings and the moss stones of scenery.js are built round the way's goal, not round the start, and
+// their walls fill the sky from the first view. The mid-ground takes their place, so the group is left out here.
+if (travel) scenery.group.visible = false;
+// check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
+{
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh };
+  for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
+}
 
 // --- the ground and the trunks, for his feet ---
 await RAPIER.init();
 const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 {
-  const f = land.heightField();
+  // the travel ground is the whole baked square (its boundary is at 250 m), the walk's is the middle 384 m
+  const f = travel ? land.heightField(480, 250) : land.heightField();
   physics.createCollider(RAPIER.ColliderDesc.heightfield(f.cells, f.cells, f.heights, { x: 2 * f.half, y: 1, z: 2 * f.half }));
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
 }
@@ -123,8 +182,10 @@ const { man } = figure;
 figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no cloak
 scene.add(man.object, figure.dabs);
 const animator = new Animator(man);
-const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
-const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
+// the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
+const spawnX = travel ? vantage.x : START.x, spawnZ = travel ? vantage.z : START.z;
+const spawn = new THREE.Vector3(spawnX, heightAt(spawnX, spawnZ), spawnZ);
+const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // travel: the skyline's view; else along the way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
 follow.yaw = faceYaw;
@@ -165,13 +226,37 @@ function respawn() {
 }
 
 const size = new THREE.Vector2();
+// travel: through his eyes by default (V toggles back to the third person), as in src/night/main.js
+let first = 0, firstKey = travel;
+const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
+/** M: the map, centred on where he is (the lat/lon of his place in the baked square). */
+function openFromWalk() {
+  const c = place.meta.center, p = player.feet;
+  const lat = c.lat - p.z / 110940, lon = c.lon + p.x / (111320 * Math.cos((c.lat * Math.PI) / 180));
+  document.exitPointerLock?.();
+  // the map shows where he is and, if it is another spot, the pin he set out from
+  openMap({ lat, lon, pin: { lat: c.lat, lon: c.lon }, back: () => {} });
+}
+addEventListener('keydown', (e) => {
+  if (!travel || mapOpen()) return;
+  if (e.code === 'KeyV') firstKey = !firstKey;
+  if (e.code === 'KeyM') openFromWalk();
+});
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
   time += dt;
-  const inp = input.read(dt);
+  const raw = input.read(dt);
+  // the map is open: the keys are for its search box, so the wanderer stands still
+  const inp = mapOpen() ? { ...raw, move: { x: 0, y: 0 }, walk: false, sprint: false, strafe: false, jump: false, look: { x: 0, y: 0 } } : raw;
   player.update(dt, inp, follow.yaw);
   // the wood has no wall: far from the way he is turned gently back, and under the world he starts again
-  if (player.feet.y < heightAt(player.feet.x, player.feet.z) - 6 || wayDist(player.feet.x, player.feet.z) > 78) respawn();
+  if (player.feet.y < heightAt(player.feet.x, player.feet.z) - 6 || (!travel && wayDist(player.feet.x, player.feet.z) > 78)) respawn();
+  // travel: the baked square is the world. Near its edge the mist comes in; past it he is set down at the pin again
+  if (travel) {
+    const edge = Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z));
+    hud.setEdge(Math.min(1, Math.max(0, (edge - 200) / 40)));
+    if (edge > 250) respawn();
+  }
   const root = player.visualRoot(dt);
   man.object.position.copy(root);
   man.object.rotation.set(0, player.yaw, 0);
@@ -193,6 +278,23 @@ function tick(dt) {
   kick.update(dt, root, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) }, player.speed, onGround, heightAt);
 
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
+  if (travel) {
+    // through his eyes: the eye comes forward into his head and looks where the mouse has it look
+    first += ((firstKey ? 1 : 0) - first) * (1 - Math.exp(-6 * dt));
+    const fp = first * first * (3 - 2 * first);
+    if (fp > 0.002) {
+      const cp = Math.cos(follow.pitch), sp = Math.sin(follow.pitch);
+      gaze.set(Math.sin(follow.yaw) * cp, -sp, Math.cos(follow.yaw) * cp);
+      eyeAt.set(root.x + Math.sin(follow.yaw) * 0.08, root.y + 1.6, root.z + Math.cos(follow.yaw) * 0.08);
+      camera.getWorldDirection(outlook).multiplyScalar(6).add(camera.position);
+      camera.position.lerp(eyeAt, fp);
+      camera.lookAt(outlook.lerp(eyeAt.addScaledVector(gaze, 6), fp));
+    }
+    man.object.visible = figure.dabs.visible = fp < 0.5;
+    camera.fov = 46 + 18 * fp;
+    camera.near = 0.3 - 0.2 * fp;
+    camera.updateProjectionMatrix();
+  }
   camera.updateMatrixWorld(true);
   renderer.getDrawingBufferSize(size);
   shared.uTime.value = time;
@@ -204,7 +306,7 @@ function tick(dt) {
 }
 
 window.lab = {
-  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, stonePos: scenery.stonePos, stoneData: scenery.stoneData, heightAt, respawn, way,
+  THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, stonePos: scenery.stonePos, stoneData: scenery.stoneData, heightAt, respawn, way, place,
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

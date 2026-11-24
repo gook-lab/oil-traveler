@@ -39,6 +39,18 @@ Global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
 
 ![능선 전망 구간](shots/hwadam-ridge.jpg)
 
+## 지도에서 고르기 — MapLibre · 런타임 굽기 · 1인칭
+
+`?scene=travel` 은 지도에서 시작합니다. 지도에서 곳을 고르면 그 자리의 땅을 브라우저에서 바로 굽고, 1인칭으로 걷습니다.
+`?place=LAT,LON` 으로 곳을 직접 적을 수도 있습니다. 같은 자리는 같은 주소로 다시 열립니다.
+
+- 지도는 MapLibre GL JS 6.17.0 과 OpenFreeMap 의 타일을 씁니다. 키가 필요하지 않습니다.
+- 지형은 AWS Terrain Tiles 에서 받습니다. SRTM 과 GMTED2010 이 아닌 타일은 쓰지 않습니다.
+- 굽는 계산은 `src/hwadam/world/bake.js` 에 있고, 도구 `tools/fetch-dem.mjs` 와 같은 식입니다.
+- 화담숲은 번들 데이터로 바로 걷습니다(`?place=hwadam`, 네트워크 없음).
+- 키: WASD 걷기, V 1인칭·3인칭, M 지도. 가장자리 안개가 짙어지면 M 으로 다른 곳을 고릅니다.
+- 검사: `tools/place-check.mjs`(굽기 비교 · 두 장소 첫 프레임), `tools/travel-check.mjs`(지도 · 핀 · 검색).
+
 ## 바탕 — Patch 의 oil-paint (MIT)
 
 이 레포는 Patch 의 [oil-paint](https://patch.gg/blendi/oil-paint)(커밋 `804c65f`)를 바탕으로 합니다. 렌더러 `src/oilpaint/` 는 원본 그대로이고, 원본 설명은 [OIL-PAINT.md](OIL-PAINT.md) 에 있습니다. 라이선스가 따로 적혀 있지 않은 `lib/patch-block.js` 는 넣지 않고 `lib/block-shim.js` 로 대신합니다. 등산객은 Patch 의 starter man(MakeHuman · Quaternius, CC0)에 옷 색과 밀짚모자를 입힌 것입니다.

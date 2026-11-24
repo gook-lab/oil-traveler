@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
-import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START } from './land.js';
+import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
@@ -171,7 +171,20 @@ function plant() {
     const px = ex + ux * along, pz = ez + uz * along;
     return Math.hypot(t.x - px, t.z - pz) < t.r + 2.2;
   });
-  return trees.filter((t) => !blocks(t));
+  // no trunk within CLEAR.r of the start (travel: the pin), nor in the fan of the first view (CLEAR.fan), so it is open
+  const inFirstFan = (t) => {
+    const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
+    return d > 0 && d <= CLEAR.fanR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= CLEAR.fanCos;
+  };
+  // the sight line of the first view: a lane of 20 degrees is cleared out to laneR; the 35 degree band beside it is
+  // lowered (its trunks to lowH of their height), so the skyline shows over the wood. Beyond laneR nothing changes.
+  const inSight = (t, cosMin) => {
+    const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
+    return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
+  };
+  const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
+  for (const t of kept) if (inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  return kept;
 }
 
 export function createForest(shared) {

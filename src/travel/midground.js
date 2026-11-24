@@ -1,0 +1,82 @@
+// The mid-ground of the travel walk: the real ground from the edge of the baked square out to 2 km (place.mid, from
+// bake.js bakeMidground), at the same vertical scale as the land (VS) so that the two meet. It is painted in large
+// patches of paint over the ground's own shape, with the sun's light on the slopes, so a near hill reads as a hill
+// instead of a wall. The square itself is left to the land (src/hwadam/world/land.js), which is finer.
+import * as THREE from 'three';
+import { COMMON, EXTENT } from '../oilpaint/common.js';
+import { VS } from '../hwadam/world/land.js';
+
+/**
+ * Builds the ring-shaped mesh (a hole where the land is). `mid` is { n, step, half, h }, `H0` the zero of the scaled
+ * ground (the entrance height, as land.js uses it). Returns a Mesh for the scene.
+ */
+export function createMidground(shared, mid, H0) {
+  const { n, step, half, h } = mid;
+  const y = new Float32Array(n * n);
+  for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * VS;
+
+  // the normals, from the grid's own slopes
+  const normal = new Float32Array(n * n * 3);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const il = Math.max(0, i - 1), ir = Math.min(n - 1, i + 1), jd = Math.max(0, j - 1), ju = Math.min(n - 1, j + 1);
+    const dx = (y[j * n + ir] - y[j * n + il]) / ((ir - il) * step || 1), dz = (y[ju * n + i] - y[jd * n + i]) / ((ju - jd) * step || 1);
+    const len = Math.hypot(-dx, 1, -dz);
+    const k = (j * n + i) * 3;
+    normal[k] = -dx / len; normal[k + 1] = 1 / len; normal[k + 2] = -dz / len;
+  }
+
+  const pos = new Float32Array(n * n * 3);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const k = j * n + i;
+    pos[k * 3] = -half + i * step;
+    pos[k * 3 + 1] = y[k] - 0.05; // a little under the land, as the land is under its own paint
+    pos[k * 3 + 2] = -half + j * step;
+  }
+
+  // triangles for each cell whose centre lies outside the land's square (the land is drawn there)
+  const index = [];
+  const inLand = (x, z) => Math.abs(x) < EXTENT && Math.abs(z) < EXTENT;
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+    const cx = -half + (i + 0.5) * step, cz = -half + (j + 0.5) * step;
+    if (inLand(cx, cz)) continue;
+    const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+    index.push(a, c, b, b, c, d);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  geometry.setIndex(index);
+
+  const material = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: shared,
+    vertexShader: /* glsl */ `
+      ${COMMON}
+      out vec3 vWorld;
+      out vec3 vN;
+      void main() { vWorld = position; vN = normal; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      ${COMMON}
+      in vec3 vWorld;
+      in vec3 vN;
+      layout(location = 0) out vec4 outC;
+      void main() {
+        // large patches of paint, placed on a jittered grid, each in one of three colours of the autumn ground
+        vec2 sq = floor(vWorld.xz / 16.0 + (texture(tNoise, vWorld.xz / 37.0).rg - 0.5) * 1.6) * 16.0;
+        float r = texture(tNoise, sq / 41.0).r;
+        vec3 moss = vec3(0.2, 0.3, 0.14), ochre = vec3(0.6, 0.44, 0.2), rust = vec3(0.5, 0.2, 0.12);
+        vec3 base = r < 0.4 ? moss : r < 0.75 ? ochre : rust;
+        // the sun from the slope: lit faces bright, the others deep
+        float lit = clamp(dot(normalize(vN), uSunDir) * 1.4 + 0.25, 0.0, 1.0);
+        vec3 c = mix(base * 0.55, base * 1.25 + vec3(0.06, 0.04, 0.0), lit);
+        c *= 0.9 + 0.2 * texture(tNoise, vWorld.xz / 7.0).r;
+        // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
+        vec3 air = airColour(normalize(vWorld - cameraPosition));
+        outC = vec4(mix(c, air, 0.4 * mistBetween(vWorld)), 1.0);
+      }`,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  return mesh;
+}

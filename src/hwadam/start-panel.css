@@ -1,0 +1,38 @@
+/* The start panel (src/hwadam/start-panel.js). Same palette as the page: warm dark ground, cream type, Georgia. */
+.place {
+  position: fixed; left: 16px; top: 16px; z-index: 5;
+  width: min(340px, calc(100vw - 32px));
+  box-sizing: border-box; padding: 14px 16px 12px;
+  color: #f3e3c3; font: 14px/1.5 Georgia, serif; letter-spacing: 0.02em;
+  background: rgba(28, 20, 18, 0.72); border: 1px solid rgba(243, 227, 195, 0.22); border-radius: 4px;
+}
+.place[hidden] { display: none; }
+.place-title { display: block; font-size: 15px; margin-bottom: 8px; color: #f7ead0; }
+.place-row { display: flex; gap: 6px; }
+.place-row input {
+  flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 10px; font: 14px Georgia, serif; color: #1c1512;
+  background: #f3e3c3; border: 1px solid rgba(243, 227, 195, 0.6); border-radius: 3px;
+}
+.place-row input::placeholder { color: #7a6a5a; }
+.place-go, .place-hwadam {
+  font: 13px/1 Georgia, serif; letter-spacing: 0.04em; color: #f3e3c3; cursor: pointer;
+  background: rgba(243, 227, 195, 0.12); border: 1px solid rgba(243, 227, 195, 0.35);
+  padding: 8px 12px; border-radius: 3px;
+}
+.place-go { background: rgba(243, 227, 195, 0.9); color: #1c1512; border-color: transparent; }
+.place-go:disabled { opacity: 0.5; cursor: default; }
+.place-note, .place-credit { margin: 6px 0 0; font-size: 12px; color: #c9b598; }
+.place-credit a, .place-link { color: #e8cf9e; }
+.place-status { margin: 8px 0 0; min-height: 1.5em; }
+.place-status.warn { color: #f2c48d; }
+.place-alt { margin: 8px 0 0; }
+.place-name {
+  position: fixed; right: 16px; top: 16px; z-index: 5; max-width: 40vw;
+  padding: 6px 12px; color: #f3e3c3; font: 14px/1.4 Georgia, serif;
+  background: rgba(28, 20, 18, 0.55); border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.place-name[hidden] { display: none; }
+@media (max-width: 600px) {
+  .place { left: 12px; right: 12px; width: auto; top: 12px; }
+  .place-name { top: auto; bottom: 64px; right: 12px; max-width: calc(100vw - 24px); }
+}

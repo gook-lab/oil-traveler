@@ -7,38 +7,29 @@ import * as THREE from 'three';
 import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
-import wayData from '../data/way.json';
-import meta from '../data/meta.json';
-import nearUrl from '../data/near.bin?url';
 export { noise, rng, segW };
 
 /** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
 export const VS = 0.5;
 
 // --- the way through ---------------------------------------------------------------------------------------------
-// control points (world metres, x east, z south), from the least-cost path over the real ground
-const WAY = wayData.points;
-export const START = { x: wayData.start[0], z: wayData.start[1] };
-export const CLEARING = { x: wayData.goal[0], z: wayData.goal[1], r: 21 };
-const waySamples = [];
-{
-  const at = (i) => WAY[Math.max(0, Math.min(WAY.length - 1, i))];
-  for (let i = 0; i < WAY.length - 1; i++) {
-    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-    for (let k = 0; k < 24; k++) {
-      const t = k / 24, t2 = t * t, t3 = t2 * t;
-      const c = (a, b, c_, d) => 0.5 * (2 * b + (-a + c_) * t + (2 * a - 5 * b + 4 * c_ - d) * t2 + (-a + 3 * b - 3 * c_ + d) * t3);
-      waySamples.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
-    }
-  }
-  waySamples.push(WAY[WAY.length - 1]);
-}
-export const way = waySamples;
+// The ground is set by setPlace() (src/hwadam/world/place.js: the baked Hwadam data, or a place baked at run time)
+// before prepareLand(). The objects below are filled in place, so every module that imported them sees the change.
+export const START = { x: 0, z: 0 };
+export const CLEARING = { x: 0, z: 0, r: 21 };
+/**
+ * Where no trunk stands at the travel start: a ring of r metres about the pin, and a fan of half-angle fanCos (cosine)
+ * out to fanR metres along (fx, fz), the first view. fan false, r 0: none (the baked Hwadam walk).
+ */
+export const CLEAR = { x: 0, z: 0, r: 0, fan: false, fx: 0, fz: -1, fanR: 40, fanCos: 1, laneR: 300, laneCos: 1, sightCos: 1, lowH: 1 };
+/** The walk as dense samples (world metres, x east, z south), a Catmull-Rom curve through the control points. */
+export const way = [];
+let NEAR_N = 0, NEAR_STEP = 1, near = null, H0 = 0;
 /** Metres from (x, z) to the middle of the way. */
 export function wayDist(x, z) {
   let best = Infinity;
-  for (let i = 0; i < waySamples.length - 1; i++) {
-    const [ax, az] = waySamples[i], [bx, bz] = waySamples[i + 1];
+  for (let i = 0; i < way.length - 1; i++) {
+    const [ax, az] = way[i], [bx, bz] = way[i + 1];
     const dx = bx - ax, dz = bz - az;
     const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
     const d = Math.hypot(x - ax - dx * t, z - az - dz * t);
@@ -49,23 +40,44 @@ export function wayDist(x, z) {
 /** Where (x, z) lies along the way: 0 at its first point, 1 at its last, by the nearest sample on it. */
 export function pathT(x, z) {
   let best = Infinity, at = 0;
-  for (let i = 0; i < waySamples.length; i++) {
-    const d = (waySamples[i][0] - x) ** 2 + (waySamples[i][1] - z) ** 2;
+  for (let i = 0; i < way.length; i++) {
+    const d = (way[i][0] - x) ** 2 + (way[i][1] - z) ** 2;
     if (d < best) { best = d; at = i; }
   }
-  return at / (waySamples.length - 1);
+  return at / (way.length - 1);
 }
 export const clearingAt = (x, z) => {
   const d = Math.hypot(x - CLEARING.x, z - CLEARING.z) + noise(x * 0.11, z * 0.11) * 3.5;
   return 1 - Math.min(1, Math.max(0, (d - CLEARING.r * 0.72) / (CLEARING.r * 0.5)));
 };
 
+/**
+ * Takes a ground (see place.js): its near square, its way (control points, the entrance and the goal) and its meta.
+ * Call before prepareLand(). The control points become the dense samples above, as the autumn walk always did.
+ */
+export function setPlace(place) {
+  NEAR_N = place.meta.nearN;
+  NEAR_STEP = place.meta.nearStep;
+  near = place.near;
+  H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
+  START.x = place.way.start[0]; START.z = place.way.start[1];
+  CLEARING.x = place.way.goal[0]; CLEARING.z = place.way.goal[1];
+  const WAY = place.way.points;
+  way.length = 0;
+  const at = (i) => WAY[Math.max(0, Math.min(WAY.length - 1, i))];
+  for (let i = 0; i < WAY.length - 1; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    for (let k = 0; k < 24; k++) {
+      const t = k / 24, t2 = t * t, t3 = t2 * t;
+      const c = (a, b, c_, d) => 0.5 * (2 * b + (-a + c_) * t + (2 * a - 5 * b + 4 * c_ - d) * t2 + (-a + 3 * b - 3 * c_ + d) * t3);
+      way.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  way.push(WAY[WAY.length - 1]);
+}
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // --- the real ground ---------------------------------------------------------------------------------------------
-const NEAR_N = meta.nearN, NEAR_STEP = meta.nearStep;
-const H0 = wayData.startHeight; // the entrance is the zero of the scaled ground
-let near = null; // the baked heights, row by row from the south-west (loaded in prepareLand)
 /** The real ground at world (x, z): bilinear over the baked square, clamped to its edges. z is south, so row j = N/2 - z/step. */
 function groundAt(x, z) {
   const fi = Math.min(NEAR_N - 1.001, Math.max(0, x / NEAR_STEP + NEAR_N / 2));
@@ -87,15 +99,13 @@ const land = new Uint8Array(N * N * 4);
  * The distance to the way and the place along it come from one pass of a distance transform, not a search per point.
  */
 export async function prepareLand(pause) {
-  const res = await fetch(nearUrl);
-  if (!res.ok) throw new Error(`near.bin: HTTP ${res.status}`);
-  near = new Float32Array(await res.arrayBuffer());
-  if (near.length !== NEAR_N * NEAR_N) throw new Error('near.bin does not match meta.json');
+  if (!near) throw new Error('prepareLand before setPlace');
+  if (near.length !== NEAR_N * NEAR_N) throw new Error('the near square does not match its meta');
 
   // distance transform (two passes, 1 and sqrt 2 steps), carrying the nearest sample's number with it
   const dist = new Float32Array(N * N).fill(Infinity), label = new Int32Array(N * N).fill(-1);
   const toTexel = (v) => Math.round(((v + EXTENT) / (2 * EXTENT)) * (N - 1));
-  waySamples.forEach(([x, z], k) => {
+  way.forEach(([x, z], k) => {
     const ti = toTexel(x), tj = toTexel(z);
     if (ti >= 0 && ti < N && tj >= 0 && tj < N) { dist[tj * N + ti] = 0; label[tj * N + ti] = k; }
   });
@@ -126,7 +136,7 @@ export async function prepareLand(pause) {
       land[k + 1] = Math.round(255 * clearingAt(x, z));
       land[k + 2] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + 0.6 * noise(x / 17 + 9, z / 17) + 0.3 * noise(x / 5, z / 5 + 4))));
       // along the way: the nearest sample's place on it (0 at the first point, 1 at the last)
-      land[k + 3] = Math.round(255 * (label[idx] >= 0 ? label[idx] / (waySamples.length - 1) : 0));
+      land[k + 3] = Math.round(255 * (label[idx] >= 0 ? label[idx] / (way.length - 1) : 0));
     }
   }
 }
