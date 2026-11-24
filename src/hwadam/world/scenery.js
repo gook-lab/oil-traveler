@@ -73,6 +73,9 @@ function crest(k, az, horizon, eyeY) {
     wsum += w;
   }
   th /= wsum;
+  // the middle ranges (330 to 650 m) fall back in the two sight bearings of the view (112 and 143 degrees): the sight
+  // opens to the far ridge there, and the wood between does not hide it
+  if (Math.min(Math.abs(deg - 112), Math.abs(deg - 143)) < 22 && RINGS[k].r < 650) th *= 0.4;
   return Math.max(-15, eyeY + RINGS[k].r * Math.tan(th));
 }
 

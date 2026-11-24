@@ -150,7 +150,7 @@ function plant() {
     // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
     // no two birches of the sight stand close in both depth and side (a jittered spacing, not columns): from the walk's
     // eye they would overlap into one white pillar
-    if (placedBirch.some((q) => Math.abs(q[0] - dist) < 2.5 && Math.abs(q[1] - lat) < 2.4)) continue;
+    if (placedBirch.some((q) => (Math.abs(q[0] - dist) < 2.5 && Math.abs(q[1] - lat) < 2.4) || (Math.abs(q[1] / q[0] - lat / dist) < 0.015 && Math.abs(q[0] - dist) > 2.5))) continue;
     placedBirch.push([dist, lat]);
     let sc = 1.0 - 0.5 * (dist - 12) / 28;
     if (dist < 20 && rand() < 0.2) sc *= 1.6;
@@ -194,7 +194,8 @@ export function createForest(shared) {
       const u = i / (rings - 1), y = i === 0 ? -0.6 / (top + 0.3) : u * u * 0.4 + u * 0.6; // the first ring sinks 0.6 m under the ground: no flat cut
       const bend = Math.sin(u * 2.4 + t.seed) * 0.25 * (t.type === BIRCH ? 1.6 : 1);
       pts.push(new THREE.Vector3(t.x + t.lean[0] * y * top + bend * t.lean[1] * 8, t.y - 0.3 + y * (top + 0.3), t.z + t.lean[1] * y * top - bend * t.lean[0] * 8));
-      radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))));
+      // a birch's foot spreads where it meets the ground (the roots), so it stands on the ground, not on a point
+      radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))) * (t.type === BIRCH ? 1 + 0.8 * Math.exp(-(y * top) / 0.3) : 1));
     }
     tube(wood, pts, radii, full ? 9 : some ? 7 : 5, t.type, t.seed);
     // the trunk's middle and radius at a height above its foot

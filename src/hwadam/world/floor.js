@@ -96,6 +96,9 @@ void makeDab(inout Dab d) {
   c1 = mix(c1, mix(vec3(0.2, 0.3, 0.1), vec3(0.62, 0.78, 0.26), hump), sw.x * 0.85);
   d.height = ((0.03 + 0.07 * q.z) + sw.x * (0.12 * q.w + 0.45 * hump)) * pow(lod, 0.35);
   d.glaze = 1.0;
+  // the moss garden's touches are the brush's short fat dabs (marks 4 and 5 of the sheet), not the long leaf marks,
+  // so the cover reads as small round dots of moss, not as clover leaves
+  d.cell = mix(-1.0, 4.0 + step(0.5, r.w), sw.x);
 }
 `;
 

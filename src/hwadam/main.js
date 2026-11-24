@@ -9,7 +9,7 @@ import recipe from '../../recipe.json';
 import RAPIER from '../figure/rapier/rapier.mjs';
 import { createShared, WIND, SUN } from '../oilpaint/common.js';
 import { createBrushSheet } from '../oilpaint/brush.js';
-import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
+import { prepareLand, createLand, heightAt, wayDist, noise, way, START, CLEARING, VS as LAND_VS } from './world/land.js';
 import { loadHorizon } from './world/horizon.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
@@ -17,6 +17,7 @@ import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
 import { createKick } from '../world/kick.js';
 import { createScenery } from './world/scenery.js';
+import { createRanges } from '../travel/ranges.js';
 import { createShade } from '../oilpaint/shade.js';
 import { createFrame } from '../oilpaint/finish.js';
 import { createFigure } from '../figure/figure.js';
@@ -102,7 +103,10 @@ await turn();
 const kick = createKick(shared);
 const horizon = await loadHorizon(); // the real skyline round the viewpoint (see tools/fetch-dem.mjs)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
-scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
+// the far ranges: the real skyline of three horizon bands (2, 5, 15 km), each a mountain line at its own distance, from the eye
+const eyeY = heightAt(CLEARING.x, CLEARING.z) + 1.6;
+const ranges = createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, eyeY, CLEARING.z, LAND_VS);
+scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group, ranges.group ?? ranges);
 
 // --- the ground and the trunks, for his feet ---
 await RAPIER.init();
