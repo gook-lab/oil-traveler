@@ -161,8 +161,8 @@ void makeDab(inout Dab d) {
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
   float cls = coverClass(xz);
-  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5;
-  if (!(sand || rock || built || water)) { d.alive = 0.0; return; }
+  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, basalt = abs(cls - 10.0) < 0.5;
+  if (!(sand || rock || built || water || basalt)) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
@@ -176,7 +176,9 @@ void makeDab(inout Dab d) {
     }
   }
   vec3 c;
-  if (water) c = paint3(vec3(0.36, 0.6, 0.62), vec3(0.24, 0.46, 0.52), vec3(0.16, 0.34, 0.4), lit, q.y);
+  // basalt: almost black with a faint warm cast, pocked: the holes (q.z) are darker and the strokes short
+  if (basalt) c = q.z < 0.4 ? vec3(0.15, 0.14, 0.14) : paint3(vec3(0.36, 0.34, 0.33), vec3(0.27, 0.25, 0.24), vec3(0.18, 0.17, 0.17), lit, q.y);
+  else if (water) c = paint3(vec3(0.36, 0.6, 0.62), vec3(0.24, 0.46, 0.52), vec3(0.16, 0.34, 0.4), lit, q.y);
   else if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
   else if (rock && wet > 0.5) c = paint3(vec3(0.3, 0.3, 0.32), vec3(0.2, 0.2, 0.22), vec3(0.12, 0.12, 0.14), lit, q.y);
   else if (rock) {
@@ -195,7 +197,7 @@ void makeDab(inout Dab d) {
   if (water) a = (q.x - 0.5) * 0.25;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
-  d.size = uCell0 * (water ? vec2(0.7 + 0.5 * r.z, 1.5 + 0.9 * r.w) : vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w)) * lod;
+  d.size = uCell0 * (water ? vec2(0.7 + 0.5 * r.z, 1.5 + 0.9 * r.w) : basalt ? vec2(0.6 + 0.4 * r.z, 0.9 + 0.5 * r.w) : vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w)) * lod;
   d.c1 = hazed(c, P);
   d.c2 = hazed(jitter(c, q.wzy, 0.5), P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37 + 2.0;
