@@ -155,6 +155,8 @@ const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.w
 if (midMesh) scene.add(midMesh);
 // travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
 const rangesMesh = travel && place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, VS) : null;
+// check only (?band=k): only the range of band k (bands in place.meta.bands order), in its own colour
+if (q.has('band') && rangesMesh) rangesMesh.children.forEach((m, i) => { m.visible = rangesMesh.children.length - 1 - i === Number(q.get('band')); });
 // check only (?keyranges): the ranges in pure green, so that the picture counts how much of them stays
 if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide }); });
 if (rangesMesh) scene.add(rangesMesh);

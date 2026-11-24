@@ -6,7 +6,8 @@
 import * as THREE from 'three';
 import { COMMON } from '../oilpaint/common.js';
 
-const NEAR_COL = [0.34, 0.38, 0.4], FAR_COL = [0.7, 0.77, 0.86];
+// the near band is well darker than the sky (about L* 40), the far one lies close to the sky (about L* 70)
+const NEAR_COL = [0.3, 0.34, 0.38], FAR_COL = [0.6, 0.66, 0.74];
 // The camera far plane is 2 km, so a range further out is drawn on a ring at CAP metres, at its own elevation angle: the
 // angle is kept, the distance is not (the ranges are a backdrop, nothing walks to them). The rings are kept apart by
 // STEP metres so their depths do not tie: the far one stands furthest, the near one in front of it.
@@ -82,7 +83,7 @@ export function createRanges(shared, horizon, bands, ex, ey, ez, VS) {
           c = mix(c, land, below);
           // the air takes more of the far ones, so they lie flat against the sky
           vec3 air = airColour(normalize(vWorld - cameraPosition));
-          outC = vec4(mix(c, air, clamp(${(0.25 + 0.35 * t).toFixed(3)} * mistBetween(vWorld) + 0.1, 0.0, 1.0)), 1.0);
+          outC = vec4(mix(c, air, clamp(${(0.1 + 0.15 * t).toFixed(3)} * mistBetween(vWorld) + 0.05, 0.0, 1.0)), 1.0);
         }`,
     });
     const mesh = new THREE.Mesh(geometry, material);
