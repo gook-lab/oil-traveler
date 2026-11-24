@@ -69,6 +69,7 @@ const tileXY = (lat, lon, z) => {
 const tileCache = new Map();
 const sources = new Set(); // the source files the baked tiles came from, for meta.json
 async function heightTile(z, x, y) {
+  if (z < 7) throw new Error(`zoom ${z} is below 7; the SRTM tiles start at 7`);
   const key = `${z}/${x}/${y}`;
   if (tileCache.has(key)) return tileCache.get(key);
   const res = await fetch(TILE_URL(z, x, y));

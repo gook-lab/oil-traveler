@@ -11,7 +11,7 @@ import { segW } from './segments.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
-const SIGHTS = [[4, 14, 4, -20], [-1, 56, 2, 30], [-1, -30, 1, -60], [8, -74, 10, -110], [10, -100, 10, -160]];
+const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -192, -230], [-192, -175, -192, -230]];
 
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
@@ -83,7 +83,7 @@ function plant() {
       const corridor = Math.hypot(Math.max(0, Math.abs(x) - 10), Math.max(0, Math.abs(z + 8) - 100));
       // the wood is close set among the birches, and opens toward the ridge view
       const sw = segW(pathT(x, z));
-      if (corridor > 185 || (z < -100 && sw[3] > 0.3) || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
+      if (corridor > 185 || (sw[3] > 0.5 && rand() < 0.6) || rand() > 0.84 - 0.12 * sw[0] + 0.3 * sw[2] - 0.7 * sw[3]) continue;
       const wd = corridor < 60 ? wayDist(x, z) : 99;
       if (wd < 3.5 || clearingAt(x, z) > 0.25) continue;
       // the kind of tree is drawn by the part of the walk it stands in: the weights of the four parts mixed into
@@ -98,16 +98,16 @@ function plant() {
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
-  for (let i = 0; i < 700; i++) {
+  for (let i = 0; i < 400; i++) {
     const k = 40 + Math.floor(rand() * 120);
     const [wx, wz] = way[k];
     const [nx, nz] = way[k + 1];
     const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
     const off = (3 + rand() * 8) * (rand() < 0.5 ? -1 : 1);
     const x = wx + (-dz / len) * off, z = wz + (dx / len) * off;
-    if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25 || (z < -100)) continue;
+    if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     const sw = segW(pathT(x, z));
-    if (rand() > 0.25 + 0.75 * (sw[1] + sw[2])) continue;
+    if (sw[3] > 0.5 || rand() > 0.25 + 0.75 * (sw[1] + sw[2])) continue;
     const pBirch = 0.95 * sw[2] + 0.1 * sw[3];
     const pMaple = 0.75 * sw[1] + 0.03 * sw[0] + 0.15 * sw[3];
     const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];

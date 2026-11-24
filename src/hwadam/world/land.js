@@ -1,16 +1,25 @@
-// The ground of the hwadam walk: the autumn wood's ground (src/world/land.js) with a rise on the climb and a map of
-// where along the way each spot lies (the alpha of the land map, read by the shaders through segW). The same height
-// is used by the picture, by the wanderer's feet (a height field for the physics) and by everything planted on it.
+// The ground of the hwadam walk: the real ground of the garden (src/hwadam/data/near.bin, baked by tools/fetch-dem.mjs
+// from SRTM) at a vertical scale of VS, with the same small noise the autumn wood has, and the way drawn over it
+// (src/hwadam/data/way.json, from tools/make-way.mjs). A map of where along the way each spot lies is kept in the
+// alpha of the land map, read by the shaders through segW. The same height is used by the picture, by the wanderer's
+// feet (a height field for the physics) and by everything planted on it.
 import * as THREE from 'three';
 import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
+import wayData from '../data/way.json';
+import meta from '../data/meta.json';
+import nearUrl from '../data/near.bin?url';
 export { noise, rng, segW };
 
+/** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
+export const VS = 0.5;
+
 // --- the way through ---------------------------------------------------------------------------------------------
-const WAY = [[2, 96], [0, 80], [-7, 56], [3, 32], [10, 6], [3, -20], [-5, -44], [4, -68], [10, -90]];
-export const START = { x: 0, z: 78 };
-export const CLEARING = { x: 11, z: -96, r: 21 };
+// control points (world metres, x east, z south), from the least-cost path over the real ground
+const WAY = wayData.points;
+export const START = { x: wayData.start[0], z: wayData.start[1] };
+export const CLEARING = { x: wayData.goal[0], z: wayData.goal[1], r: 21 };
 const waySamples = [];
 {
   const at = (i) => WAY[Math.max(0, Math.min(WAY.length - 1, i))];
@@ -37,7 +46,7 @@ export function wayDist(x, z) {
   }
   return best;
 }
-/** Where (x, z) lies along the way: 0 at its first point, 1 at its last, by the nearest point on it. */
+/** Where (x, z) lies along the way: 0 at its first point, 1 at its last, by the nearest sample on it. */
 export function pathT(x, z) {
   let best = Infinity, at = 0;
   for (let i = 0; i < waySamples.length; i++) {
@@ -52,41 +61,74 @@ export const clearingAt = (x, z) => {
 };
 
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-function rawHeight(x, z, wd) {
-  let h = 2.8 * noise(x / 74 + 3.1, z / 74 - 1.7) + 1.2 * noise(x / 26, z / 26) + 0.3 * noise(x / 8.3, z / 8.3);
-  h += 5.5 * sstep(70, -110, z); // the land climbs gently toward the clearing
-  h += 8 * sstep(46, -8, z);     // and the way climbs more steeply through the maple part
-  h -= 0.28 * Math.exp(-(wd * wd) / 3.2); // the way is worn a little into it
-  return h;
+
+// --- the real ground ---------------------------------------------------------------------------------------------
+const NEAR_N = meta.nearN, NEAR_STEP = meta.nearStep;
+const H0 = wayData.startHeight; // the entrance is the zero of the scaled ground
+let near = null; // the baked heights, row by row from the south-west (loaded in prepareLand)
+/** The real ground at world (x, z): bilinear over the baked square, clamped to its edges. z is south, so row j = N/2 - z/step. */
+function groundAt(x, z) {
+  const fi = Math.min(NEAR_N - 1.001, Math.max(0, x / NEAR_STEP + NEAR_N / 2));
+  const fj = Math.min(NEAR_N - 1.001, Math.max(0, NEAR_N / 2 - z / NEAR_STEP));
+  const i = Math.floor(fi), j = Math.floor(fj), tx = fi - i, tz = fj - j;
+  const a = near[i + j * NEAR_N], b = near[i + 1 + j * NEAR_N], c = near[i + (j + 1) * NEAR_N], d = near[i + 1 + (j + 1) * NEAR_N];
+  return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
 }
 
 // --- maps ------------------------------------------------------------------------------------------------------
 const N = LAND_RES;
+const TEXEL_M = (2 * EXTENT) / (N - 1);
 const heights = new Float32Array(N * N);
 const land = new Uint8Array(N * N * 4);
+
 /**
  * Works the maps out, a million points of ground. It takes a second or so, so it stops every few rows and waits
  * for `pause(done 0..1)`, which lets the page breathe. Nothing here can be used before it has finished.
- * The alpha of the land map is the spot's place along the way (pathT), which the shaders read through segW.
+ * The distance to the way and the place along it come from one pass of a distance transform, not a search per point.
  */
 export async function prepareLand(pause) {
- for (let j = 0; j < N; j++) {
-  if (pause && j % 24 === 0) await pause(j / N);
-  for (let i = 0; i < N; i++) {
-    const x = -EXTENT + (i / (N - 1)) * 2 * EXTENT, z = -EXTENT + (j / (N - 1)) * 2 * EXTENT;
-    const near = Math.abs(x) < 60 && z > -130 && z < 110;
-    const wd = near ? wayDist(x, z) : 99;
-    heights[i + j * N] = rawHeight(x, z, wd);
-    const k = (i + j * N) * 4;
-    const ragged = noise(x * 0.9, z * 0.9) * 0.35 + noise(x * 0.23, z * 0.23) * 0.5;
-    land[k] = Math.round(255 * (1 - sstep(0.75, 1.9, wd + ragged)));
-    land[k + 1] = Math.round(255 * clearingAt(x, z));
-    land[k + 2] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + 0.6 * noise(x / 17 + 9, z / 17) + 0.3 * noise(x / 5, z / 5 + 4))));
-    // along the way: searched only where the walk is; beyond that, the first part to the north and the last to the south
-    const along = Math.abs(x) < 120 && z > -150 && z < 120 ? pathT(x, z) : z > 0 ? 0 : 1;
-    land[k + 3] = Math.round(255 * along);
+  const res = await fetch(nearUrl);
+  if (!res.ok) throw new Error(`near.bin: HTTP ${res.status}`);
+  near = new Float32Array(await res.arrayBuffer());
+  if (near.length !== NEAR_N * NEAR_N) throw new Error('near.bin does not match meta.json');
+
+  // distance transform (two passes, 1 and sqrt 2 steps), carrying the nearest sample's number with it
+  const dist = new Float32Array(N * N).fill(Infinity), label = new Int32Array(N * N).fill(-1);
+  const toTexel = (v) => Math.round(((v + EXTENT) / (2 * EXTENT)) * (N - 1));
+  waySamples.forEach(([x, z], k) => {
+    const ti = toTexel(x), tj = toTexel(z);
+    if (ti >= 0 && ti < N && tj >= 0 && tj < N) { dist[tj * N + ti] = 0; label[tj * N + ti] = k; }
+  });
+  const relax = (idx, from, add) => { const v = dist[from] + add; if (v < dist[idx]) { dist[idx] = v; label[idx] = label[from]; } };
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const idx = j * N + i;
+    if (i > 0) relax(idx, idx - 1, 1);
+    if (j > 0) { relax(idx, idx - N, 1); if (i > 0) relax(idx, idx - N - 1, Math.SQRT2); if (i < N - 1) relax(idx, idx - N + 1, Math.SQRT2); }
   }
- }
+  for (let j = N - 1; j >= 0; j--) for (let i = N - 1; i >= 0; i--) {
+    const idx = j * N + i;
+    if (i < N - 1) relax(idx, idx + 1, 1);
+    if (j < N - 1) { relax(idx, idx + N, 1); if (i < N - 1) relax(idx, idx + N + 1, Math.SQRT2); if (i > 0) relax(idx, idx + N - 1, Math.SQRT2); }
+  }
+
+  for (let j = 0; j < N; j++) {
+    if (pause && j % 24 === 0) await pause(j / N);
+    for (let i = 0; i < N; i++) {
+      const x = -EXTENT + (i / (N - 1)) * 2 * EXTENT, z = -EXTENT + (j / (N - 1)) * 2 * EXTENT;
+      const idx = j * N + i;
+      const wd = dist[idx] * TEXEL_M;
+      const ground = (groundAt(x, z) - H0) * VS;
+      // the same small noise the autumn wood has, and the way worn a little into the ground
+      heights[idx] = ground + 0.3 * noise(x / 8.3, z / 8.3) - 0.28 * Math.exp(-(wd * wd) / 3.2);
+      const k = idx * 4;
+      const ragged = noise(x * 0.9, z * 0.9) * 0.35 + noise(x * 0.23, z * 0.23) * 0.5;
+      land[k] = Math.round(255 * (1 - sstep(0.75, 1.9, wd + ragged)));
+      land[k + 1] = Math.round(255 * clearingAt(x, z));
+      land[k + 2] = Math.round(255 * Math.min(1, Math.max(0, 0.5 + 0.6 * noise(x / 17 + 9, z / 17) + 0.3 * noise(x / 5, z / 5 + 4))));
+      // along the way: the nearest sample's place on it (0 at the first point, 1 at the last)
+      land[k + 3] = Math.round(255 * (label[idx] >= 0 ? label[idx] / (waySamples.length - 1) : 0));
+    }
+  }
 }
 /** Height of the ground at (x, z), read from the same map the picture uses. */
 export function heightAt(x, z) {

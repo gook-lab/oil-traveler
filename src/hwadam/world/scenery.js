@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
-import { way, wayDist, heightAt, noise, rng } from './land.js';
+import { way, wayDist, heightAt, noise, rng, CLEARING } from './land.js';
 
 const STONE = /* glsl */ `
 void makeDab(inout Dab d) {
@@ -95,7 +95,7 @@ export function createScenery(shared) {
     const wall = new THREE.BufferGeometry();
     const p = new Float32Array((SEG + 1) * 2 * 3), index = [];
     for (let i = 0; i <= SEG; i++) {
-      const az = (i / SEG) * Math.PI * 2, x = Math.sin(az) * o.r, z = -Math.cos(az) * o.r;
+      const az = (i / SEG) * Math.PI * 2, x = CLEARING.x + Math.sin(az) * o.r, z = CLEARING.z - Math.cos(az) * o.r;
       p.set([x, -20, z, x, crest(k, az), z], i * 6);
       if (i < SEG) index.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
     }
@@ -127,7 +127,7 @@ export function createScenery(shared) {
     for (let i = 0; i < o.count; i++) {
       const az = rand() * Math.PI * 2, top = crest(k, az), t = Math.pow(rand(), 0.8);
       const rr = o.r - 12 - 30 * rand();
-      pos.set([Math.sin(az) * rr, -20 + (top + 20) * t, -Math.cos(az) * rr], i * 3);
+      pos.set([CLEARING.x + Math.sin(az) * rr, -20 + (top + 20) * t, CLEARING.z - Math.cos(az) * rr], i * 3);
       dat.set([rand() * 1000, o.size * (0.7 + 0.6 * rand()), t, k], i * 4);
     }
     const strokes = dabMesh(dabGeometry(o.count, { aPos: [pos, 3], aData: [dat, 4] }), dabMaterial(shared, {

@@ -105,9 +105,10 @@ const { man } = figure;
 scene.add(man.object, figure.cloakMesh, figure.dabs);
 const animator = new Animator(man);
 const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
-const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: Math.PI });
+const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
+const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
-follow.yaw = Math.PI;
+follow.yaw = faceYaw;
 const input = new Input(renderer.domElement, { pads: !capture && !q.has('nopad') });
 physics.step();
 lap('figure');
