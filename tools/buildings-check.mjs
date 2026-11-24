@@ -109,6 +109,12 @@ for (const p of PLACES) {
     probe.start = { groundM: +lab.heightAt(F.x, F.z).toFixed(2), eyeM: +lab.camera.position.y.toFixed(2), within20: near20.slice(0, 8) };
     probe.vantage = lab.place?.meta?.vantage ?? null;
     probe.palace = lab.place?.meta?.palace ?? null;
+    // the traditional outlines within 120 m of the start: centre, distance, long and short sides (m), height (m)
+    probe.trad120 = lab.buildingPlans.filter((p) => p.trad && Math.hypot(p.c[0] - F.x, p.c[1] - F.z) <= 120).map((p) => {
+      const xs = p.pts.map((q) => q[0]), zs = p.pts.map((q) => q[1]);
+      const w = Math.max(...xs) - Math.min(...xs), d = Math.max(...zs) - Math.min(...zs);
+      return { c: [+p.c[0].toFixed(1), +p.c[1].toFixed(1)], dist: +Math.hypot(p.c[0] - F.x, p.c[1] - F.z).toFixed(1), long: +Math.max(w, d).toFixed(1), short: +Math.min(w, d).toFixed(1), ratio: +(Math.max(w, d) / Math.min(w, d)).toFixed(2), h: +p.h.toFixed(1), R: p.R ? [+p.R.hu.toFixed(2), +p.R.hv.toFixed(2)] : null, n: p.pts.length };
+    }).sort((a, b) => a.dist - b.dist);
     // the floating check: a building's base (the lowest ground under its outline, plus its raised minimum) above the ground at its centre
     probe.floating = lab.buildingPlans.filter((p) => { const gMin = Math.min(...p.pts.map((q) => lab.heightAt(q[0], q[1])), lab.heightAt(p.c[0], p.c[1])); return gMin + (p.mh ?? 0) - lab.heightAt(p.c[0], p.c[1]) > 0.5; }).length;
     const SYM = { 0: '.', 1: 'g', 2: 'f', 3: 'w', 4: 'T', 5: 'R', 6: 's', 7: 'i', 8: 'B', 9: '~', 10: 'P' };
