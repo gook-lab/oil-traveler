@@ -366,7 +366,9 @@ function surfacesOf(p, ground) {
   const bayCol = (u, v, r, L, k) => {
     const x = u * L;
     if (x % 3.2 < 0.5) return [0.5, 0.17, 0.12]; // the column
-    if (k === frontK) return x % 0.6 < 0.07 || v % 0.25 < 0.04 ? [0.85, 0.8, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
+    // the front bay: a dark timber panel, the lower quarter solid, the upper part with fine lattice lines every 0.6 m (no
+    // transom band, so no white stripe runs through the bay)
+    if (k === frontK) return v > 0.25 && x % 0.6 < 0.05 ? [0.85, 0.8, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
     return [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r));
   };
   // the touches on the front bays are dark timber (the lattice is in the solid cells only, so the bright lines stay thin)
@@ -377,7 +379,9 @@ function surfacesOf(p, ground) {
   for (let k = 0; k < 4; k++) {
     const a = posts[k], b = posts[(k + 1) % 4], ea = eaveW[k], eb = eaveW[(k + 1) % 4];
     const P00 = [a[0], yEave - 0.05, a[1]], P10 = [b[0], yEave - 0.05, b[1]], P01 = [ea[0], yEave - 0.05, ea[1]], P11 = [eb[0], yEave - 0.05, eb[1]];
-    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u) => (Math.floor(u * 8) % 2 ? [0.13, 0.28, 0.25] : [0.4, 0.13, 0.09]) });
+    // the underside of the eave (the rafters' face) is dark brown-grey, with a row of pale rafter ends every 0.4 m on its outer edge
+    const Lsoff = Math.hypot(eb[0] - ea[0], eb[1] - ea[1]);
+    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u, v, r) => (v > 0.9 && (u * Lsoff) % 0.4 < 0.12 ? [0.82, 0.78, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.15, 0.13, 0.12].map((c) => c * (0.9 + 0.2 * r))) });
   }
   // the roof: a hip-and-gable (팔작) roof. A straight ridge runs along the long side, its length the long side less 0.6 of
   // the short one. The long slopes curve down to the eaves (flat at the eave, steep at the ridge), the ends hip down from
@@ -386,7 +390,7 @@ function surfacesOf(p, ground) {
   // the eaves reach out 15% of the short side (T3 round 2; 1.8 m at least), and the roof's length is what it sags by
   const eaveOut = Math.max(EAVE, 0.15 * 2 * R.hv);
   const eu = R.hu + eaveOut, ev = R.hv + eaveOut, rr = Math.max(0, R.hu - 0.6 * R.hv);
-  const sagM = 0.07 * 2 * eu; // the eave line sags in the middle by 7% of the roof's length (the ends rise)
+  const sagM = 0.06 * 2 * eu; // the eave line sags in the middle by 6% of the roof's length (the ends rise)
   const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
   const yRidge = yEave + roofH;
   const curve = (t) => Math.pow(Math.min(1, Math.max(0, t)), 1.6);
