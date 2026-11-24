@@ -3,7 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { fetchCover, chooseGaze, frameNear, ridgeNear } from './cover.js';
+import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg } from './cover.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
 import nearUrl from '../data/near.bin?url';
@@ -92,7 +92,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9) > 0.05 ? 9 : null;
   // a mountain's start: the rock it can see, and the highest ridge of the midground over it (60 points a degree)
   const bonus = !focus ? null : focus === 5
-    ? (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, 5) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z))
+    ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z))
     : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
   const vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus);
   const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
@@ -101,11 +101,18 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
   const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid);
+  // a mountain whose first view has no ridge above the eye (a summit pin) looks down about 8 degrees (pitch 0.14),
+  // so that the skyline lies a third of the way down from the top of the frame; otherwise the start pitch (0.05)
+  let pitch = 0.05;
+  if (focus === 5 && mid && gaze != null) {
+    const j = Math.round(N / 2 - vantage.z / NEAR_STEP), i = Math.round(vantage.x / NEAR_STEP + N / 2);
+    if (ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, gaze) <= 0) pitch = 0.14;
+  }
   onProgress(1, 'done');
   const meta2 = {
     cover: cover ? cover.counts : null, coverError, gaze,
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands, eye,
-    zooms, viewAt, vantage, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
+    zooms, viewAt, vantage, pitch, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
   return { source: 'runtime', name, near, horizon, way, mid, meta: meta2, cover };
 }

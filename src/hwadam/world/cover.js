@@ -55,6 +55,14 @@ float coverDepth(vec2 xz) {
   vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
   return texture(tCover, (f + 0.5) / ${N}.0).g * 12.0;
 }
+/** True when water lies within 4 m (eight points on a ring): the shore carries no leaves, even on untagged land. */
+bool wetCover(vec2 xz) {
+  for (int k = 0; k < 8; k++) {
+    float a = float(k) * 0.7853982;
+    if (abs(coverClass(xz + 4.0 * vec2(cos(a), sin(a))) - 9.0) < 0.5) return true;
+  }
+  return false;
+}
 bool bareCover(float c) {
   return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5;
 }
@@ -158,10 +166,10 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
-  // sand: the strip of open ground behind the sea, 30 m wide and under 4 m high (OSM often leaves beaches untagged)
+  // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
-    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 4) continue;
+    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
     if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
   }
   // rock: steep ground with no tree, field or building on it
@@ -310,7 +318,9 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
     // a mountain looks at the ridge that rises highest above it (the midground), and at the rock it can see
     let ridge = 0;
     if (mid) { const i = Math.round(vantage.x / NEAR_STEP + N / 2), j = Math.round(N / 2 - vantage.z / NEAR_STEP); ridge = Math.min(20, ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, a)); }
-    const key = layers * 100 + a15 + 600 * frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK) + 60 * ridge;
+    // rock on the frame counts up to 30%; more than 60% is a cliff at hand, which hides the sky, and costs points
+    const rk = frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
+    const key = layers * 100 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 60 * ridge;
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;

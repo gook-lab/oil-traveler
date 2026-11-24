@@ -215,7 +215,16 @@ export function createLand(shared) {
           wet += abs(o2 - 9.0) < 0.5 ? 0.25 : 0.0;
           rockNear = max(rockNear, abs(o2 - 9.0) < 0.5 ? 1.0 : 0.0);
         }
-        if (abs(cls - 9.0) < 0.5) {
+        // the shore is a curve, not the 2 m cell stairs: the share of water among nine points 2.5 m apart, with the dab
+        // noise pushing the line either way; a point is water where that share passes one half
+        float wf = 0.0;
+        for (int gy = -1; gy <= 1; gy++) for (int gx = -1; gx <= 1; gx++) {
+          wf += abs(coverClass(vWorld.xz + vec2(float(gx), float(gy)) * 2.5) - 9.0) < 0.5 ? 1.0 : 0.0;
+        }
+        wf /= 9.0;
+        // a water cell is always water (else it kept the autumn underpainting, rust red); the noisy line only moves sand and bare ground
+        bool isWater = abs(cls - 9.0) < 0.5 || (wf + (sqn - 0.5) * 0.45 > 0.5 && (cls < 0.5 || abs(cls - 6.0) < 0.5));
+        if (isWater) {
           // water as the night fjord paints it (src/night/far.js): long strokes lying flat, the shallows emerald and
           // the deep teal, and a grazing look that gives back the sky; a white line of foam where sand or rock meets it
           float dep = coverDepth(vWorld.xz);
@@ -231,7 +240,8 @@ export function createLand(shared) {
           }
           float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
           c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
-        } else if (abs(cls - 6.0) < 0.5) {
+        } else if (abs(cls - 6.0) < 0.5 || (cls < 0.5 && wf > 0.0)) {
+          // (untagged land by the water is beach too: it would otherwise keep the maple climb's rust underpainting)
           // sand: pale warm, in long flat strokes; where the sea reaches it, the water breaks in dabs over it
           vec3 sc = mix(vec3(0.8, 0.7, 0.52), vec3(0.95, 0.87, 0.68), sqn) * (0.9 + 0.2 * strokeH);
           c = sc;

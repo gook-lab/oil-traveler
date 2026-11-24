@@ -188,6 +188,8 @@ const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
 follow.yaw = faceYaw;
+// a summit start looks down (place.js: meta.pitch); the other starts keep the camera's own pitch
+if (travel && place.meta.pitch != null) follow.pitch = place.meta.pitch;
 const input = new Input(renderer.domElement, { pads: !capture && !q.has('nopad') });
 physics.step();
 lap('figure');
