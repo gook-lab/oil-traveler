@@ -22,8 +22,8 @@ const Z = 14;
 export const ROCK_SLOPE = Math.tan((30 * Math.PI) / 180);
 
 // the grid of the place in use (node order as near.bin). Null for the baked walk.
-let grid = null, conifer = 0;
-export function setCover(g, coniferShare = 0) { grid = g; conifer = coniferShare; }
+let grid = null, depth = null, conifer = 0;
+export function setCover(g, coniferShare = 0, d = null) { grid = g; depth = d; conifer = coniferShare; }
 export function hasCover() { return grid !== null; }
 /** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
 export function coniferChance() { return conifer; }
@@ -31,8 +31,15 @@ export function coniferChance() { return conifer; }
 export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT]);
 /** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
 export function coverTexture() {
-  const data = grid ?? new Uint8Array(1);
-  const tex = grid ? new THREE.DataTexture(data, N, N, THREE.RedFormat, THREE.UnsignedByteType) : new THREE.DataTexture(data, 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
+  // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
+  let tex;
+  if (grid && depth) {
+    const data = new Uint8Array(N * N * 2);
+    for (let k = 0; k < N * N; k++) { data[2 * k] = grid[k]; data[2 * k + 1] = depth[k]; }
+    tex = new THREE.DataTexture(data, N, N, THREE.RGFormat, THREE.UnsignedByteType);
+  } else {
+    tex = new THREE.DataTexture(new Uint8Array(2), 1, 1, THREE.RGFormat, THREE.UnsignedByteType);
+  }
   tex.minFilter = tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
   return tex;
@@ -43,6 +50,10 @@ uniform sampler2D tCover;
 float coverClass(vec2 xz) {
   vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
   return floor(texture(tCover, (f + 0.5) / ${N}.0).r * 255.0 + 0.5);
+}
+float coverDepth(vec2 xz) {
+  vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
+  return texture(tCover, (f + 0.5) / ${N}.0).g * 12.0;
 }
 bool bareCover(float c) {
   return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5;
@@ -164,7 +175,9 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   onProgress(1, 'cover');
   const counts = {};
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
-  return { grid: out, counts };
+  const dep = new Uint8Array(N * N);
+  for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
+  return { grid: out, depth: dep, counts };
 }
 
 function nearWater(sea, i, j, r) {
@@ -184,4 +197,116 @@ export function coniferShare(lat, heightM) {
   const alt = Math.min(1, Math.max(0, (heightM - 100) / 400));
   const south = lat < 35 ? 0.15 : 0;
   return Math.min(0.75, 0.1 + 0.5 * alt + south);
+}
+
+/**
+ * For each bearing (0 north, clockwise, degrees) the share of the samples out to maxR metres from (vx, vz) that
+ * `hit(node index)` accepts. Samples every 2 m; a ray leaves the square at its edge.
+ */
+export function raySpread(vx, vz, maxR, hit) {
+  const out = new Float64Array(360);
+  for (let a = 0; a < 360; a++) {
+    const r = (a * Math.PI) / 180, dx = Math.sin(r), dz = -Math.cos(r);
+    let n = 0, h = 0;
+    for (let d = 2; d <= maxR; d += NEAR_STEP) {
+      const i = Math.round((vx + dx * d) / NEAR_STEP + N / 2), j = Math.round(N / 2 - (vz + dz * d) / NEAR_STEP);
+      if (i < 0 || j < 0 || i >= N || j >= N) break;
+      n++;
+      if (hit(j * N + i)) h++;
+    }
+    out[a] = n ? h / n : 0;
+  }
+  return out;
+}
+
+/** The ground as the scene draws it: near heights above the entrance, at the scene's vertical scale (land.js VS). */
+const SCENE_VS = 0.5;
+function sceneGround(near, H0) {
+  return (x, z) => {
+    const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
+    const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
+    return (near[j * N + i] - H0) * SCENE_VS;
+  };
+}
+
+/**
+ * The share of the first frame's ground rays (looking down at 1 to 23 degrees from 1.6 m above the start, as the
+ * scene's camera does) that first meet ground of class `cls`. The ray walks over the scene's own ground, so the
+ * slopes it meets are the ones on screen. Trees are not counted.
+ */
+export function frameShare(cover, ground, x, z, a, cls) {
+  const r = (a * Math.PI) / 180, sx = Math.sin(r), sz = -Math.cos(r);
+  const eye = ground(x, z) + 1.6;
+  let n = 0, h = 0;
+  for (let dep = 1; dep <= 23; dep += 1) {
+    const slope = Math.tan((dep * Math.PI) / 180);
+    n++;
+    for (let t = 1; t < 400; t += 2) {
+      const gx = x + sx * t, gz = z + sz * t;
+      if (eye - t * slope <= ground(gx, gz)) {
+        const i = Math.round(gx / NEAR_STEP + N / 2), j = Math.round(N / 2 - gz / NEAR_STEP);
+        if (i >= 0 && j >= 0 && i < N && j < N && cover[j * N + i] === cls) h++;
+        break;
+      }
+    }
+  }
+  return n ? h / n : 0;
+}
+
+/** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
+export function frameNear(cover, near, H0, x, z, cls) {
+  const g = sceneGround(near, H0);
+  let best = 0;
+  for (let a = 0; a < 360; a += 6) best = Math.max(best, frameShare(cover, g, x, z, a, cls));
+  return best;
+}
+
+/**
+ * The first view's bearing for a place with its land cover. Where sea lies in the square, the bearing with the most
+ * sea along its ray (out to 300 m). Otherwise the skyline rule of gazeBearing (bake.js), with a weight for rock seen
+ * along the ray, so that a granite place looks at its domes. Returns degrees, or null without a cover.
+ */
+export function chooseGaze(horizon, cover, near, vantage, H0) {
+  if (!cover) return null;
+  const g = sceneGround(near, H0);
+  // sea in the first frame: the bearing with the most sea on its lower half
+  const sea = new Float64Array(360);
+  for (let a = 0; a < 360; a++) sea[a] = frameShare(cover, g, vantage.x, vantage.z, a, COVER.WATER);
+  let best = 0;
+  for (let a = 1; a < 360; a++) if (sea[a] > sea[best]) best = a;
+  if (sea[best] > 0.02) return best;
+  const deg = (r) => (r * 180) / Math.PI, margin = 0.4;
+  let bestKey = -Infinity;
+  for (let a = 0; a < 360; a++) {
+    const a2 = deg(horizon[a]), a5 = deg(horizon[360 + a]), a15 = deg(horizon[720 + a]);
+    const layers = 1 + (a5 > a2 + margin ? 1 : 0) + (a15 > Math.max(a2, a5) + margin ? 1 : 0);
+    const key = layers * 100 + a15 + 600 * frameShare(cover, g, vantage.x, vantage.z, a, COVER.ROCK);
+    if (key > bestKey) { bestKey = key; best = a; }
+  }
+  return best;
+}
+
+/**
+ * What the first frame shows, as shares of the screen's rays that first hit the ground of each class (trees hide some
+ * of it; they are not counted). camera is the page's THREE camera; ground(x, z) the height. 'sky' is a ray that
+ * meets no ground within 400 m. Called from the page (window.lab.coverView).
+ */
+export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
+  const counts = {};
+  const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+  const p = new THREE.Vector3(), d = new THREE.Vector3();
+  let total = 0;
+  for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+    p.set(((cx + 0.5) / cols) * 2 - 1, -(((cy + 0.5) / rows) * 2 - 1), 0.5).unproject(camera);
+    d.copy(p).sub(eye).normalize();
+    let name = 'sky';
+    for (let t = 0.5; t < 400; t += 0.5) {
+      const x = eye.x + d.x * t, y = eye.y + d.y * t, z = eye.z + d.z * t;
+      if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; break; }
+    }
+    counts[name] = (counts[name] || 0) + 1;
+    total++;
+  }
+  for (const k of Object.keys(counts)) counts[k] = +(counts[k] / total).toFixed(3);
+  return counts;
 }

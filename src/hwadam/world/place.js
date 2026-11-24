@@ -3,7 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { fetchCover } from './cover.js';
+import { fetchCover, chooseGaze, frameNear } from './cover.js';
 import wayData from '../data/way.json';
 import meta from '../data/meta.json';
 import nearUrl from '../data/near.bin?url';
@@ -69,26 +69,32 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_ZOOMS, viewAt = 'van
   const N = NEAR_M / NEAR_STEP;
   const way = findWay(near, N, NEAR_STEP);
   if (way.length < 80) throw new PlaceError('noway', `way ${way.length} m`);
+  // the land cover (T2) first: the start has to stand on land of the cover. A failure leaves the place painted as
+  // plain ground (no cover), and the walk still opens
+  let cover = null, coverError = '';
+  try {
+    cover = await fetchCover({ lat, lon, near, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
+  } catch (e) {
+    coverError = e.message;
+  }
   onProgress(0.3, 'skyline');
   // the skyline is taken from the travel start (the vantage point), so that it matches where he stands; or, for the
   // check against the baked data, from the way's goal (the baked skyline's point)
-  const vantage = pickVantage(near, N, NEAR_STEP, 150);
+  const grid = cover?.grid ?? null;
+  // the start looks at what the first frame is made of (T2): a mountain (rock on 5% of the square) at its rock, a
+  // coast (sea on 5%) at its sea; elsewhere the plain pick
+  const share = (cls) => (grid ? grid.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / grid.length : 0);
+  const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9) > 0.05 ? 9 : null;
+  const vantage = pickVantage(near, N, NEAR_STEP, 150, grid, focus ? (x, z) => frameNear(grid, near, way.startHeight, x, z, focus) : null);
   const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
   await prefetchSkyline(terrain, lat, lon, view, zooms);
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms);
-  // the land cover (T2): a failure leaves the place painted as plain ground, and the walk still opens
-  let cover = null, coverCounts = null, coverError = '';
-  try {
-    onProgress(0.85, 'cover');
-    ({ grid: cover, counts: coverCounts } = await fetchCover({ lat, lon, near, onProgress: (f) => onProgress(0.85 + 0.14 * f, 'cover') }));
-  } catch (e) {
-    coverError = e.message;
-    cover = null;
-  }
+  // the first view's bearing: toward the sea when the square holds some (T2), else the skyline rule
+  const gaze = chooseGaze(horizon, cover?.grid ?? null, near, vantage, way.startHeight);
   onProgress(1, 'done');
   const meta2 = {
-    cover: cover ? coverCounts : null, coverError,
+    cover: cover ? cover.counts : null, coverError, gaze,
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands: BANDS, eye,
     zooms, viewAt, vantage, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };

@@ -297,6 +297,8 @@ export function createForest(shared) {
     const x = (rand() - 0.5) * 150, z = -125 + rand() * 235;
     const wd = wayDist(x, z);
     if (wd < 3.5 || wd > 62 || clearingAt(x, z) > 0.6) continue;
+    // a place's cover (T2): no bush on water, sand, rock or built-up ground
+    if (hasCover() && NO_TREE.has(coverAt(x, z))) continue;
     const y = heightAt(x, z), garden = segW(pathT(x, z))[0], tall = (1.1 + rand() * rand() * 3.4) * (1 - 0.75 * garden);
     const sw = segW(pathT(x, z));
     const family = rand() < sw[0] ? 4 : rand() < sw[1] ? (rand() < 0.6 ? 0 : 1) : rand() < sw[2] ? 5 : 2;

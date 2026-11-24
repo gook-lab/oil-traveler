@@ -12,6 +12,7 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
+import { viewShares } from './world/cover.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -124,7 +125,8 @@ await turn();
 // travel: the start is the pin (the centre of the square). The first view looks along the skyline's most layered
 // bearing (src/hwadam/world/bake.js gazeBearing), and no trunk stands within 15 m of the pin nor in the 25 degree fan
 // out to 40 m along that view. The baked Hwadam walk keeps its own start and view (no clearing).
-const gazeDeg = travel ? gazeBearing(place.horizon) : null;
+// (a place with a land cover looks at its sea, or at its rock; see cover.js chooseGaze)
+const gazeDeg = travel ? (place.meta.gaze ?? gazeBearing(place.horizon)) : null;
 const gazeRad = gazeDeg == null ? 0 : (gazeDeg * Math.PI) / 180;
 // the travel start: a vantage point near the pin (highest ground within 150 m); the pin itself on flat ground
 const vantage = travel ? place.meta.vantage : { x: 0, z: 0 }; // the start, from the same near square as the skyline
@@ -288,6 +290,8 @@ function tick(dt) {
 
 window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
+  /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
+  coverView: () => viewShares(camera, THREE, heightAt),
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

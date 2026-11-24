@@ -62,7 +62,7 @@ export function setPlace(place) {
   near = place.near;
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
   // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
-  setCover(place.cover ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0);
+  setCover(place.cover?.grid ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0, place.cover?.depth ?? null);
   START.x = place.way.start[0]; START.z = place.way.start[1];
   CLEARING.x = place.way.goal[0]; CLEARING.z = place.way.goal[1];
   const WAY = place.way.points;
@@ -203,7 +203,24 @@ export function createLand(shared) {
         float cls = coverClass(vWorld.xz);
         vec2 sq2 = floor(vWorld.xz / 0.5 + (texture(tNoise, vWorld.xz / 2.3).rg - 0.5) * 1.4) * 0.5;
         float sqn = texture(tNoise, sq2 / 9.0).r;
-        if (abs(cls - 9.0) < 0.5) c = mix(vec3(0.08, 0.34, 0.4), vec3(0.2, 0.62, 0.58), sqn) * (0.85 + 0.25 * lit);
+        if (abs(cls - 9.0) < 0.5) {
+          // water as the night fjord paints it (src/night/far.js): long strokes lying flat, the shallows emerald and
+          // the deep teal, and a grazing look that gives back the sky; a white line of foam where sand or rock meets it
+          float dep = coverDepth(vWorld.xz);
+          vec3 wc = mix(vec3(0.3, 0.8, 0.66), vec3(0.04, 0.3, 0.42), smoothstep(0.0, 6.0, dep));
+          float st = texture(tNoise, vec2(vWorld.x / 7.0, vWorld.z / 0.8)).r;
+          wc *= 0.8 + 0.34 * st;
+          float graze = pow(1.0 - clamp(-normalize(vWorld - cameraPosition).y, 0.0, 1.0), 3.0);
+          wc = mix(wc, vec3(0.62, 0.78, 0.82), graze * 0.35);
+          float land3 = 0.0;
+          for (int q = 0; q < 4; q++) {
+            vec2 o = vec2(q == 0 ? 3.0 : q == 1 ? -3.0 : 0.0, q == 2 ? 3.0 : q == 3 ? -3.0 : 0.0);
+            float o2 = coverClass(vWorld.xz + o);
+            land3 = max(land3, (abs(o2 - 6.0) < 0.5 || abs(o2 - 5.0) < 0.5) ? 1.0 : 0.0);
+          }
+          float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
+          c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
+        }
         else if (abs(cls - 6.0) < 0.5) c = mix(vec3(0.82, 0.72, 0.54), vec3(0.94, 0.86, 0.68), sqn);
         else if (abs(cls - 5.0) < 0.5) c = mix(vec3(0.5, 0.46, 0.45), vec3(0.76, 0.68, 0.64), sqn);
         else if (abs(cls - 8.0) < 0.5) c = mix(vec3(0.58, 0.5, 0.44), vec3(0.78, 0.7, 0.6), sqn);
