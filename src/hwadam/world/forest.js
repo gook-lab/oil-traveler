@@ -14,6 +14,9 @@ const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
 const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -155, -175], [-192, -175, -168, -143]];
 
+// travel: the tier by the distance to the start (m): full detail under TIER_TRAVEL[0], some under [1], far beyond
+const TIER_TRAVEL = [50, 120];
+
 export const BARK = /* glsl */ `
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
 const vec3 BARK_M[4] = vec3[4](vec3(0.37, 0.3, 0.31), vec3(0.76, 0.71, 0.68), vec3(0.3, 0.22, 0.2), vec3(0.5, 0.42, 0.36));
@@ -110,7 +113,12 @@ function plant() {
       // the birch stands in columns with aisles between them: only every third 3.2 m strip of the ground (by x) takes birch,
       // so the trunks further back show between the ones in front (a wall of trunks covered the picture's width)
       if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
-      add(x, z, type, corridor < 22 ? 0 : corridor < 60 ? 1 : 2);
+
+      // the tier is the distance to the way, except in travel: there the way is the place's own, and the start is the
+      // centre of the picture, so the tier is the distance to the start (near trees get the full detail)
+      const dd = CLEAR.fan ? Math.hypot(x - CLEAR.x, z - CLEAR.z) : corridor;
+      const tier = CLEAR.fan ? (dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2) : dd < 22 ? 0 : dd < 60 ? 1 : 2;
+      add(x, z, type, tier);
     }
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
@@ -170,7 +178,8 @@ function plant() {
       const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 32 + rand() * 12;
       const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
       const before = trees.length;
-      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);
+      // the pines in front of the start stand at full detail (tier 0): as tier 1 their six lobes read as bare poles
+      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 0, 0.8);
       if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
       if (trees.filter((t) => t.nearPine).length >= 14) break;
     }
@@ -217,6 +226,7 @@ export function createForest(shared) {
   const v = new THREE.Vector3();
 
   for (const t of trees) {
+    const b0 = barkDabs.length, l0 = leafDabs.length; // T2: the dabs this tree adds (lab.treeStats)
     const full = t.tier === 0, some = t.tier === 1;
     const top = t.h * (t.type === BIRCH ? 0.95 : t.conifer ? 0.97 : 0.8);
     // --- trunk ---
@@ -248,7 +258,8 @@ export function createForest(shared) {
       // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
       const steps = full ? 9 : 6;
       for (let i = 0; i < steps; i++) {
-        const u = i / steps, y = t.y + t.h * (0.22 + 0.72 * u);
+        // the front pines (nearPine, travel) carry their lobes up to the leader, so no bare pole shows above the crown
+        const u = i / steps, y = t.y + t.h * (0.22 + (t.nearPine ? 0.8 : 0.72) * u);
         const lr = Math.max(0.9, spread * 0.55 * (1 - u) + 0.9);
         treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
       }
@@ -324,6 +335,12 @@ export function createForest(shared) {
       const across = Math.min(0.5, r * (t.type === BIRCH ? 1.5 : 0.75)) * (some ? 1.5 : 1);
       barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 0.5 + rand() * 0.6) * (some ? 1.6 : 1));
     }
+    t.dabs = (barkDabs.length - b0) / 13 + (leafDabs.length - l0) / 10;
+    // T2 check: the foliage's vertical extent (world y) and its dab count, for the bare stems above the leaves (lab.treeStats)
+    t.leaves = (leafDabs.length - l0) / 10;
+    let y0 = Infinity, y1 = -Infinity;
+    for (let k = l0; k < leafDabs.length; k += 10) { y0 = Math.min(y0, leafDabs[k + 1]); y1 = Math.max(y1, leafDabs[k + 1]); }
+    t.leafY0 = t.leaves ? y0 : t.y; t.leafY1 = t.leaves ? y1 : t.y;
   }
 
   // --- the understorey: saplings and bushes that hold their leaves at eye height, of the colours of their part ---

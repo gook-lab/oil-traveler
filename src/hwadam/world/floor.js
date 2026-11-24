@@ -174,8 +174,10 @@ void makeDab(inout Dab d) {
   d.alive = ringGrow(distance(xz, cameraPosition.xz), lod);
   if (d.alive <= 0.0) return;
   float cls = coverClass(xz);
-  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5;
-  if (!(sand || rock || built)) { d.alive = 0.0; return; }
+  bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5;
+  if (!(sand || rock || built || water)) { d.alive = 0.0; return; }
+  // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
+  if (q.w < 0.33) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   vec3 Nn = normalAt(xz);
   float lit = woodSunAt(P + vec3(0.0, 0.2, 0.0)) * clamp(dot(Nn, uSunDir) * 2.4, 0.0, 1.0);
@@ -187,15 +189,26 @@ void makeDab(inout Dab d) {
     }
   }
   vec3 c;
-  if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
+  if (water) c = paint3(vec3(0.36, 0.6, 0.62), vec3(0.24, 0.46, 0.52), vec3(0.16, 0.34, 0.4), lit, q.y);
+  else if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
   else if (rock && wet > 0.5) c = paint3(vec3(0.3, 0.3, 0.32), vec3(0.2, 0.2, 0.22), vec3(0.12, 0.12, 0.14), lit, q.y);
-  else if (rock) c = paint3(vec3(0.86, 0.82, 0.78), vec3(0.66, 0.62, 0.58), vec3(0.42, 0.4, 0.38), lit, q.y);
+  else if (rock) {
+    // granite (T2 check 5): a lit face and a shaded face with a hard edge between, dark mineral flecks, and dark seams
+    c = paint3(vec3(0.92, 0.87, 0.82), vec3(0.7, 0.66, 0.63), vec3(0.46, 0.44, 0.43), clamp(lit * 1.15 - 0.05, 0.0, 1.0), q.y);
+    if (r.x > 0.85) c = mix(c, vec3(0.3, 0.29, 0.29), 0.4);
+    if (q.z < 0.12) c *= 0.8;
+  }
   else c = paint3(vec3(0.7, 0.62, 0.52), vec3(0.52, 0.45, 0.38), vec3(0.34, 0.3, 0.26), lit, q.y);
   c = jitter(c, r.wzy, 0.4);
-  float a = (q.x - 0.5) * 0.5;
+  // the strokes run down the slope: along the horizontal part of the normal (rock and sand alike), with a little
+  // turn either way; on flat ground the turn alone decides
+  vec2 down = length(Nn.xz) > 0.02 ? normalize(Nn.xz) : vec2(1.0, 0.0);
+  float a = atan(down.y, down.x) + (q.x - 0.5) * 0.7;
+  // water: short strokes lying across the view (T2 check 4), with only a slight turn
+  if (water) a = (q.x - 0.5) * 0.25;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
-  d.size = uCell0 * vec2(1.1 + 0.5 * r.z, 1.8 + 0.9 * r.w) * lod;
+  d.size = uCell0 * (water ? vec2(0.7 + 0.5 * r.z, 1.5 + 0.9 * r.w) : vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w)) * lod;
   d.c1 = hazed(c, P);
   d.c2 = hazed(jitter(c, q.wzy, 0.5), P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37 + 2.0;

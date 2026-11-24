@@ -4,7 +4,7 @@
 // instead of a wall. The square itself is left to the land (src/hwadam/world/land.js), which is finer.
 import * as THREE from 'three';
 import { COMMON, EXTENT } from '../oilpaint/common.js';
-import { VS } from '../hwadam/world/land.js';
+import { verticalScale } from '../hwadam/world/land.js';
 
 // check only: ?midzone=0|1|2 keeps just one distance zone (0.5-1, 1-1.5, 1.5-2 km), to read its colour alone
 const MIDZONE = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('midzone')) || '-1';
@@ -13,10 +13,13 @@ const MIDZONE = (typeof location !== 'undefined' && new URLSearchParams(location
  * Builds the ring-shaped mesh (a hole where the land is). `mid` is { n, step, half, h }, `H0` the zero of the scaled
  * ground (the entrance height, as land.js uses it). Returns a Mesh for the scene.
  */
+/** The highest absolute height (m) of the sea in the midground: the measured sea cells of Hyeopjae sit at -1.5 to 0.5 m. */
+const SEA_M = 0.5;
+
 export function createMidground(shared, mid, H0) {
   const { n, step, half, h } = mid;
   const y = new Float32Array(n * n);
-  for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * VS;
+  for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * verticalScale();
 
   // the normals, from the grid's own slopes
   const normal = new Float32Array(n * n * 3);
@@ -49,6 +52,10 @@ export function createMidground(shared, mid, H0) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  // the sea (T2 check 4): the cells at sea level (absolute height at most 0.5 m) are painted as water, not as the autumn ground
+  const sea = new Float32Array(n * n);
+  for (let k = 0; k < n * n; k++) sea[k] = h[k] <= SEA_M ? 1 : 0;
+  geometry.setAttribute('sea', new THREE.BufferAttribute(sea, 1));
   geometry.setIndex(index);
 
   const material = new THREE.ShaderMaterial({
@@ -58,11 +65,14 @@ export function createMidground(shared, mid, H0) {
       ${COMMON}
       out vec3 vWorld;
       out vec3 vN;
-      void main() { vWorld = position; vN = normal; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
+      in float sea;
+      out float vSea;
+      void main() { vWorld = position; vN = normal; vSea = sea; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }`,
     fragmentShader: /* glsl */ `
       ${COMMON}
       in vec3 vWorld;
       in vec3 vN;
+      in float vSea;
       layout(location = 0) out vec4 outC;
       void main() {
         // large patches of paint, placed on a jittered grid, each in one of three colours of the autumn ground
@@ -83,6 +93,9 @@ export function createMidground(shared, mid, H0) {
         // the near ground keeps its autumn colour; the far ground is a little deeper and cooler, then the haze below takes the rest
         c *= mix(1.0, 0.9, zone);
         c = mix(c, c * vec3(0.9, 0.97, 1.08), 0.6 * zone);
+        // the sea cells: the water's colour, lit by the same sun; the haze below takes them the way it takes the ground
+        vec3 water = mix(vec3(0.2, 0.42, 0.46), vec3(0.34, 0.58, 0.6), lit) * (0.92 + 0.16 * texture(tNoise, vWorld.xz / 9.0).r);
+        c = mix(c, water, smoothstep(0.3, 0.7, vSea));
         // the air takes less of this ground than of the wood: at 1 to 2 km the full haze would make it one grey wall
         vec3 air = airColour(normalize(vWorld - cameraPosition));
         outC = vec4(mix(c, air, mix(0.12, 0.6, zone) * mistBetween(vWorld)), 1.0);
