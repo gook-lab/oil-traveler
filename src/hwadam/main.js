@@ -307,6 +307,18 @@ window.lab = {
   THREE, player, follow, camera, input, animator, figure, shared, frame, renderer, timings, counts: forest.counts, trees: forest.trees, heightAt, respawn, way, place,
   /** T2: the share of the first frame's ground rays by land cover class (tools/cover-shots.mjs). */
   coverView: () => viewShares(camera, THREE, heightAt),
+  /** T2: conifers in the first frame (within 120 m of the eye) and in the walk. */
+  coniferView: () => {
+    const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    let inView = 0, total = 0;
+    for (const t of forest.trees) {
+      if (!t.conifer) continue;
+      total++;
+      const p = new THREE.Vector3(t.x, t.y + t.h * 0.5, t.z);
+      if (f.containsPoint(p) && p.distanceTo(camera.position) < 120) inView++;
+    }
+    return { inView, total };
+  },
   step(dt = 1 / 60, n = 1) { for (let i = 0; i < n; i++) tick(dt); },
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */

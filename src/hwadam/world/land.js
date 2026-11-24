@@ -199,17 +199,28 @@ export function createLand(shared) {
         vec3 c = mix(deep, bright, lit);
         c = mix(c, mix(vec3(0.21, 0.17, 0.2), vec3(0.6, 0.47, 0.33), lit), m.r); // the way itself, worn bare
         c *= 0.78 + 0.3 * texture(tNoise, vWorld.xz / 9.0).r;
-        // the ground of a place (T2): sea, sand, rock and built-up ground laid in square dabs of their own colours
+        // the ground of a place (T2), painted in dabs of its own: sea, sand, rock and built-up ground. Each class has a
+        // stroke texture (long flat strokes on water and sand, short coarse ones on rock), so no class reads as a flat fill
         float cls = coverClass(vWorld.xz);
         vec2 sq2 = floor(vWorld.xz / 0.5 + (texture(tNoise, vWorld.xz / 2.3).rg - 0.5) * 1.4) * 0.5;
         float sqn = texture(tNoise, sq2 / 9.0).r;
+        float strokeH = texture(tNoise, vec2(vWorld.x / 6.0, vWorld.z / 0.9)).r; // long along x
+        float strokeV = texture(tNoise, vec2(vWorld.x / 1.3, vWorld.z / 2.6)).g; // short, coarse
+        // how much of the water lies next to this node, sampled a metre and a half off on four sides: the shore
+        // breaks into dabs (a dab of water where the noise falls under the share), not a stair of cells
+        float wet = 0.0, rockNear = 0.0;
+        for (int q = 0; q < 4; q++) {
+          vec2 o = vec2(q == 0 ? 1.5 : q == 1 ? -1.5 : 0.0, q == 2 ? 1.5 : q == 3 ? -1.5 : 0.0);
+          float o2 = coverClass(vWorld.xz + o * 2.0);
+          wet += abs(o2 - 9.0) < 0.5 ? 0.25 : 0.0;
+          rockNear = max(rockNear, abs(o2 - 9.0) < 0.5 ? 1.0 : 0.0);
+        }
         if (abs(cls - 9.0) < 0.5) {
           // water as the night fjord paints it (src/night/far.js): long strokes lying flat, the shallows emerald and
           // the deep teal, and a grazing look that gives back the sky; a white line of foam where sand or rock meets it
           float dep = coverDepth(vWorld.xz);
           vec3 wc = mix(vec3(0.3, 0.8, 0.66), vec3(0.04, 0.3, 0.42), smoothstep(0.0, 6.0, dep));
-          float st = texture(tNoise, vec2(vWorld.x / 7.0, vWorld.z / 0.8)).r;
-          wc *= 0.8 + 0.34 * st;
+          wc *= 0.8 + 0.34 * strokeH;
           float graze = pow(1.0 - clamp(-normalize(vWorld - cameraPosition).y, 0.0, 1.0), 3.0);
           wc = mix(wc, vec3(0.62, 0.78, 0.82), graze * 0.35);
           float land3 = 0.0;
@@ -220,10 +231,22 @@ export function createLand(shared) {
           }
           float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
           c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
+        } else if (abs(cls - 6.0) < 0.5) {
+          // sand: pale warm, in long flat strokes; where the sea reaches it, the water breaks in dabs over it
+          vec3 sc = mix(vec3(0.8, 0.7, 0.52), vec3(0.95, 0.87, 0.68), sqn) * (0.9 + 0.2 * strokeH);
+          c = sc;
+          if (wet > 0.0 && sqn < wet) c = mix(vec3(0.2, 0.62, 0.58), vec3(0.3, 0.8, 0.66), strokeH);
+        } else if (abs(cls - 5.0) < 0.5) {
+          if (rockNear > 0.5) {
+            // the rock by the sea is basalt (dark, in coarse dark strokes), as on Jeju
+            c = mix(vec3(0.2, 0.2, 0.22), vec3(0.36, 0.34, 0.36), strokeV) * (0.85 + 0.3 * sqn);
+          } else {
+            // the mountain's rock is pale granite, lit in coarse strokes with some dark seams
+            c = mix(vec3(0.66, 0.62, 0.58), vec3(0.86, 0.8, 0.76), strokeV) * (0.9 + 0.15 * sqn);
+          }
+        } else if (abs(cls - 8.0) < 0.5) {
+          c = mix(vec3(0.56, 0.48, 0.42), vec3(0.78, 0.7, 0.6), sqn) * (0.9 + 0.2 * strokeV);
         }
-        else if (abs(cls - 6.0) < 0.5) c = mix(vec3(0.82, 0.72, 0.54), vec3(0.94, 0.86, 0.68), sqn);
-        else if (abs(cls - 5.0) < 0.5) c = mix(vec3(0.5, 0.46, 0.45), vec3(0.76, 0.68, 0.64), sqn);
-        else if (abs(cls - 8.0) < 0.5) c = mix(vec3(0.58, 0.5, 0.44), vec3(0.78, 0.7, 0.6), sqn);
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
   });

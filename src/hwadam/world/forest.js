@@ -142,6 +142,18 @@ function plant() {
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
     add(x, z, BIRCH, 2);
   }
+  // a place with a cover (T2): conifers stand at the sides of the first view, 16 to 32 m out and 28 to 34 degrees off
+  // the sight, so that the first frame has pines in its near field (they are not lowered with the sight band)
+  if (hasCover() && CLEAR.fan) {
+    for (let i = 0; i < 60; i++) {
+      const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 16 + rand() * 16;
+      const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
+      const before = trees.length;
+      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);
+      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
+      if (trees.filter((t) => t.nearPine).length >= 14) break;
+    }
+  }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
   trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });
@@ -169,7 +181,7 @@ function plant() {
     return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
   };
   const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
-  for (const t of kept) if (inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  for (const t of kept) if (!t.nearPine && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
   return kept;
 }
 

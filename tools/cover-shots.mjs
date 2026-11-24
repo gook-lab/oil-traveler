@@ -17,7 +17,7 @@ const root = resolve(here, flag('dist', 'dist'));
 const outDir = resolve(here, flag('out', 'shots/cover'));
 mkdirSync(outDir, { recursive: true });
 const PLACES = [
-  { name: 'hwadam', query: 'scene=hwadam&clean' },
+  { name: 'hwadam', query: `scene=travel&place=37.3419823,127.2885772&name=${encodeURIComponent('화담숲')}&clean` },
   { name: 'bukhansan', query: `scene=travel&place=37.6588,126.9772&name=${encodeURIComponent('북한산')}&clean` },
   { name: 'hyeopjae', query: `scene=travel&place=33.3943,126.2396&name=${encodeURIComponent('협재')}&clean` },
 ];
@@ -56,6 +56,23 @@ for (const p of PLACES) {
     const deg = (r) => Math.round((r * 180) / Math.PI);
     return { gaze: window.lab.place.meta.gaze, vantage: window.lab.place.meta.vantage, camBearing: Math.round(bearing), camPitch: Math.round((Math.asin(d.y) * 180) / Math.PI), followYaw: deg(window.lab.follow.yaw), playerYaw: deg(window.lab.player.yaw) };
   }) : null;
+  const conifers = ready ? await page.evaluate(() => window.lab.coniferView()) : null;
+  console.log(`  conifers ${JSON.stringify(conifers)}`);
+  // the skyline the first view looks at: the highest elevation (degrees) of the skyline's three bands within 20 degrees
+  // of the gaze, and how many bearings in that cone stand above 0.5 degree. Land above a sea's horizon shows here.
+  const skyline = ready ? await page.evaluate(() => {
+    const H = window.lab.place.horizon, g = window.lab.place.meta.gaze ?? 0;
+    const deg = (r) => (r * 180) / Math.PI;
+    let max = -Infinity, above = 0;
+    for (let k = -20; k <= 20; k++) {
+      const a = (g + k + 360) % 360;
+      let up = false;
+      for (let b = 0; b < 3; b++) { const e = deg(H[b * 360 + a]); if (e > max) max = e; if (e > 0.5) up = true; }
+      if (up) above++;
+    }
+    return { maxElev: +max.toFixed(2), bearingsAbove05: above };
+  }) : null;
+  if (skyline) console.log(`  skyline in the gaze cone ${JSON.stringify(skyline)}`);
   const need = { hyeopjae: ['water', 0.25], bukhansan: ['rock', 0.1] }[p.name];
   if (need && view && (view[need[0]] ?? 0) < need[1]) { bad++; console.log(`  FAIL ${p.name} first frame ${need[0]} ${view[need[0]] ?? 0} < ${need[1]}`); }
   await page.screenshot({ path: join(outDir, `${p.name}.png`) });
