@@ -32,6 +32,12 @@ export const VIEWS = {
   back: [8, -80, 4, -60, { run: 1.5 }],
   high: [0, 70, -2, 50, { run: 0, view: [[3, 15, 78], [-2, 0, 38]] }],
   ground: [0, 70, -2, 50, { run: 0, view: [[4, 2.2, 74], [-6, 0, 40]] }],
+  // the hwadam walk, one or more to each part of the way (use --query "scene=hwadam")
+  moss: [-1, 56, 2, 30, { run: 0 }],
+  maple: [4, 14, 4, -20, { run: 0 }],
+  birch: [5, -18, 2, -44, { run: 0 }],
+  ridge: [8, -74, 10, -110, { run: 0 }],
+  ridgeUp: [8, -74, 10, -110, { run: 0, pitch: 0.1, dist: 4 }],
 };
 
 // --view "x,z,fx,fz,run,dist,pitch,yaw" --name n: a view given on the command line

@@ -13,4 +13,5 @@ for (const button of switcher?.querySelectorAll('button') ?? []) {
   button.addEventListener('focus', () => button.blur());
 }
 if (SCENE === 'autumn') await import('./main.js');
+else if (SCENE === 'hwadam') await import('./hwadam/main.js');
 else await import('./night/main.js');
