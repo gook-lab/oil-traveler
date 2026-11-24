@@ -18,7 +18,8 @@ const ERRORS = {
   badparam: '좌표 형식이 맞지 않아요.',
 };
 const EMPTY = { type: 'FeatureCollection', features: [] };
-const HEAD = '어디로 떠날까요? 지도를 누르거나 이름을 찾아 보세요';
+const HEAD = '· 어디로 떠날까요? 지도를 누르거나 이름을 찾아 보세요';
+const kindText = (s) => String(s || '').replace(/\s*·\s*장소$/, '').replace(/^장소$/, ''); // a generic kind (장소) says nothing, so it is left out
 
 let overlay = null, map = null, maplibre = null, chosen = null, onBack = null, ready = false;
 let pins = { pick: null, own: null }; // { lat, lon } or null
@@ -78,6 +79,14 @@ function drawPins() {
   if (!ready) return;
   map.getSource('pick').setData(point(pins.pick));
   map.getSource('own').setData(point(pins.own));
+  map.getSource('tag').setData(pins.pick ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [pins.pick.lon, pins.pick.lat] }, properties: { label: chosen?.label ?? '' } }] } : EMPTY);
+}
+
+/** The numbered candidates of a search: one pin each, numbered as the list is. */
+function drawHits(list) {
+  if (!ready) return;
+  const features = list.map((r, i) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] }, properties: { n: String(i + 1) } }));
+  map.getSource('hits').setData({ type: 'FeatureCollection', features });
 }
 
 function addPinLayers() {
@@ -85,6 +94,12 @@ function addPinLayers() {
   map.addSource('pick', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'own', type: 'circle', source: 'own', paint: { 'circle-radius': 8, 'circle-color': '#2f5a7a', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
   map.addLayer({ id: 'pick', type: 'circle', source: 'pick', paint: { 'circle-radius': 11, 'circle-color': '#8a3a1c', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
+  // the chosen spot carries its name, and the search results carry their numbers, both as labels on the paper
+  map.addSource('hits', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'hits', type: 'circle', source: 'hits', paint: { 'circle-radius': 10, 'circle-color': '#5b4636', 'circle-stroke-width': 2, 'circle-stroke-color': '#fdf8ec' } });
+  map.addLayer({ id: 'hit-num', type: 'symbol', source: 'hits', layout: { 'text-field': ['get', 'n'], 'text-font': ['Noto Sans Bold'], 'text-size': 12, 'text-allow-overlap': true }, paint: { 'text-color': '#fdf8ec' } });
+  map.addSource('tag', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'tag', type: 'symbol', source: 'tag', layout: { 'text-field': ['get', 'label'], 'text-font': ['Noto Sans Bold'], 'text-size': 13, 'text-offset': [0, 1.6], 'text-anchor': 'top', 'text-allow-overlap': true }, paint: { 'text-color': '#2a211b', 'text-halo-color': '#fdf8ec', 'text-halo-width': 2 } });
   ready = true;
   drawPins();
 }
@@ -97,7 +112,7 @@ async function ensureMap() {
   overlay.setAttribute('aria-label', '지도에서 걸을 곳 고르기');
   overlay.innerHTML = `
     <div class="tm-canvas" id="tm-canvas"></div>
-    <div class="tm-head"><b>유화 숲 산책</b><span>${HEAD}</span></div>
+    <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
         <input id="tm-q" type="text" autocomplete="off" placeholder="주소나 장소 이름" aria-label="주소나 장소 이름" />
@@ -145,6 +160,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
   drawPins();
   setCard(label, sub);
   overlay.querySelector('.tm-card').hidden = false;
+  overlay.querySelector('.tm-recommend').hidden = true;
   if (look) {
     // one reverse lookup, kept to Nominatim's rate: a second at most between two of them
     const wait = Math.max(0, 1100 - (Date.now() - lastReverse));
@@ -156,6 +172,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
         chosen.label = found.label;
         chosen.sub = found.sub;
         setCard(found.label, found.sub);
+        drawPins(); // the name tag follows the lookup
       }
     } catch { /* the coordinates stay as the name */ }
   }
@@ -163,7 +180,7 @@ async function choose(lat, lon, label, look = false, sub = '') {
 
 function setCard(label, sub) {
   overlay.querySelector('.tm-label').textContent = label;
-  overlay.querySelector('.tm-sub').textContent = sub || '';
+  overlay.querySelector('.tm-sub').textContent = kindText(sub);
 }
 
 function status(text, warn = false) {
@@ -175,9 +192,10 @@ function status(text, warn = false) {
 /** Search results as a list, always (one result too): name, region and kind. Picking one flies there. */
 function showResults(list) {
   const box = overlay.querySelector('.tm-results');
-  box.innerHTML = `<p class="tm-count">${list.length}건</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><b>${esc(r.label)}</b><span>${esc(r.sub || '')}</span></button></li>`).join('')}</ul>`;
+  box.innerHTML = `<p class="tm-count">${list.length}건 · 줄을 누르면 그곳으로 가요</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><span class="tm-num">${i + 1}</span><span class="tm-txt"><b>${esc(r.label)}</b><small>${esc(kindText(r.sub))}</small></span><span class="tm-pick">고르기 ›</span></button></li>`).join('')}</ul>`;
   box.hidden = false;
   overlay.querySelector('.tm-recommend').hidden = true;
+  drawHits(list);
   box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => flyTo(list[Number(b.dataset.i)])));
   fitResults(list);
 }
@@ -196,12 +214,15 @@ function clearPick() {
   chosen = null;
   pins.pick = null;
   drawPins();
+  if (ready) map.getSource('hits').setData(EMPTY);
   overlay.querySelector('.tm-card').hidden = true;
+  overlay.querySelector('.tm-recommend').hidden = false;
 }
 
 function hideResults() {
   overlay.querySelector('.tm-results').hidden = true;
-  overlay.querySelector('.tm-recommend').hidden = false;
+  overlay.querySelector('.tm-recommend').hidden = !!chosen;
+  if (ready) map.getSource('hits').setData(EMPTY);
 }
 
 function flyTo(r) {

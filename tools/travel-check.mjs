@@ -51,7 +51,7 @@ await page.press('#tm-q', 'Enter');
 // the search always gives a list (one result too); a result is picked from it
 await page.waitForSelector('.tm-results button', { timeout: 30000 }).catch(() => failures.push('search gave no list'));
 report.resultCount = await page.evaluate(() => document.querySelectorAll('.tm-results button').length);
-await page.waitForTimeout(1500); // the framing of the results (900 ms ease)
+await page.waitForTimeout(3500); // the framing of the results (900 ms ease) and the relief tiles of the new view
 await page.screenshot({ path: join(shotDir, 'map-results.png') });
 await page.click('.tm-results button').catch(() => failures.push('no result to pick'));
 await page.waitForFunction(() => /북한산/.test(document.querySelector('.tm-label')?.textContent ?? ''), null, { timeout: 30000 }).catch(() => failures.push('search did not set the card'));

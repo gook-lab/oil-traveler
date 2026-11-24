@@ -82,6 +82,17 @@
   border: 0; border-radius: 0; font: 14px Georgia, serif;
 }
 .tm-results button:hover, .tm-results button:focus { background: rgba(138, 58, 28, 0.12); outline: none; }
+.tm-results button { display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer; }
+.tm-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #5b4636; color: #fdf8ec; font-size: 12px; line-height: 22px; text-align: center; }
+.tm-txt { flex: 1; min-width: 0; }
+.tm-txt b, .tm-txt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-pick { flex: none; font-size: 12px; color: #8a3a1c; }
+.tm-results button:hover .tm-pick, .tm-results button:focus .tm-pick { text-decoration: underline; }
+/* the paint edge: a faint canvas grain over the paper of the head and the card, in code (no image file) */
+.tm-head, .tm-card, .tm-results {
+  background-image: repeating-linear-gradient(97deg, rgba(70, 52, 40, 0.035) 0 2px, transparent 2px 7px), repeating-linear-gradient(12deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 5px);
+  box-shadow: 0 0 0 1px rgba(70, 52, 40, 0.08), 2px 3px 0 rgba(70, 52, 40, 0.06);
+}
 /* the bar at the bottom: the card (the chosen spot) and the recommended place beside it */
 .tm-bar {
   position: absolute; left: 50%; bottom: 56px; z-index: 2; transform: translateX(-50%);
@@ -116,7 +127,7 @@
 .tm-results li + li { border-top: 1px solid rgba(70, 52, 40, 0.12); }
 .tm-results button { display: block; }
 .tm-results button b { display: block; font-weight: normal; font-size: 15px; color: #2a211b; }
-.tm-results button span { display: block; font-size: 12px; color: #6b5a4b; }
+.tm-txt small { font-size: 12px; color: #6b5a4b; }
 /* the card: the name large, the region under it; the go button is the one solid action */
 .tm-card { gap: 14px; }
 .tm-name { min-width: 0; }
