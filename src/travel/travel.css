@@ -58,6 +58,17 @@
   color: #2a211b; font: 15px/1.4 Georgia, serif; background: rgba(252, 248, 238, 0.85); padding: 8px 14px; border-radius: 3px;
   white-space: nowrap;
 }
+/* the chosen spot: one dab of paint, a lopsided blob (CSS only). The marker wrapper gets the placement MapLibre
+   gives its own markers, since the library stylesheet is not loaded here */
+.maplibregl-marker { position: absolute; top: 0; left: 0; will-change: transform; }
+.tm-dab {
+  width: 30px; height: 26px; cursor: grab; box-sizing: border-box;
+  background: radial-gradient(ellipse at 40% 35%, #b3562f 0 35%, #8a3a1c 62%, #6c2a14 100%);
+  border: 2px solid rgba(253, 248, 236, 0.9);
+  border-radius: 54% 46% 50% 50% / 48% 56% 44% 52%;
+  box-shadow: 0 0 0 1px rgba(70, 40, 20, 0.35), 2px 3px 4px rgba(40, 25, 15, 0.35);
+}
+.tm-dab:active { cursor: grabbing; }
 @media (max-width: 600px) {
   .tm-search { left: 12px; right: 12px; width: auto; top: 12px; }
   .tm-status { left: 12px; top: 58px; }
@@ -83,7 +94,7 @@
 }
 .tm-results button:hover, .tm-results button:focus { background: rgba(138, 58, 28, 0.12); outline: none; }
 .tm-results button { display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer; }
-.tm-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: #5b4636; color: #fdf8ec; font-size: 12px; line-height: 22px; text-align: center; }
+.tm-num { flex: none; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 22px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: #5b4636; color: #fdf8ec; font: bold 12px/1 Georgia, serif; }
 .tm-txt { flex: 1; min-width: 0; }
 .tm-txt b, .tm-txt small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-pick { flex: none; font-size: 12px; color: #8a3a1c; }
@@ -140,8 +151,8 @@
 /* paper grain over the map (a noise sheet made in the page, no file) */
 .tm-canvas { position: absolute; }
 .tm-canvas::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.22;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.36  0 0 0 0 0.25  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.3;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.07' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0.8 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 @media (max-width: 600px) {
   .tm-head { left: 12px; right: 12px; flex-wrap: wrap; }

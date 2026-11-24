@@ -3,7 +3,7 @@
 // with ?place=LAT,LON&name=...; the world is then baked for that spot (src/hwadam/world/place.js).
 // The pins are circle layers drawn inside the map canvas (not DOM markers), so they move with the map and stay there.
 import './travel.css';
-import { geocodeMany, reverseName, PlaceError } from '../hwadam/world/place.js';
+import { geocodeMany, reverseName, highestSpot, PlaceError } from '../hwadam/world/place.js';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -22,6 +22,7 @@ const HEAD = '· 어디로 떠날까요? 지도를 누르거나 이름을 찾아
 const kindText = (s) => String(s || '').replace(/\s*·\s*장소$/, '').replace(/^장소$/, ''); // a generic kind (장소) says nothing, so it is left out
 
 let overlay = null, map = null, maplibre = null, chosen = null, onBack = null, ready = false;
+let pickMarker = null, pickOn = false; // the chosen spot is a draggable paint dab (a MapLibre marker)
 let pins = { pick: null, own: null }; // { lat, lon } or null
 let lastReverse = 0;
 export const mapOpen = () => !!overlay && !overlay.hidden;
@@ -77,7 +78,10 @@ const point = (p) => (p ? { type: 'FeatureCollection', features: [{ type: 'Featu
 /** Puts the pins on the map: the chosen spot (brown) and where the wanderer is (blue). Before the map has loaded they wait. */
 function drawPins() {
   if (!ready) return;
-  map.getSource('pick').setData(point(pins.pick));
+  if (pins.pick) {
+    pickMarker.setLngLat([pins.pick.lon, pins.pick.lat]);
+    if (!pickOn) { pickMarker.addTo(map); pickOn = true; }
+  } else if (pickOn) { pickMarker.remove(); pickOn = false; }
   map.getSource('own').setData(point(pins.own));
   map.getSource('tag').setData(pins.pick ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [pins.pick.lon, pins.pick.lat] }, properties: { label: chosen?.label ?? '' } }] } : EMPTY);
 }
@@ -91,9 +95,7 @@ function drawHits(list) {
 
 function addPinLayers() {
   map.addSource('own', { type: 'geojson', data: EMPTY });
-  map.addSource('pick', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'own', type: 'circle', source: 'own', paint: { 'circle-radius': 8, 'circle-color': '#2f5a7a', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
-  map.addLayer({ id: 'pick', type: 'circle', source: 'pick', paint: { 'circle-radius': 11, 'circle-color': '#8a3a1c', 'circle-stroke-width': 3, 'circle-stroke-color': '#fdf8ec' } });
   // the chosen spot carries its name, and the search results carry their numbers, both as labels on the paper
   map.addSource('hits', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'hits', type: 'circle', source: 'hits', paint: { 'circle-radius': 10, 'circle-color': '#5b4636', 'circle-stroke-width': 2, 'circle-stroke-color': '#fdf8ec' } });
@@ -142,6 +144,12 @@ async function ensureMap() {
   map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
   map.addControl(new maplibre.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap contributors' }), 'bottom-right');
   map.on('style.load', () => paper(map));
+  // the chosen spot: a paint dab that can be dragged; the name tag follows it, and the spot is looked up when it is let go
+  const dab = document.createElement('div');
+  dab.className = 'tm-dab';
+  pickMarker = new maplibre.Marker({ element: dab, draggable: true, anchor: 'center' });
+  pickMarker.on('drag', () => { const ll = pickMarker.getLngLat(); pins.pick = { lat: ll.lat, lon: ll.lng }; drawPins(); });
+  pickMarker.on('dragend', () => { const ll = pickMarker.getLngLat(); choose(ll.lat, ll.lng, coords(ll.lat, ll.lng), true); });
   map.on('load', () => { map.resize(); addPinLayers(); });
   addEventListener('resize', () => map?.resize());
   // a click picks the spot and brings it nearer (at least zoom 11)
@@ -225,11 +233,16 @@ function hideResults() {
   if (ready) map.getSource('hits').setData(EMPTY);
 }
 
-function flyTo(r) {
+async function flyTo(r) {
   hideResults();
   if (r.box) map.fitBounds(r.box, { padding: 80, maxZoom: 12.5, duration: 1200 });
   else map.flyTo({ center: [r.lon, r.lat], zoom: 12, duration: 1200 });
-  choose(r.lat, r.lon, r.label, false, r.sub || '');
+  // a wide result (a park, a county) gets its pin on the highest ground inside its box, not on its edge
+  let spot = null;
+  if (r.box && (r.box[1][0] - r.box[0][0] > 0.01 || r.box[1][1] - r.box[0][1] > 0.01)) {
+    try { spot = await highestSpot(r.box); } catch { spot = null; }
+  }
+  choose(spot?.lat ?? r.lat, spot?.lon ?? r.lon, r.label, false, r.sub || '');
 }
 
 function wire() {
