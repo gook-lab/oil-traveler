@@ -311,7 +311,24 @@ export function createForest(shared) {
       void main() {
         vec3 Nn = normalize(vN);
         float grain = texture(tNoise, vec2(atan(Nn.z, Nn.x) * 1.3 + vData.y, vWorld.y * 0.07)).r;
-        vec3 c = bark(int(vData.x + 0.5), vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
+        int kind = int(vData.x + 0.5);
+        if (kind == 1) {
+          // birch: white bark, warm where the sun falls and cool blue in the shade; brushed up the trunk, with the
+          // black transverse marks painted as dark dashes; far trunks are thinner-looking, paler and bluer
+          float lit = sunAt(vWorld + Nn * 0.35) * clamp(dot(Nn, uSunDir) * 1.2 + 0.25, 0.0, 1.0);
+          vec3 white = mix(vec3(0.7, 0.72, 0.78), vec3(0.98, 0.93, 0.8), lit);
+          float ang = atan(Nn.z, Nn.x);
+          float stroke = texture(tNoise, vec2(ang * 5.0 + vData.y, vWorld.y * 0.22)).r;
+          vec3 c = white * (0.86 + 0.2 * stroke);
+          float band = texture(tNoise, vec2(ang * 1.7 + vData.y * 0.5, vWorld.y * 0.12)).g;
+          float mark = step(0.8, fract(vWorld.y * 1.7 + stroke * 0.7)) * step(0.66, band);
+          c = mix(c, vec3(0.14, 0.12, 0.16), mark * 0.9);
+          float far = smoothstep(18.0, 80.0, length(vWorld.xz - cameraPosition.xz));
+          c = mix(c, vec3(0.8, 0.84, 0.92), far * 0.35);
+          outC = vec4(c, 1.0);
+          return;
+        }
+        vec3 c = bark(kind, vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
   });

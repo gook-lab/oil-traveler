@@ -111,7 +111,9 @@ void makeDab(inout Dab d) {
   vec4 sw = segW(m.a);
   // it grows in drifts, keeps off the way, and fills the clearing
   float drift = smoothstep(0.46, 0.7, texture(tNoise, foot / 37.0).a);
-  float chance = max(0.05 + 0.8 * drift, m.g) * (1.0 - m.r) * (1.0 - 0.8 * sw.x);
+  // the moss garden keeps most of its cells painted (it was 20 per cent, and the bare underpainting showed through as
+  // flat olive polygons with stair edges)
+  float chance = max(0.05 + 0.8 * drift, m.g) * (1.0 - m.r) * (1.0 - 0.25 * sw.x);
   if (q.x > chance) { d.alive = 0.0; return; }
   float grass = step(q.z, max(m.g * 1.1, 0.22)) * (1.0 - sw.x); // a tuft of grass rather than a fern; none in the moss garden
   float big = min(pow(lod, 0.6), 2.2);
