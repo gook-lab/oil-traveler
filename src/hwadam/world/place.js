@@ -129,6 +129,8 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     const j = Math.round(N / 2 - vantage.z / NEAR_STEP), i = Math.round(vantage.x / NEAR_STEP + N / 2);
     if (ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, gaze) <= 0) pitch = 0.14;
   }
+  // T2 check 4: a place that is not the sea looks down the same 8 degrees, so the sky takes 35 to 50% of the first frame
+  if (focus !== 9 && gaze != null) pitch = 0.25;
   onProgress(1, 'done');
   const meta2 = {
     cover: cover ? cover.counts : null, coverError, gaze,
