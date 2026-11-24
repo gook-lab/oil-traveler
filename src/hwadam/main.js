@@ -342,7 +342,7 @@ window.lab = {
       bands[band].n++; bands[band].dabs += t.dabs ?? 0; dabs += t.dabs ?? 0; tiers[t.tier]++;
     }
     // the stems that stand above their leaves: a tree in frame whose foliage tops out well under its trunk top
-    const stems = { n: 0, byKind: {}, sample: [] };
+    const stems = { n: 0, byKind: {} };
     for (const t of forest.trees) {
       const v = new THREE.Vector3(t.x - eye.x, t.y + t.h * 0.5 - eye.y, t.z - eye.z);
       const d = v.dot(fwd);
@@ -353,7 +353,6 @@ window.lab = {
       if (ratio < 0.5 && t.leaves >= 40) continue;
       const kind = t.nearPine ? 'nearPine' : t.conifer ? 'conifer' : ['beech', 'birch', 'oak', 'maple'][t.type] ?? String(t.type);
       stems.n++; stems.byKind[kind] = (stems.byKind[kind] ?? 0) + 1;
-      if (stems.sample.length < 6) stems.sample.push({ kind, h: +t.h.toFixed(1), bareBelowLeaves: +bare.toFixed(1), crownH: +(t.leafY1 - t.leafY0).toFixed(1), leaves: t.leaves });
     }
     return { bands, tiers, dabs: Math.round(dabs), stems };
   },
