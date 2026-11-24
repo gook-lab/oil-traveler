@@ -3,7 +3,7 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers } from './cover.js';
+import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers, COVER } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
   let best = 1;
@@ -94,14 +94,17 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // the skyline is taken from the travel start (the vantage point), so that it matches where he stands; or, for the
   // check against the baked data, from the way's goal (the baked skyline's point)
   const grid = cover?.grid ?? null;
+  // the sea of a view: the water as it was before the basalt blocks (they stand where water was, so they count as sea here;
+  // the start below stays off water and basalt, since the start takes the true grid). Land (basalt shore) stays land
+  const seaGrid = grid && cover.reef ? grid.map((v, k) => (cover.reef[k] ? COVER.WATER : v)) : grid;
   // the start looks at what the first frame is made of (T2): a mountain (rock on 5% of the square) at its rock, a
   // coast (sea on 5%) at its sea; elsewhere the plain pick
-  const share = (cls) => (grid ? grid.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / grid.length : 0);
-  const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9) > 0.05 ? 9 : null;
+  const share = (cls, g = grid) => (g ? g.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / g.length : 0);
+  const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9, seaGrid) > 0.05 ? 9 : null;
   // a mountain's start: the rock it can see, and the highest ridge of the midground over it (60 points a degree)
   const bonus = !focus ? null : focus === 5
     ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z)) - 800 * Math.max(0, minOcclusion(sceneGround(near, way.startHeight), x, z) - 0.3)
-    : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
+    : (x, z) => 400 * frameNear(seaGrid, near, way.startHeight, x, z, focus);
   let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus);
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
   // 30% of the frame hidden within 150 m gets 300 points (the bands and drawn heights are the ones ranges.js draws)
@@ -123,7 +126,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
-  const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
+  const gaze = chooseGaze(horizon, seaGrid, near, vantage, way.startHeight, mid, bands);
   // a mountain whose first view has no ridge above the eye (a summit pin) looks down about 8 degrees (pitch 0.14),
   // so that the skyline lies a third of the way down from the top of the frame; otherwise the start pitch (0.05)
   let pitch = 0.05;

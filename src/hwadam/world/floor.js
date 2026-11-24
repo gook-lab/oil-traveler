@@ -166,6 +166,16 @@ void makeDab(inout Dab d) {
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
+  // basalt: the cells gather into rounded blocks on a 1.8 m grid (each with its own offset). The dabs rise in the middle
+  // of a block and die toward its edge, so a block is a rounded mound and not a square stack
+  float dome = 1.0;
+  if (basalt) {
+    vec2 g = floor(xz / 1.8);
+    vec2 bc = (g + 0.5) * 1.8 + (fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * vec2(0.8, 0.8);
+    float dd = distance(xz, bc) / 0.95;
+    dome = sqrt(max(0.0, 1.0 - dd * dd));
+    if (dome < 0.05) { d.alive = 0.0; return; }
+  }
   vec3 Nn = normalAt(xz);
   float lit = woodSunAt(P + vec3(0.0, 0.2, 0.0)) * clamp(dot(Nn, uSunDir) * 2.4, 0.0, 1.0);
   float wet = 0.0;
@@ -204,7 +214,7 @@ void makeDab(inout Dab d) {
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
   // basalt stands: a mound of blocks, the dabs stacked from the foot (q.y low) to the top (q.y high), facing the eye
-  if (basalt) { d.pos = P + vec3(0.0, (0.3 + 0.3 * q.w) * q.y, 0.0); d.dir = vec3(0.0, 1.0, 0.0); }
+  if (basalt) { d.pos = P + vec3(0.0, (0.3 + 0.3 * q.w) * dome * q.y, 0.0); d.dir = vec3(0.0, 1.0, 0.0); }
   d.size = uCell0 * (water ? vec2(0.7 + 0.5 * r.z, 1.5 + 0.9 * r.w) : basalt ? vec2(1.6 + 1.0 * r.z, 0.9 + 0.6 * r.w) : vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w)) * lod;
   d.c1 = hazed(c, P);
   d.c2 = hazed(jitter(c, q.wzy, 0.5), P);

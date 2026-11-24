@@ -167,26 +167,35 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
-  // basalt (Jeju only, before the inferred sand): the untagged land (none, grass) at the water's edge, 0 to 6 m from the
-  // water and below 10 m high. Only the waterline strip: the sand is inferred over the rest of the beach (15 m), so the
-  // lava does not take the beach. OSM's own sand and beaches stay sand (their class is already set)
-  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const k = j * N + i;
-    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
-    if (nearWater(sea, i, j, 3)) out[k] = COVER.BASALT;
-  }
-  // a few blocks stand in the shallow water beside the land (a lava shelf under the sea): every 24th shallow sea cell
-  // with land within 4 m (2 nodes)
-  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const k = j * N + i;
-    if (out[k] !== COVER.WATER || near[k] <= -1 || (i * 7 + j * 3) % 24 !== 0) continue;
-    if (landWithin(out, i, j, 2)) out[k] = COVER.BASALT;
-  }
+  // the untagged shore, in the Jeju box only (the lava coast of the place): OSM's own sand and beaches stay sand
+  // (their class is set already, and osmSand marks them); the inferred sand is kept to the beach, within 40 m of OSM's
+  // sand; the rest of the untagged land at the sea (0 to 8 m) is basalt; a few blocks stand in the shallow water in
+  // front of the basalt shore
+  const osmSand = new Uint8Array(N * N);
+  for (let k = 0; k < N * N; k++) osmSand[k] = out[k] === COVER.SAND ? 1 : 0;
   // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
-    if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
+    if (!nearWater(sea, i, j, 15)) continue;
+    // PROVISIONAL anchor (see the report): OSM has no sand tag on Jeju's 협재, so the beach is anchored to the place's own
+    // pin (the grid centre) for now; a named-beach list would replace this
+    if (basalt && !withinValue(osmSand, i, j, 20, 1) && Math.hypot(i - N / 2, j - N / 2) > 20) continue;
+    out[k] = COVER.SAND;
+  }
+  // basalt (Jeju only, after the sand): the untagged land (none, grass) 0 to 8 m from the sea, below 10 m high
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
+    if (nearWater(sea, i, j, 4)) out[k] = COVER.BASALT;
+  }
+  // blocks in the shallow water in front of the basalt shore (within 4 m of it): one shallow sea cell in 30. They were
+  // water, so the reef mask keeps them: the sea share of a view counts them as water (the land of the start does not)
+  const reef = new Uint8Array(N * N);
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (out[k] !== COVER.WATER || near[k] <= -1 || (i * 7 + j * 3) % 30 !== 0) continue;
+    if (withinValue(out, i, j, 2, COVER.BASALT)) { out[k] = COVER.BASALT; reef[k] = 1; }
   }
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
@@ -201,15 +210,15 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts };
+  return { grid: out, depth: dep, counts, reef };
 }
 
-// true when a cell within r nodes is land (not water) of the grid
-function landWithin(out, i, j, r) {
+// true when a cell within r nodes of (i, j) holds the value v of the grid
+function withinValue(arr, i, j, r, v) {
   for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
     const a = i + di, b = j + dj;
     if (a < 0 || b < 0 || a >= N || b >= N) continue;
-    if (out[b * N + a] !== COVER.WATER) return true;
+    if (arr[b * N + a] === v) return true;
   }
   return false;
 }
