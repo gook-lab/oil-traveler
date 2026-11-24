@@ -70,7 +70,7 @@ for (const p of PLACES) {
   const drop = ready ? await page.evaluate(() => window.lab.drop50()) : null;
   console.log(`  drop within 50 m along gaze (m) ${drop}`);
   const stats = ready ? await page.evaluate(() => window.lab.treeStats()) : null;
-  if (ready && flag('span', '')) { const hit = await page.evaluate(() => window.lab.pick(0.5, 0.42)[0]); if (hit) console.log(`  span ${JSON.stringify(hit.at)} ${JSON.stringify(await page.evaluate(([x, z]) => window.lab.midSpan(x, z, 150), hit.at))}`); }
+  if (ready && flag('span', '')) { const hit = await page.evaluate(([u, v]) => window.lab.pick(u, v)[0], [Number(flag('pu', '0.5')), Number(flag('pv', '0.42'))]); if (hit) console.log(`  span ${JSON.stringify(hit)} ${JSON.stringify(await page.evaluate(([x, z]) => window.lab.midSpan(x, z, 150), hit.at))}`); }
   if (ready && flag('verts', '')) console.log(`  meshes ${JSON.stringify(await page.evaluate((n) => window.lab.meshesWithVerts(n), Number(flag('verts', '0'))))}`);
   if (ready && p.name.includes('hide')) console.log(`  pick ${JSON.stringify(await page.evaluate(() => [window.lab.pick(0.5, 0.42), window.lab.pick(0.7, 0.38), window.lab.pick(0.25, 0.37)]))}`);
   const mid = ready ? await page.evaluate(() => window.lab.midStats()) : null;
