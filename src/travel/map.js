@@ -179,6 +179,24 @@ function showResults(list) {
   box.hidden = false;
   overlay.querySelector('.tm-recommend').hidden = true;
   box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => flyTo(list[Number(b.dataset.i)])));
+  fitResults(list);
+}
+
+/** Frames the results by their points (not their boxes, a park's box is too wide) at the scale of their towns: zoom 11.5 at most. */
+function fitResults(list) {
+  const pts = list.map((r) => [r.lon, r.lat]);
+  const lons = pts.map((p) => p[0]), lats = pts.map((p) => p[1]);
+  const bounds = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
+  if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) map.easeTo({ center: bounds[0], zoom: 11.5, duration: 900 });
+  else map.fitBounds(bounds, { padding: 80, maxZoom: 11.5, duration: 900 });
+}
+
+/** A new search clears the last pick: the pin, the card and the chosen spot go, until a result is picked. */
+function clearPick() {
+  chosen = null;
+  pins.pick = null;
+  drawPins();
+  overlay.querySelector('.tm-card').hidden = true;
 }
 
 function hideResults() {
@@ -197,11 +215,12 @@ function wire() {
   const input = overlay.querySelector('#tm-q');
   const clear = overlay.querySelector('.tm-clear');
   input.addEventListener('input', () => { clear.hidden = !input.value; });
-  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; hideResults(); status(''); input.focus(); });
+  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; hideResults(); clearPick(); status(''); input.focus(); });
   overlay.querySelector('.tm-search').addEventListener('submit', async (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) { status('주소나 장소 이름을 먼저 적어 주세요.', true); return; }
+    clearPick();
     const coord = text.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
     if (coord) {
       const lat = Number(coord[1]), lon = Number(coord[2]);

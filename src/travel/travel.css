@@ -70,7 +70,7 @@
 .tm-pin.tm-own { background: #2f5a7a; width: 14px; height: 14px; }
 
 /* search focus and results (palette: the brown of the pin and the warm paper) */
-.tm-search input:focus { outline: 2px solid #8a3a1c; outline-offset: 1px; border-color: #8a3a1c; }
+.tm-search input:focus { outline: 2px solid rgba(70, 52, 40, 0.55); outline-offset: 1px; border-color: rgba(70, 52, 40, 0.55); }
 .tm-results {
   position: absolute; left: 16px; top: 96px; z-index: 3; margin: 0; padding: 4px 0;
   width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
