@@ -44,7 +44,8 @@ export function placeFromUrl(q) {
   const bands = checkZooms ? BANDS : RUNTIME_BANDS, zooms = checkZooms ?? RUNTIME_BAND_ZOOMS;
   const viewAt = q.get('view') === 'goal' ? 'goal' : 'vantage'; // check mode: the skyline from the way's goal, as the baked data
   if (checkZooms && (checkZooms.length !== 3 || checkZooms.some((z) => !Number.isInteger(z) || z < 7 || z > 13))) throw new PlaceError('badparam', 'zooms');
-  return { lat, lon, zooms, bands, viewAt, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  const gaze = q.get('gaze') != null && q.get('gaze') !== '' ? Number(q.get('gaze')) : null; // a check: fixes the first bearing
+  return { lat, lon, zooms, bands, viewAt, gaze, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
 }
 
 /** Terrain tiles: a tile counts only when its imagery is SRTM or GMTED2010 (the same guard as tools/fetch-dem.mjs). */
@@ -67,7 +68,10 @@ function tileLoader(sources) {
  * Bakes a place from the terrain tiles. onProgress(fraction 0..1, label). Throws PlaceError with a code the page
  * can explain (net, source, water, noway).
  */
-export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, onProgress = () => {} }) {
+// the example pins whose first bearing is fixed by hand (degrees; temporary until the general rule for mountains works)
+const PIN_GAZE = { '37.6588,126.9772': 210 }; // 북한산 예시 핀 — bearing sweep (cover-shots --gaze, 30 degree steps), see PLAN.md
+
+export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, gaze: fixedGaze = null, onProgress = () => {} }) {
   const sources = new Set();
   const terrain = new Terrain(tileLoader(sources));
   onProgress(0.05, 'ground');
@@ -123,7 +127,8 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
-  const gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
+  const pinned = fixedGaze ?? PIN_GAZE[`${lat},${lon}`] ?? null;
+  const gaze = pinned != null ? pinned : chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
   // a mountain whose first view has no ridge above the eye (a summit pin) looks down about 8 degrees (pitch 0.14),
   // so that the skyline lies a third of the way down from the top of the frame; otherwise the start pitch (0.05)
   let pitch = 0.05;
