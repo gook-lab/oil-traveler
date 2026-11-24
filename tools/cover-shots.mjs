@@ -65,33 +65,32 @@ for (const p of PLACES) {
   // the skyline the first view looks at: the highest elevation (degrees) of the skyline's three bands within 20 degrees
   // of the gaze, and how many bearings in that cone stand above 0.5 degree. Land above a sea's horizon shows here.
   const skyline = ready ? await page.evaluate(() => {
-    const H = window.lab.place.horizon, g = window.lab.place.meta.gaze ?? 0;
+    // the ridge bands as ranges.js draws them: each band's elevation with the scene's VS (0.5, 1.0 beyond 5 km)
+    const H = window.lab.place.horizon, D = window.lab.place.meta.bands, g = window.lab.place.meta.gaze ?? 0;
     const deg = (r) => (r * 180) / Math.PI;
+    const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const drawn = (th, d) => deg(Math.atan(Math.tan(th) * (0.5 + 0.5 * sm(2000, 5000, d))));
+    const at = (a, b) => drawn(H[b * 360 + ((Math.round(a) % 360) + 360) % 360], D[b]);
+    const layersAt = (a) => {
+      let layers = 1, cur = -Infinity;
+      for (let b = 0; b < D.length; b++) {
+        let m = -90;
+        for (let k = -12; k <= 12; k += 2) m = Math.max(m, at(a + k, b));
+        if (b === 0) cur = m; else if (m > cur + 0.4) { layers++; cur = m; }
+      }
+      return layers;
+    };
     let max = -Infinity, above = 0;
     for (let k = -20; k <= 20; k++) {
       const a = (g + k + 360) % 360;
       let up = false;
-      for (let b = 0; b < 3; b++) { const e = deg(H[b * 360 + a]); if (e > max) max = e; if (e > 0.5) up = true; }
+      for (let b = 0; b < D.length; b++) { const e = at(a, b); if (e > max) max = e; if (e > 0.5) up = true; }
       if (up) above++;
     }
-    // the ridge layers in the lane (gaze +-12 degrees): each distance band's highest ridge, and a band counts as a
-    // layer when it rises 0.4 degree over the nearer ones (the layers are what overlapping ridges show)
-    const bands = [0, 1, 2].map((b) => {
-      let m = -90;
-      for (let k = -12; k <= 12; k++) m = Math.max(m, deg(H[b * 360 + ((g + k + 360) % 360)]));
-      return +m.toFixed(2);
-    });
-    let layers = 1, top = bands[0];
-    for (let b = 1; b < 3; b++) if (bands[b] > top + 0.4) { layers++; top = bands[b]; }
-    // the same count for every bearing of the start: how many bearings show two or more layers at all
+    const laneBands = D.map((_, b) => { let m = -90; for (let k = -12; k <= 12; k += 2) m = Math.max(m, at(g + k, b)); return +m.toFixed(2); });
     let multi = 0;
-    for (let q = 0; q < 360; q++) {
-      const bb = [0, 1, 2].map((b) => deg(H[b * 360 + q]));
-      let L = 1, t = bb[0];
-      for (let b = 1; b < 3; b++) if (bb[b] > t + 0.4) { L++; t = bb[b]; }
-      if (L >= 2) multi++;
-    }
-    return { maxElev: +max.toFixed(2), bearingsAbove05: above, laneBands: bands, laneLayers: layers, bearingsWithTwoLayers: multi };
+    for (let q = 0; q < 360; q++) if (layersAt(q) >= 2) multi++;
+    return { maxElev: +max.toFixed(2), bearingsAbove05: above, laneBands, laneLayers: layersAt(g), bearingsWithTwoLayers: multi };
   }) : null;
   if (skyline) console.log(`  skyline in the gaze cone ${JSON.stringify(skyline)}`);
   const need = { hyeopjae: ['water', 0.25], bukhansan: ['rock', 0.1] }[p.name];

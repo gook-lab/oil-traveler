@@ -307,6 +307,23 @@ export function occludeShare(ground, x, z, a, maxT) {
   return blocked / n;
 }
 
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** The elevation (degrees) a ridge band is drawn at, as ranges.js draws it: the scene's VS (0.5, 1.0 beyond 5 km). */
+export function drawnElev(th, d) { return (Math.atan(Math.tan(th) * (0.5 + 0.5 * smoothstep(2000, 5000, d))) * 180) / Math.PI; }
+/**
+ * The ridge layers in the lane of bearing a (gaze +-12 degrees) from a horizon of the place's bands (metres, nearest
+ * first; horizon as bakeHorizon makes it). A band is a layer when its highest ridge rises 0.4 degree over the nearer ones.
+ */
+export function laneLayers(horizon, bands, a) {
+  const top = bands.map((d, b) => {
+    let m = -90;
+    for (let k = -12; k <= 12; k += 2) m = Math.max(m, drawnElev(horizon[b * 360 + ((Math.round(a + k) + 360) % 360)], d));
+    return m;
+  });
+  let layers = 1, cur = top[0];
+  for (let b = 1; b < top.length; b++) if (top[b] > cur + 0.4) { layers++; cur = top[b]; }
+  return { layers, top };
+}
 /** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
 export function frameNear(cover, near, H0, x, z, cls) {
   const g = sceneGround(near, H0);
@@ -320,7 +337,7 @@ export function frameNear(cover, near, H0, x, z, cls) {
  * sea along its ray (out to 300 m). Otherwise the skyline rule of gazeBearing (bake.js), with a weight for rock seen
  * along the ray, so that a granite place looks at its domes. Returns degrees, or null without a cover.
  */
-export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
+export function chooseGaze(horizon, cover, near, vantage, H0, mid = null, bands = null) {
   if (!cover) return null;
   const g = sceneGround(near, H0);
   // sea in the first frame: the bearing with the most sea on its lower half
@@ -342,7 +359,9 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null) {
     // a near hill over the view (150 m) costs points beyond 30% of the frame: the far ridge must be what is seen
     const occ = occludeShare(g, vantage.x, vantage.z, a, 150);
     // the layers of the skyline weigh most (400 each): overlapping ridges are the picture; the ridge's rise adds 20 a degree
-    const key = layers * 400 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 20 * ridge - 800 * Math.max(0, occ - 0.3);
+    // the lane's ridge layers (ranges.js's bands, drawn as they are) weigh most (400 each)
+    const lanes = bands ? laneLayers(horizon, bands, a).layers : layers;
+    const key = lanes * 400 + a15 + 600 * Math.min(rk, 0.3) - 1000 * Math.max(0, rk - 0.6) + 20 * ridge - 800 * Math.max(0, occ - 0.3);
     if (key > bestKey) { bestKey = key; best = a; }
   }
   return best;
