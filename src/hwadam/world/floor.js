@@ -68,8 +68,9 @@ void makeDab(inout Dab d) {
   c2 = mix(c2, mossC * 0.92, sw.x);
   c1 = jitter(c1, r.wzy, 0.5);
   c2 = jitter(c2, q.wzy, 0.5);
-  // leaves lie any way round, though those that fell together lie much alike
-  float a = (texture(tNoise, xz / 6.3).a * 1.2 + q.y * 0.8) * TAU;
+  // leaves lie any way round, though those that fell together lie much alike; the moss touches each turn their own way
+  // (a slow noise alone gave neighbours the same turn, which read as one stamp repeated)
+  float a = (texture(tNoise, xz / 6.3).a * 0.5 + q.y * 0.3 + r.x * 0.45) * TAU;
   d.dir = vec3(cos(a), 0.0, sin(a));
   d.pos = P;
   // the garden's litter is short, round touches (moss); elsewhere the leaves are long
