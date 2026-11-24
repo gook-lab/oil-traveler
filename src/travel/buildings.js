@@ -363,16 +363,24 @@ function surfacesOf(p, ground) {
   const midZ = (k) => (frontPts[k][1] + frontPts[(k + 1) % 4][1]) / 2;
   const longK = [0, 1, 2, 3].filter((k) => Math.abs(edgeLen(k) - Math.max(...[0, 1, 2, 3].map(edgeLen))) < 1e-6);
   const frontK = longK.reduce((m, k) => (midZ(k) > midZ(m) ? k : m), longK[0]);
+  const wallH = yEave - (yb + stone);
+  // the dancheong: three bands on the top 1.2 m of the wall (green, red, blue), each 0.4 m, on every side
+  const DANCHEONG = [[0.13, 0.4, 0.3], [0.62, 0.16, 0.1], [0.15, 0.27, 0.5]];
+  const band = (v, r) => { const hgt = v * wallH; return hgt > wallH - 1.2 ? DANCHEONG[Math.min(2, Math.floor((hgt - (wallH - 1.2)) / 0.4))].map((c) => c * (0.95 + 0.1 * r)) : null; };
   const bayCol = (u, v, r, L, k) => {
     const x = u * L;
+    const bd = band(v, r); if (bd) return bd;
     if (x % 3.2 < 0.5) return [0.5, 0.17, 0.12]; // the column
-    // the front bay: a dark timber panel, the lower quarter solid, the upper part with fine lattice lines every 0.6 m (no
-    // transom band, so no white stripe runs through the bay)
-    if (k === frontK) return v > 0.25 && x % 0.6 < 0.05 ? [0.85, 0.8, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
+    // the front bay: a red-brown frame (the lower quarter a solid panel) with fine ochre lattice every 0.5 m (0.08 m wide)
+    if (k === frontK) {
+      const hgt = v * wallH;
+      if (hgt < 0.9) return [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
+      return x % 0.5 < 0.08 || (hgt % 0.5) < 0.08 ? [0.9, 0.75, 0.45].map((c) => c * (0.95 + 0.05 * r)) : [0.42, 0.16, 0.1].map((c) => c * (0.9 + 0.2 * r));
+    }
     return [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r));
   };
-  // the touches on the front bays are dark timber (the lattice is in the solid cells only, so the bright lines stay thin)
-  const bayDab = (u, v, r, L, k) => (k === frontK && u * L % 3.2 >= 0.5 ? [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
+  // the touches: on the front bays the frame's red-brown, the lattice's ochre (the bands keep their colour)
+  const bayDab = (u, v, r, L, k) => band(v, r) ?? (k === frontK && u * L % 3.2 >= 0.5 ? [0.42, 0.16, 0.1].map((c) => c * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
   face(frontPts, yb + stone, yEave, bayCol, TRAD_WALL_CELL, bayDab, true);
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
   const posts = wallPts(0), eaveW = wallPts(EAVE);
@@ -390,8 +398,10 @@ function surfacesOf(p, ground) {
   // the eaves reach out 15% of the short side (T3 round 2; 1.8 m at least), and the roof's length is what it sags by
   const eaveOut = Math.max(EAVE, 0.15 * 2 * R.hv);
   const eu = R.hu + eaveOut, ev = R.hv + eaveOut, rr = Math.max(0, R.hu - 0.6 * R.hv);
-  const sagM = 0.06 * 2 * eu; // the eave line sags in the middle by 6% of the roof's length (the ends rise)
+  // the eave lift is at the corners only: the middle 60% of the eave line is level, the last 20% at each end rises as t^2
+  // to 1.8 m; the slope is dished by 6% of its length (eave to ridge), so the roof reads as one curved surface
   const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
+  const EAVE_LIFT = 1.8, slopeLen = Math.hypot(roofH, ev), dish = 0.06 * slopeLen;
   const yRidge = yEave + roofH;
   const curve = (t) => Math.pow(Math.min(1, Math.max(0, t)), 1.6);
   const roofAt = (su, sv) => {
@@ -402,9 +412,10 @@ function surfacesOf(p, ground) {
     const ca = Math.min(1, Math.max(0, (Math.abs(a) - rr) / Math.max(1, eu - rr)));
     const cb = Math.min(1, Math.abs(b) / ev);
     const [x, z] = rectPt(R, a, b);
-    // the concave eave: the ends of the eave line rise by sagM (cb = 1 at the eave, 0 at the ridge)
-    const sag = sagM * (a / eu) * (a / eu) * cb * cb;
-    return [x, y0 + CORNER_LIFT * ca * ca * Math.pow(cb, 4) + sag, z];
+    const e = Math.min(1, Math.abs(a) / eu), endT = Math.max(0, (e - 0.8) / 0.2);
+    const lift = EAVE_LIFT * endT * endT * cb * cb; // at the eave only (cb = 1), rising to the corner
+    const dip = dish * 4 * cb * (1 - cb); // the dish: lowest in the middle of the slope, nothing at the eave or the ridge
+    return [x, y0 + lift - dip, z];
   };
   const N = ROOF_N;
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
@@ -414,7 +425,7 @@ function surfacesOf(p, ground) {
     out.push({
       P00: roofAt(s0, t0), P10: roofAt(s1, t0), P01: roofAt(s0, t1), P11: roofAt(s1, t1), cell: [9, 9],
       // the tile grooves: dark lines every 0.7 m down the slope, lighter between (a stronger 25% step than before)
-      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (Math.sin(sc * 9) > 0.2 ? 0.75 : 1.02) * (ridge ? 0.7 : 1)),
+      col: () => mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (Math.sin(sc * 9) > 0.2 ? 0.75 : 1.02) * (ridge ? 0.5 : 1)),
     });
   }
   // the gables: a triangle at each short end, from the wall top to the apex over the middle of the end (a degenerate quad)
@@ -425,7 +436,7 @@ function surfacesOf(p, ground) {
     out.push({ P00: [p0[0], yEave, p0[1]], P10: [p1[0], yEave, p1[1]], P01: [pa[0], apex, pa[1]], P11: [pa[0], apex, pa[1]], cell: [3, 1], col: () => [0.86, 0.84, 0.78] });
   }
   // the roof's numbers (metres), for the report: ridge length, the sag, the eave out, the height of the roof and the corner lift
-  out.roofInfo = { ridgeLen: 2 * rr, roofLen: 2 * eu, sagM, eaveOut, roofH, cornerLift: CORNER_LIFT, shortSide: 2 * R.hv };
+  out.roofInfo = { ridgeLen: 2 * rr, roofLen: 2 * eu, dish, eaveOut, roofH, eaveLift: EAVE_LIFT, shortSide: 2 * R.hv };
   return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
 }
 
