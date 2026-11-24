@@ -373,11 +373,20 @@ function surfacesOf(p, ground) {
   const wallH = yEave - (yb + stone);
   // the dancheong: three bands on the top 1.2 m of the wall (green, red, blue), each 0.4 m, on every side
   const DANCHEONG = [[0.13, 0.4, 0.3], [0.62, 0.16, 0.1], [0.15, 0.27, 0.5]];
-  const band = (v, r) => { const hgt = v * wallH; return hgt > wallH - 1.2 ? DANCHEONG[Math.min(2, Math.floor((hgt - (wallH - 1.2)) / 0.4))].map((c) => c * (0.95 + 0.1 * r)) : null; };
+  // the gongpo band (T3 round 4): the top 1.2 m under the eave is green-blue with red and white dots every 0.3 m, so a
+  // distant hall reads as a palace; the shade does not darken it
+  const band = (v, r, x = 0) => {
+    const hgt = v * wallH;
+    if (hgt <= wallH - 1.2) return null;
+    const yy = hgt - (wallH - 1.2);
+    if (x % 0.3 < 0.1 && yy % 0.3 < 0.1) return (Math.floor(x / 0.3) % 2 ? [0.9, 0.2, 0.15] : [0.95, 0.94, 0.9]).map((c) => c * (0.95 + 0.1 * r));
+    return [0.16, 0.42, 0.38].map((c) => c * (0.95 + 0.1 * r));
+  };
   const bayCol = (u, v, r, L, k) => {
     const x = u * L;
-    const bd = band(v, r); if (bd) return bd;
-    if (x % 3.2 < 0.5) return [0.5, 0.17, 0.12]; // the column
+    const bd = band(v, r, x); if (bd) return bd;
+    const sp = L / Math.max(1, Math.round(L / 6)), inCol = ((x % sp) + sp) % sp; // the bays (about 6 m): a post at each bay line
+    if (inCol < 0.35 || inCol > sp - 0.35) return [0.5, 0.17, 0.12]; // the column (0.7 m across)
     // the front bay: a red-brown frame (the lower quarter a solid panel) with fine ochre lattice every 0.5 m (0.08 m wide)
     if (k === frontK) {
       const hgt = v * wallH;
@@ -387,21 +396,24 @@ function surfacesOf(p, ground) {
     return [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r));
   };
   // the touches: on the front bays the frame's red-brown, the lattice's ochre (the bands keep their colour)
-  const bayDab = (u, v, r, L, k) => band(v, r) ?? (k === frontK && u * L % 3.2 >= 0.5 ? [0.42, 0.16, 0.1].map((c) => c * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
+  // the touches on the front bays take the bay's shade (0.6 of the frame colour), so they do not brighten to red
+  const postAt = (x, L) => { const sp = L / Math.max(1, Math.round(L / 6)), m = ((x % sp) + sp) % sp; return m < 0.35 || m > sp - 0.35; };
+  const bayDab = (u, v, r, L, k) => band(v, r, u * L) ?? (k === frontK && !postAt(u * L, L) ? [0.42, 0.16, 0.1].map((c) => c * 0.6 * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
   face(frontPts, yb + stone, yEave, bayCol, TRAD_WALL_CELL, bayDab, true);
-  // the columns: round-ish red posts (0.6 m across) standing 0.3 m out from the front bays, one every 3.2 m, full height
-  // from the stone to the eave (T3 round 4: the front reads as posts and shade, not a red wall)
-  {
-    const A0 = frontPts[frontK], B0 = frontPts[(frontK + 1) % 4];
+  // the columns: red posts 0.7 m across, one at each bay line, every side. Bays are round(length / 6 m), so a 30 m front
+  // has 5 bays of 6 m (as Geunjeongjeon). The posts stand 0.6 m out from the bays' face (the bays are 0.6 m inside them)
+  for (let k = 0; k < 4; k++) {
+    const A0 = wallPts(0)[k], B0 = wallPts(0)[(k + 1) % 4];
     const Lf = Math.hypot(B0[0] - A0[0], B0[1] - A0[1]);
     const dx = (B0[0] - A0[0]) / Lf, dz = (B0[1] - A0[1]) / Lf;
     const nx = dz, nz = -dx; // the face's outward normal, as face() takes it
-    const POST_OUT = 0.3, POST_W = 0.6;
-    for (let t0 = 0.2; t0 + POST_W < Lf; t0 += 3.2) {
-      const t1 = t0 + POST_W;
-      const at = (t, y) => [A0[0] + dx * t + nx * POST_OUT, y, A0[1] + dz * t + nz * POST_OUT];
+    const bays = Math.max(1, Math.round(Lf / 6)), sp = Lf / bays, POST_OUT = 0.6, POST_D = 0.7;
+    const at = (t, y) => [A0[0] + dx * t + nx * POST_OUT, y, A0[1] + dz * t + nz * POST_OUT];
+    for (let b = 0; b <= bays; b++) {
+      const t0 = Math.max(0, b * sp - POST_D / 2), t1 = Math.min(Lf, b * sp + POST_D / 2);
+      if (t1 - t0 < 0.2) continue;
       const cc = [0.5, 0.17, 0.12];
-      out.push({ P00: at(t0, yb + stone), P10: at(t1, yb + stone), P01: at(t0, yEave), P11: at(t1, yEave), n: [nx, 0, nz], cell: [0.6, 1.6], col: () => cc.map((c) => c * 1.0) });
+      out.push({ P00: at(t0, yb + stone), P10: at(t1, yb + stone), P01: at(t0, yEave), P11: at(t1, yEave), n: [nx, 0, nz], cell: [0.7, 1.6], col: () => cc });
     }
   }
   // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
