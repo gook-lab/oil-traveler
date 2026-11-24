@@ -6,12 +6,8 @@
   "nearM": 512,
   "nearStep": 2,
   "nearN": 256,
-  "bands": [
-    2000,
-    5000,
-    15000
-  ],
-  "farKm": 15,
-  "eye": 289.6,
-  "source": "AWS Terrain Tiles (terrarium), zoom 13 near, 10 far"
+  "source": "AWS Terrain Tiles (terrarium, Tilezen/Mapzen), zoom 13",
+  "sources": [
+    "srtm/N37E127.tif"
+  ]
 }

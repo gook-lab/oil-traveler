@@ -67,11 +67,19 @@ const tileXY = (lat, lon, z) => {
   return { x, y };
 };
 const tileCache = new Map();
+const sources = new Set(); // the source files the baked tiles came from, for meta.json
 async function heightTile(z, x, y) {
   const key = `${z}/${x}/${y}`;
   if (tileCache.has(key)) return tileCache.get(key);
   const res = await fetch(TILE_URL(z, x, y));
   if (!res.ok) throw new Error(`tile ${key}: HTTP ${res.status}`);
+  // the tile names its source data; only SRTM is allowed here (see LICENCE-NOTES.md). Anything else stops the bake.
+  const src = res.headers.get('x-amz-meta-x-imagery-sources') ?? '';
+  if (!src) throw new Error(`tile ${key}: no imagery-source header; not baking`);
+  for (const part of src.split(',').map((s) => s.trim()).filter(Boolean)) {
+    if (!/^srtm\//i.test(part)) throw new Error(`tile ${key}: source ${part} is not SRTM; stop and ask`);
+    sources.add(part);
+  }
   const png = decodePng(Buffer.from(await res.arrayBuffer()));
   tileCache.set(key, png);
   return png;
@@ -106,6 +114,14 @@ for (let j = 0; j < NEAR_N; j++) {
     near[j * NEAR_N + i] = await heightAt(LAT + north / metresPerDegLat, LON + east / metresPerDegLon, 13);
   }
 }
+if (args.includes('--near-only')) {
+  if (!existsSync(out)) mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, 'near.bin'), Buffer.from(near.buffer));
+  const meta = { center: { lat: LAT, lon: LON }, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: NEAR_N, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen), zoom 13', sources: [...sources].sort() };
+  writeFileSync(join(out, 'meta.json'), JSON.stringify(meta, null, 2) + '\n');
+  console.log(`wrote ${out}: near ${NEAR_N}x${NEAR_N} only; sources ${meta.sources.join(', ')}`);
+  process.exit(0);
+}
 // horizon: for each bearing, the highest elevation angle from the centre out to each band, seen from the ground
 const eye = await heightAt(LAT, LON, 13) + 1.6;
 const horizon = new Float32Array(360 * BANDS.length);
@@ -115,7 +131,7 @@ for (let a = 0; a < 360; a++) {
     let best = -Infinity;
     const inner = b === 0 ? 0 : BANDS[b - 1];
     for (let d = inner + 100; d <= BANDS[b]; d += 100) {
-      const e = await heightAt(LAT + (c * d) / metresPerDegLat, LON + (s * d) / metresPerDegLon, 10);
+      const e = await heightAt(LAT + (c * d) / metresPerDegLat, LON + (s * d) / metresPerDegLon, 13);
       best = Math.max(best, Math.atan2(e - eye, d));
     }
     horizon[b * 360 + a] = best;
@@ -125,6 +141,6 @@ for (let a = 0; a < 360; a++) {
 if (!existsSync(out)) mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'near.bin'), Buffer.from(near.buffer));
 writeFileSync(join(out, 'horizon.bin'), Buffer.from(horizon.buffer));
-const meta = { center: { lat: LAT, lon: LON }, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: NEAR_N, bands: BANDS, farKm: FAR_KM, eye, source: 'AWS Terrain Tiles (terrarium), zoom 13 near, 10 far' };
+const meta = { center: { lat: LAT, lon: LON }, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: NEAR_N, bands: BANDS, farKm: FAR_KM, eye, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen), zoom 13 near and far', sources: [...sources].sort() };
 writeFileSync(join(out, 'meta.json'), JSON.stringify(meta, null, 2) + '\n');
 console.log(`wrote ${out}: near ${NEAR_N}x${NEAR_N}, horizon ${BANDS.length} bands x 360, eye ${eye.toFixed(1)} m`);
