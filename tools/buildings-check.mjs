@@ -108,6 +108,7 @@ for (const p of PLACES) {
     }).filter((q) => q.d <= 80).sort((a, b) => a.d - b.d);
     probe.start = { groundM: +lab.heightAt(F.x, F.z).toFixed(2), eyeM: +lab.camera.position.y.toFixed(2), within20: near20.slice(0, 8) };
     probe.vantage = lab.place?.meta?.vantage ?? null;
+    probe.palace = lab.place?.meta?.palace ?? null;
     // the floating check: a building's base (the lowest ground under its outline, plus its raised minimum) above the ground at its centre
     probe.floating = lab.buildingPlans.filter((p) => { const gMin = Math.min(...p.pts.map((q) => lab.heightAt(q[0], q[1])), lab.heightAt(p.c[0], p.c[1])); return gMin + (p.mh ?? 0) - lab.heightAt(p.c[0], p.c[1]) > 0.5; }).length;
     const SYM = { 0: '.', 1: 'g', 2: 'f', 3: 'w', 4: 'T', 5: 'R', 6: 's', 7: 'i', 8: 'B', 9: '~', 10: 'P' };

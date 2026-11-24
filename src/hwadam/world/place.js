@@ -105,30 +105,43 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   const plansAll = cover ? planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null) : [];
   const clear = cover ? clearGrid(plansAll, N, NEAR_STEP) : null;
   let vantage = pickVantage(near, N, NEAR_STEP, 150, grid, bonus, 0, clear);
-  // a palace place: the start stands in the court of the palace ring (3 m clear of its wall), 15 to 25 m from the nearest
-  // traditional hall, so that the hall fills the first view and the ring does not hide it (nearest to 20 m wins)
+  // a palace place: the start stands inside the palace ring (not outside it), 8 m or more from its wall and 8 m or more
+  // from every traditional hall's outline, 30 to 50 m from the largest hall in the ring, and the first view faces that
+  // hall (the hall fills the frame; the ring wall does not)
   let palaceGaze = null;
   const palace = plansAll.filter((p) => p.wall), halls = plansAll.filter((p) => p.trad);
+  const inPoly = (pts, x, z) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+  const stages = { cells: N * N, inRing: 0, clear: 0, wall9: 0, hall8: 0, dist: 0, best: 0 };
+  stages.rings = palace.map((p) => [p.c.map((v) => +v.toFixed(1)), p.pts.length, Math.round(p.area ?? 0), p.pts.map((q) => [+q[0].toFixed(0), +q[1].toFixed(0)])]);
+  stages.halls = halls.slice(0, 8).map((h) => [h.c.map((v) => +v.toFixed(1)), Math.round(h.area ?? 0), +(h.h ?? 0).toFixed(1)]);
   if (palace.length && halls.length) {
-    const inPoly = (pts, x, z) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, zi] = pts[i], [xj, zj] = pts[j]; if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c; } return c; };
+    const ring = palace.filter((p) => p.pts.length >= 3);
+    // the court: the box of the ring (its cut walls make the outline self-touching, so the box is the court's bounds)
+    const boxes = ring.map((p) => [Math.min(...p.pts.map((q) => q[0])), Math.max(...p.pts.map((q) => q[0])), Math.min(...p.pts.map((q) => q[1])), Math.max(...p.pts.map((q) => q[1]))]);
+    const inRing = (x, z) => boxes.some(([x0, x1, z0, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1);
+    const target = halls.filter((h) => inRing(h.c[0], h.c[1])).sort((a, b) => (b.area ?? 0) - (a.area ?? 0))[0] ?? null;
+    stages.target = target ? { c: target.c, area: Math.round(target.area ?? 0), h: target.h } : null;
     let best = null;
-    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    if (target) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = (i - N / 2) * NEAR_STEP, z = -(j - N / 2) * NEAR_STEP;
-      if (clear[j * N + i] !== 1 || !palace.some((p) => inPoly(p.pts, x, z))) continue;
-      const dh = Math.min(...halls.map((h) => Math.hypot(h.c[0] - x, h.c[1] - z)));
-      if (dh < 15 || dh > 25) continue;
-      // 9 m or more from the ring wall, so the wall does not fill the lower frame
-      if (clearance(palace, x, z).d < 9) continue;
-      // and 8 m or more from the outline of every traditional hall (the hall's base is not the start's ground)
+      if (!inRing(x, z)) continue;
+      stages.inRing++;
+      if (clear[j * N + i] !== 1) continue;
+      stages.clear++;
+      if (clearance(ring, x, z).d < 8) continue;
+      stages.wall9++;
       if (clearance(halls, x, z).d < 8) continue;
-      const score = -Math.abs(dh - 20) + 0.01 * near[j * N + i];
-      if (!best || score > best.score) best = { x, z, score, h: near[j * N + i] };
+      stages.hall8++;
+      const dt = Math.hypot(target.c[0] - x, target.c[1] - z);
+      // the distance band 30 to 60 m is preferred; a court with no cell in it takes the cell nearest to 42 m
+      stages.dist++;
+      const score = -Math.abs(dt - 42) + 0.01 * near[j * N + i];
+      if (!best || score > best.score) best = { x, z, score, h: near[j * N + i], target };
     }
     if (best) {
+      stages.best++;
       vantage = { x: best.x, z: best.z, h: best.h, score: best.score };
-      // the first view looks at the nearest hall, so that the hall (not the ring wall behind the start) fills the frame
-      const hall = halls.reduce((m, h) => (Math.hypot(h.c[0] - best.x, h.c[1] - best.z) < Math.hypot(m.c[0] - best.x, m.c[1] - best.z) ? h : m));
-      palaceGaze = (Math.atan2(hall.c[0] - best.x, -(hall.c[1] - best.z)) * 180) / Math.PI;
+      palaceGaze = (Math.atan2(best.target.c[0] - best.x, -(best.target.c[1] - best.z)) * 180) / Math.PI;
     }
   }
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
@@ -162,7 +175,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   }
   onProgress(1, 'done');
   const meta2 = {
-    cover: cover ? cover.counts : null, coverError, gaze,
+    cover: cover ? cover.counts : null, coverError, gaze, palace: stages,
     center: { lat, lon }, view, nearM: NEAR_M, nearStep: NEAR_STEP, nearN: N, bands, eye,
     zooms, viewAt, vantage, pitch, runtime: true, source: 'AWS Terrain Tiles (terrarium, Tilezen/Mapzen)', sources: [...sources].sort(),
   };
