@@ -12,6 +12,8 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { mountPlacePanel } from './start-panel.js';
+import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
+import { mountHud } from '../travel/hud.js';
 import { createFloor } from './world/floor.js';
 import { createForest } from './world/forest.js';
 import { createSky } from '../world/sky.js';
@@ -28,6 +30,8 @@ import { Follow } from '../figure/camera.js';
 
 const q = new URLSearchParams(location.search);
 const capture = q.has('capture');
+// ?scene=travel: the map is the start (no place named), the walk is first person, and M goes back to the map
+const travel = q.get('scene') === 'travel';
 // ?quality wins; otherwise Patch's performance mode, where there is one
 const lowQuality = () => (q.get('quality') ?? window.patch?.quality ?? 'high') === 'low';
 
@@ -86,7 +90,9 @@ const figureComing = createFigure(shared, (done) => say(0.05 + 0.55 * done, 'Fet
 
 const turn = () => new Promise((resolve) => setTimeout(resolve, 0));
 // the ground: the baked Hwadam data, or the place the address names (baked now, from the terrain tiles)
-const panel = mountPlacePanel(q);
+// travel with no place named: the map is the start, and nothing below runs until a spot is picked (by navigation)
+if (travel && (!q.get('place') || q.get('err'))) await startMap({ err: q.get('err') ?? '', place: q.get('place') ?? '', name: q.get('name') ?? '' });
+const panel = travel ? { progress() {}, done() {}, fail() {} } : mountPlacePanel(q);
 let place;
 try {
   const request = placeFromUrl(q);
@@ -94,11 +100,21 @@ try {
     ? await bakePlace({ ...request, onProgress: (f, what) => { panel.progress(f, what); say(0.01 + 0.02 * f, 'Fetching the ground'); } })
     : await bakedPlace();
 } catch (err) {
+  if (travel) {
+    // back to the map, with the spot and the reason
+    const next = new URLSearchParams({ scene: 'travel', err: err.code ?? 'net' });
+    if (q.get('place')) next.set('place', q.get('place'));
+    if (q.get('name')) next.set('name', q.get('name'));
+    location.href = `${location.pathname}?${next.toString()}`;
+    await new Promise(() => {});
+  }
   panel.fail(err);
   throw err;
 }
 setPlace(place);
 panel.done(place.name);
+const hud = travel ? mountHud({ name: place.name, keys: 'WASD 걷기 · Shift 달리기 · Space 뛰기 · V 1인칭·3인칭 · M 지도' }) : null;
+if (travel) { const h = document.getElementById('hint'); if (h) h.textContent = 'Click to look · WASD move · Shift sprint · Space jump · V first / third person · M map'; }
 await prepareLand((done) => { say(0.03 + 0.07 * done, 'Laying the ground'); return turn(); });
 const land = createLand(shared);
 lap('land');
@@ -123,7 +139,8 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 await RAPIER.init();
 const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 {
-  const f = land.heightField();
+  // the travel ground is the whole baked square (its boundary is at 250 m), the walk's is the middle 384 m
+  const f = travel ? land.heightField(480, 250) : land.heightField();
   physics.createCollider(RAPIER.ColliderDesc.heightfield(f.cells, f.cells, f.heights, { x: 2 * f.half, y: 1, z: 2 * f.half }));
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
 }
@@ -134,7 +151,9 @@ const { man } = figure;
 figure.dabs.remove(figure.cloakDabs); // the cloak's dabs stay out: there is no cloak
 scene.add(man.object, figure.dabs);
 const animator = new Animator(man);
-const spawn = new THREE.Vector3(START.x, heightAt(START.x, START.z), START.z);
+// the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
+const spawnX = travel ? 0 : START.x, spawnZ = travel ? 0 : START.z;
+const spawn = new THREE.Vector3(spawnX, heightAt(spawnX, spawnZ), spawnZ);
 const faceYaw = Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // along the way from the entrance
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
@@ -176,13 +195,34 @@ function respawn() {
 }
 
 const size = new THREE.Vector2();
+// travel: through his eyes by default (V toggles back to the third person), as in src/night/main.js
+let first = 0, firstKey = travel;
+const outlook = new THREE.Vector3(), eyeAt = new THREE.Vector3(), gaze = new THREE.Vector3();
+/** M: the map, centred on where he is (the lat/lon of his place in the baked square). */
+function openFromWalk() {
+  const c = place.meta.center, p = player.feet;
+  const lat = c.lat - p.z / 110940, lon = c.lon + p.x / (111320 * Math.cos((c.lat * Math.PI) / 180));
+  document.exitPointerLock?.();
+  openMap({ lat, lon, back: () => {} });
+}
+addEventListener('keydown', (e) => {
+  if (!travel || mapOpen()) return;
+  if (e.code === 'KeyV') firstKey = !firstKey;
+  if (e.code === 'KeyM') openFromWalk();
+});
 function tick(dt) {
   dt = Math.min(dt, 1 / 20);
   time += dt;
   const inp = input.read(dt);
   player.update(dt, inp, follow.yaw);
   // the wood has no wall: far from the way he is turned gently back, and under the world he starts again
-  if (player.feet.y < heightAt(player.feet.x, player.feet.z) - 6 || wayDist(player.feet.x, player.feet.z) > 78) respawn();
+  if (player.feet.y < heightAt(player.feet.x, player.feet.z) - 6 || (!travel && wayDist(player.feet.x, player.feet.z) > 78)) respawn();
+  // travel: the baked square is the world. Near its edge the mist comes in; past it he is set down at the pin again
+  if (travel) {
+    const edge = Math.max(Math.abs(player.feet.x), Math.abs(player.feet.z));
+    hud.setEdge(Math.min(1, Math.max(0, (edge - 200) / 40)));
+    if (edge > 250) respawn();
+  }
   const root = player.visualRoot(dt);
   man.object.position.copy(root);
   man.object.rotation.set(0, player.yaw, 0);
@@ -204,6 +244,23 @@ function tick(dt) {
   kick.update(dt, root, { x: Math.sin(player.yaw), z: Math.cos(player.yaw) }, player.speed, onGround, heightAt);
 
   follow.update(dt, root, inp.look, inp.zoom, (o, d, max) => player.castRay(o, d, max), heightAt);
+  if (travel) {
+    // through his eyes: the eye comes forward into his head and looks where the mouse has it look
+    first += ((firstKey ? 1 : 0) - first) * (1 - Math.exp(-6 * dt));
+    const fp = first * first * (3 - 2 * first);
+    if (fp > 0.002) {
+      const cp = Math.cos(follow.pitch), sp = Math.sin(follow.pitch);
+      gaze.set(Math.sin(follow.yaw) * cp, -sp, Math.cos(follow.yaw) * cp);
+      eyeAt.set(root.x + Math.sin(follow.yaw) * 0.08, root.y + 1.6, root.z + Math.cos(follow.yaw) * 0.08);
+      camera.getWorldDirection(outlook).multiplyScalar(6).add(camera.position);
+      camera.position.lerp(eyeAt, fp);
+      camera.lookAt(outlook.lerp(eyeAt.addScaledVector(gaze, 6), fp));
+    }
+    man.object.visible = figure.dabs.visible = fp < 0.5;
+    camera.fov = 46 + 18 * fp;
+    camera.near = 0.3 - 0.2 * fp;
+    camera.updateProjectionMatrix();
+  }
   camera.updateMatrixWorld(true);
   renderer.getDrawingBufferSize(size);
   shared.uTime.value = time;

@@ -14,4 +14,11 @@ The Hwadam walk (`?scene=hwadam`), added by gook-lab:
 - The centre point of the walk: © OpenStreetMap contributors (ODbL).
 - An impression of the place, made in code. No photograph, logo or map of it was used.
 
+The travel scene (`?scene=travel`), a walk on any place picked on the map:
+
+- The map: MapLibre GL JS 6.17.0 (BSD-3-Clause) over OpenFreeMap's style and tiles.
+- Map data: © OpenStreetMap contributors (ODbL), © OpenMapTiles, OpenFreeMap.
+- Place search: OpenStreetMap Nominatim, one query per submitted search.
+- Heights of the picked place: AWS Terrain Tiles, the official attribution list at https://github.com/tilezen/joerd/blob/master/docs/attribution.md (SRTM and GMTED2010 only; the page refuses any other source).
+
 The full list with sources is in `LICENCE-NOTES.md`.

@@ -27,7 +27,7 @@ export async function bakedPlace() {
 /** Reads ?place=LAT,LON (and &name=, &zooms=13,12,11 for checks). Returns null when there is no place. */
 export function placeFromUrl(q) {
   const p = q.get('place');
-  if (!p) return null;
+  if (!p || p === 'hwadam') return null; // place=hwadam is the baked data (the map's preset pin)
   const [lat, lon] = p.split(',').map((s) => Number(s.trim()));
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) throw new PlaceError('badparam');
   const zooms = q.get('zooms') ? q.get('zooms').split(',').map(Number) : RUNTIME_ZOOMS;

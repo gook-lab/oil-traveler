@@ -1,0 +1,73 @@
+/* The map (src/travel/map.js) and the walk's HUD (src/travel/hud.js). Warm paper and cream type, to sit next to the paint. */
+.tm {
+  position: fixed; inset: 0; z-index: 10; background: #efe7d2;
+  font: 14px/1.5 Georgia, serif; color: #2a211b;
+}
+.tm[hidden] { display: none; }
+.tm-canvas { position: absolute; inset: 0; }
+.tm-search {
+  position: absolute; left: 16px; top: 16px; z-index: 2; display: flex; gap: 6px;
+  width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
+}
+.tm-search input {
+  flex: 1; min-width: 0; padding: 9px 12px; font: 14px Georgia, serif; color: #2a211b;
+  background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.3); border-radius: 3px;
+}
+.tm button {
+  font: 13px/1 Georgia, serif; letter-spacing: 0.03em; cursor: pointer; color: #f6eedc;
+  background: #5b4636; border: 0; padding: 9px 13px; border-radius: 3px;
+}
+.tm-status {
+  position: absolute; left: 16px; top: 62px; z-index: 2; margin: 0; max-width: min(380px, calc(100vw - 32px));
+  padding: 4px 8px; background: rgba(252, 248, 238, 0.85); border-radius: 3px; font-size: 13px;
+}
+.tm-status:empty { display: none; }
+.tm-status.warn { color: #8a3a1c; }
+.tm-card {
+  position: absolute; left: 50%; bottom: 58px; z-index: 2; transform: translateX(-50%);
+  display: flex; gap: 12px; align-items: center; padding: 10px 14px; box-sizing: border-box; max-width: calc(100vw - 32px);
+  background: rgba(252, 248, 238, 0.96); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 4px;
+}
+.tm-card[hidden] { display: none; }
+.tm-label { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-go { background: #8a3a1c; }
+.tm-preset { position: absolute; left: 16px; bottom: 58px; z-index: 2; }
+.tm-preset[hidden] { display: none; }
+.tm-back { position: absolute; left: 16px; top: 62px; z-index: 3; }
+.tm-back[hidden] { display: none; }
+.tm-credit {
+  position: absolute; right: 8px; bottom: 6px; z-index: 2; margin: 0; font-size: 11px; color: #4a3d33;
+  background: rgba(252, 248, 238, 0.7); padding: 2px 6px; border-radius: 2px;
+}
+.tm-credit a { color: #4a3d33; }
+
+/* the walk's HUD */
+.walk-name {
+  position: fixed; left: 16px; top: 16px; z-index: 5; max-width: 60vw; box-sizing: border-box;
+  padding: 6px 12px; color: #f3e3c3; font: 14px/1.4 Georgia, serif;
+  background: rgba(28, 20, 18, 0.55); border-radius: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.walk-name[hidden] { display: none; }
+.walk-keys {
+  position: fixed; left: 16px; top: 52px; z-index: 5; margin: 0; font-size: 12px; color: #e8d8b8;
+  background: rgba(28, 20, 18, 0.45); padding: 3px 8px; border-radius: 2px;
+}
+.walk-edge {
+  position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(236, 228, 210, 0) 45%, rgba(236, 228, 210, 0.85) 100%);
+}
+.walk-edge-hint {
+  position: fixed; left: 50%; top: 50%; z-index: 4; transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+  color: #2a211b; font: 15px/1.4 Georgia, serif; background: rgba(252, 248, 238, 0.85); padding: 8px 14px; border-radius: 3px;
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .tm-search { left: 12px; right: 12px; width: auto; top: 12px; }
+  .tm-status { left: 12px; top: 58px; }
+  .tm-back { left: 12px; top: 96px; }
+  .tm-credit { font-size: 10px; }
+}
+
+/* the pins on the map: a chosen spot (brown, with a white ring) and where the wanderer is (blue) */
+.tm-pin { width: 18px; height: 18px; border-radius: 50%; background: #8a3a1c; border: 3px solid #fdf8ec; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); }
+.tm-pin.tm-own { background: #2f5a7a; width: 14px; height: 14px; }

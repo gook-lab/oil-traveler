@@ -20,6 +20,11 @@ Code MIT. Art CC0 1.0. Checked 2026-11-11 for Patch's parts; the rows for this r
 | `src/figure/rapier/` | Rapier 0.21.0, `@dimforge/rapier3d-compat`, as vendored in patch-lab | Apache-2.0, `src/figure/rapier/LICENSE`, shipped as `RAPIER-LICENSE.txt` | Yes |
 | `lib/patch-block.js` | Patch's block helper, from staging.patch.gg/patch-block.js | No licence is stated for it | No. `lib/block-shim.js`, written for this repository, stands in for it |
 | `shots/` | Stills of this demo | CC0 1.0, Patch | Yes |
+| `src/travel/` (the map start screen, the walk's HUD, the mist at the boundary) and `src/hwadam/world/bake.js`, `place.js`, `src/hwadam/start-panel.js` | Written for this repository | MIT | Yes |
+| maplibre-gl 6.17.0 (the map, lazy-loaded) | npm, pinned exactly (published 2026-11-07, two weeks before the pin) | BSD-3-Clause | Installed by npm; its licence ships in `node_modules` |
+| OpenFreeMap map style and vector tiles (`https://tiles.openfreemap.org/styles/liberty`) | OpenFreeMap, no key; loaded at run time, not stored | Tiles from OpenMapTiles and OpenStreetMap data (ODbL): © OpenStreetMap contributors, © OpenMapTiles, OpenFreeMap | No, loaded at run time. Attribution is on the map |
+| Place search (`nominatim.openstreetmap.org`) | OpenStreetMap Nominatim, one query per submitted search; no autocomplete | ODbL: © OpenStreetMap contributors | No, a query at run time. Its answer is not stored |
+| Terrain for any place picked at run time (`?place=`) | AWS Terrain Tiles, the same tiles as the baked data; each tile's imagery source is checked (SRTM or GMTED2010 only) and not stored | Public domain (SRTM, GMTED2010); see the attribution list in `public/CREDITS.md` | No, read at run time. Its output is not stored |
 | three.js 0.186.1 | npm | MIT | Installed by npm; its notice ships as `THIRD-PARTY-NOTICES.md` |
 
 No picture is stored or copied, and there is no sound. The Hwadam walk is an impression of a real arboretum, not a copy of it: no photograph, logo or map of the place was used, and the way does not follow its real paths. The aurora scene began from one photograph its author showed as a mood: a small figure with a light under a snowy peak and a green aurora. Nothing of that photograph is in the repo, and its place was not reproduced: the ridge, the horns, the fjord, the cabin and the sky here are this demo's own, made in code.
