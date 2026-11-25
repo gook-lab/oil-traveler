@@ -269,7 +269,9 @@ function geometryOf(d, out, boxes) {
     for (const side of [-1, 1]) {
       const off = side * hw;
       const nOut = [f0.nx * side, 0, f0.nz * side];
-      out.push(wallOf(at(d, i, off), at(d, i + 1, off), -d.depth, 0, nOut, [2, 0.7], (u, v, r) => shade(COLOR.girder, r)));
+      // the girder takes no touches: the solid's own strokes paint it (T4 round 2: a row of round touches along it read as
+      // stickers cut out and stuck on)
+      out.push({ ...wallOf(at(d, i, off), at(d, i + 1, off), -d.depth, 0, nOut, [2, 0.7], (u, v, r) => shade(COLOR.girder, r)), noDab: true });
       if (i % DECK.railCols === 0) {
         const j = Math.min(d.n, i + DECK.railCols);
         const ro = off - side * 0.1;

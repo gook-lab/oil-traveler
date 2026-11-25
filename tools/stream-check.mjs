@@ -117,10 +117,13 @@ try {
       const d = Math.hypot(p[0] - f0.x, p[1] - f0.z);
       if (L.deckAt(...p) == null && (!best || d < best.d)) best = { d, p, low: c.low[m], ci, m };
     }));
-    const st = off(best.p, best.low, -1.4), top = L.wallTopAt(...st) ?? L.heightAt(...st);
-    const c = W.faces[best.ci], along = c.pts[Math.min(c.pts.length - 1, best.m + 6)];
-    const tgt = off(along, best.low, 9);
-    const rail = { eye: [st[0], top + 1.7, st[1]], target: [tgt[0], L.heightAt(...tgt) - 0.5, tgt[1]] };
+    // the eye where the walk's own camera would be (T4 round 2: at 1.4 m behind the face and 1.7 m up, the street's
+    // touches at the feet filled a third of the frame): 4.5 m back on the street, 2.6 m up, looking over the railing at
+    // the water and the far bank
+    const st = off(best.p, best.low, -4.5), top = L.wallTopAt(...st) ?? L.heightAt(...st);
+    const c = W.faces[best.ci], along = c.pts[Math.min(c.pts.length - 1, best.m + 8)];
+    const tgt = off(along, best.low, 12);
+    const rail = { eye: [st[0], top + 2.6, st[1]], target: [tgt[0], L.heightAt(...tgt) + 0.5, tgt[1]] };
     // under: the deck over the channel nearest the start; the promenade 12 m to one side of it, looking under it
     const decks = L.bridgeDecks.filter((d) => d.wet && d.L < 60);
     let under = null;

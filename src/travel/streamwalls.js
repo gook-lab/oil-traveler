@@ -102,7 +102,10 @@ export function createStreamWalls(shared, cover, ground, { keepOut = () => false
         out.push({ P00: [rA[0], yA + h0, rA[1]], P10: [rB[0], yB + h0, rB[1]], P01: [rA[0], yA + h1, rA[1]], P11: [rB[0], yB + h1, rB[1]], n: nW, cell: [2, 0.3], col: (uu, vv, r) => tone(COLOR.bar, r), noDab: true });
       }
       const tx = ex / L, tz = ez / L, ph = WALL.railPost;
-      out.push({ P00: [rA[0] - tx * ph, yA, rA[1] - tz * ph], P10: [rA[0] + tx * ph, yA, rA[1] + tz * ph], P01: [rA[0] - tx * ph, yA + WALL.railH + 0.06, rA[1] - tz * ph], P11: [rA[0] + tx * ph, yA + WALL.railH + 0.06, rA[1] + tz * ph], n: nW, cell: [0.2, 1.2], col: (uu, vv, r) => tone(COLOR.post, r), noDab: true });
+      // a post is two crossed faces (T4 round 2: one face along the rail read as a pane seen edge-on from the street)
+      const yP = yA + WALL.railH + 0.06;
+      out.push({ P00: [rA[0] - tx * ph, yA, rA[1] - tz * ph], P10: [rA[0] + tx * ph, yA, rA[1] + tz * ph], P01: [rA[0] - tx * ph, yP, rA[1] - tz * ph], P11: [rA[0] + tx * ph, yP, rA[1] + tz * ph], n: nW, cell: [0.2, 1.2], col: (uu, vv, r) => tone(COLOR.post, r), noDab: true });
+      out.push({ P00: [rA[0] - tz * ph, yA, rA[1] + tx * ph], P10: [rA[0] + tz * ph, yA, rA[1] - tx * ph], P01: [rA[0] - tz * ph, yP, rA[1] + tx * ph], P11: [rA[0] + tz * ph, yP, rA[1] - tx * ph], n: [tx, 0, tz], cell: [0.2, 1.2], col: (uu, vv, r) => tone(COLOR.post, r * 0.9), noDab: true });
       boxes.push({ c: [(rA[0] + rB[0]) / 2, (yA + yB) / 2 + WALL.railH / 2, (rA[1] + rB[1]) / 2], h: [L / 2 + 0.03, WALL.railH / 2, WALL.railHalf], q: yawQ(ex, ez) });
     }
     for (const s0 of mine) stairs.push({ ...stairOf(c, cum, s0, ground, out, boxes, tops), chain: faces.indexOf(c), s: s0 });
