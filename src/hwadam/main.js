@@ -378,7 +378,7 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
-  streets: streets?.stats ?? null, far: farCity?.stats ?? null, streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
+  streets: streets?.stats ?? null, far: farCity?.stats ?? null, farPlans: farCity?.plans ?? [], streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
   /** T4: the bridges of the place (decks, wet, piers, boxes, tops) and deckAt(x, z) for the top of a deck. */
   bridges: bridges?.stats ?? null, bridgeDecks: bridges?.decks ?? [], deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
