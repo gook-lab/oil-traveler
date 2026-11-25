@@ -6,7 +6,8 @@
 import { paintSurfaces } from './buildings.js';
 import { coverAt, COVER } from '../hwadam/world/cover.js';
 
-const LIFT = 0.12;
+// a mark lies on the ground: 3 cm over heightAt is enough to keep it out of the ground's depth, and 12 cm read as a rail
+const LIFT = 0.03;
 const WHITE = [0.93, 0.92, 0.88], YELLOW = [0.93, 0.72, 0.13], KERB = [0.64, 0.62, 0.58];
 const POLE = [0.22, 0.23, 0.25], LAMP_LIT = [0.92, 0.88, 0.7], SIGNAL = [0.12, 0.13, 0.14];
 const ROOF = [0.3, 0.3, 0.32], GLASS = [0.56, 0.7, 0.68];
@@ -58,6 +59,31 @@ function hashSegs(list) {
     }
   }
   return m;
+}
+
+/** POI classes that are street furniture, not shops (they do not make a walking street). */
+const NOT_SHOP = new Set(['bus', 'parking', 'waste_basket', 'recycling', 'bicycle_rental', 'toilets', 'entrance', 'gate', 'bollard', 'lift_gate', 'information', 'police', 'post', 'railway']);
+/** Shops and eateries per 4 m of a road's line, on average, for it to be a walking street. */
+const WALK_POIS = 4;
+
+/** Points bucketed by 20 m cells, for counting the points near a spot. */
+function hashPts(list) {
+  const m = new Map();
+  for (const p of list) {
+    const k = `${Math.floor(p.x / 20)},${Math.floor(p.z / 20)}`;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(p);
+  }
+  return m;
+}
+
+/** How many points of the hash lie within r metres of (x, z). */
+function countNear(h, x, z, r) {
+  let n = 0;
+  for (let i = Math.floor((x - r) / 20); i <= Math.floor((x + r) / 20); i++) for (let j = Math.floor((z - r) / 20); j <= Math.floor((z + r) / 20); j++) {
+    for (const p of h.get(`${i},${j}`) ?? []) if (Math.hypot(p.x - x, p.z - z) <= r) n++;
+  }
+  return n;
 }
 
 /** The segments of the grid that share a cell with segment s (each once). */
@@ -174,6 +200,23 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
   const grid = hashSegs(segs);
   const walkSegs = segsOf(walks, false);
 
+  // a walking street: a narrow road lined with shops and eateries (POIs within 12 m of its line, 4 or more on average
+  // per 4 m of it). Its lanes, centre lines and edges are left out, since a street of shops has no traffic to mark.
+  const poiHash = hashPts((cover.pois ?? []).filter((p) => !NOT_SHOP.has(p.cls)));
+  const walkStreet = new Set();
+  for (const r of roads) {
+    if (r.w > 10 || r.cls === 'primary' || r.cls === 'secondary' || r.cls === 'trunk') continue;
+    let n = 0, samples = 0;
+    for (let k = 0; k + 1 < r.pts.length; k++) {
+      const a = r.pts[k], b = r.pts[k + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      for (let s = 0; s < L; s += 4) {
+        samples++;
+        n += countNear(poiHash, a[0] + ((b[0] - a[0]) * s) / L, a[1] + ((b[1] - a[1]) * s) / L, 12);
+      }
+    }
+    if (samples && n / samples >= WALK_POIS) walkStreet.add(r);
+  }
+
   // ---- crossings: a footway over a road (8 m or more), and the arms of a junction of two big roads (10 m or more) ----
   const crossings = [];
   const junctions = [];
@@ -269,7 +312,7 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
     const line = makeLine(r.pts);
     const w = r.w;
     if (w >= 8) for (const sg of [1, -1]) counts.kerbs += markLine(out, ground, line, sg * (w / 2 + 0.13), 0.13, KERB, plainOk);
-    if (w < 10) continue;
+    if (w < 10 || walkStreet.has(r)) continue;
     // the carriageway's edge: a solid white line inside the kerb
     for (const sg of [1, -1]) counts.edges += markLine(out, ground, line, sg * (w / 2 - 0.3), 0.1, WHITE, laneOk);
     if (!r.oneway) {
@@ -333,6 +376,8 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
       const dd = Math.hypot(s.a[0] + (s.b[0] - s.a[0]) * t - x, s.a[1] + (s.b[1] - s.a[1]) * t - z);
       if (dd < bd) { bd = dd; best = s; }
     }
+    // a shelter stands on the footway: its 2.9 m frame must clear the carriageway's half width and a kerb
+    if (best && bd < best.w / 2 + 1.6) continue;
     const yaw = best ? Math.atan2(-best.d[1], best.d[0]) : 0;
     const base = ground(x, z);
     const X = [Math.cos(yaw), 0, -Math.sin(yaw)], Zv = [Math.sin(yaw), 0, Math.cos(yaw)];
@@ -351,7 +396,7 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
   const painted = paintSurfaces(shared, [{ i: 7001, out }], { cap, near: null });
   const stats = {
     crossings: crossings.length, walkCrossings: crossings.filter((c) => c.kind === 'walk').length,
-    junctionCrossings: crossings.filter((c) => c.kind === 'junction').length, junctions: junctions.length,
+    junctionCrossings: crossings.filter((c) => c.kind === 'junction').length, junctions: junctions.length, walkStreets: walkStreet.size,
     ...counts, quads: out.length, colliders: boxes.length, dabs: painted.stats.dabs, step: painted.stats.step,
     msSolid: painted.stats.msSolid, msDabs: painted.stats.msDabs,
   };
