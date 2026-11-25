@@ -18,7 +18,7 @@ export const DECK = {
 };
 const COLOR = {
   asphalt: [0.34, 0.34, 0.35], walk: [0.74, 0.73, 0.7], girder: [0.56, 0.55, 0.52], pier: [0.6, 0.58, 0.54], rail: [0.84, 0.85, 0.83],
-  lamp: [0.96, 0.93, 0.8],
+  lamp: [0.96, 0.93, 0.8], yellow: [0.93, 0.76, 0.25], white: [0.92, 0.92, 0.88],
 };
 
 /** The half side (m) of the square the decks are kept in: inside the land map (common.js EXTENT 256), off its clamped edge. */
@@ -212,7 +212,17 @@ function geometryOf(d, out, boxes) {
     const nUp = norm(cross([f0.nx, 0, f0.nz], [f0.tx, (d.y[i + 1] - d.y[i]) / (d.L / d.n), f0.tz]));
     const up = nUp[1] < 0 ? nUp.map((v) => -v) : nUp;
     for (const [a0, a1, base] of bands) {
-      out.push({ P00: at(d, i, a0), P10: at(d, i + 1, a0), P01: at(d, i, a1), P11: at(d, i + 1, a1), n: up, cell: [2, 1], col: (u, v, r) => shade(base, r), rows: rowsOf(base) });
+      // the carriageway: one near-flat tone per cell (the cells' own tones made a checkerboard), the strokes carry the texture
+      const flat = base === COLOR.asphalt;
+      out.push({ P00: at(d, i, a0), P10: at(d, i + 1, a0), P01: at(d, i, a1), P11: at(d, i + 1, a1), n: up, cell: [2, 1], col: flat ? () => shade(base, 0.5) : (u, v, r) => shade(base, r), dabCol: flat ? (u, v, r) => shade(base, r) : null, rows: rowsOf(base) });
+    }
+    // the lane marks of a carriageway: a yellow double line at the centre, white edge lines, and white dashes between lanes
+    const rw = d.road && sw ? hw - sw : 0;
+    if (rw >= 2.5) {
+      const mark = (a0, a1, col) => out.push({ P00: at(d, i, a0, 0.02), P10: at(d, i + 1, a0, 0.02), P01: at(d, i, a1, 0.02), P11: at(d, i + 1, a1, 0.02), n: up, cell: [2, Math.abs(a1 - a0)], col: (u, v, r) => shade(col, 0.92 + 0.08 * r) });
+      mark(-0.24, -0.12, COLOR.yellow); mark(0.12, 0.24, COLOR.yellow);
+      mark(-rw + 0.25, -rw + 0.45, COLOR.white); mark(rw - 0.45, rw - 0.25, COLOR.white);
+      if (rw >= 4.5 && i % 4 < 2) { mark(-rw / 2 - 0.08, -rw / 2 + 0.08, COLOR.white); mark(rw / 2 - 0.08, rw / 2 + 0.08, COLOR.white); }
     }
     for (const side of [-1, 1]) {
       const off = side * hw;

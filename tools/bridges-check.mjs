@@ -64,6 +64,29 @@ return res;
 `;
 
 const STATS = `return { stats: window.lab.bridges, place: window.lab.place?.meta?.center, vantage: window.lab.place?.meta?.vantage };`;
+// the two stills of a place, planned on its longest whole wet road deck: a bank view at 1.6 m above the ground, across the
+// water at the deck's middle (the deck runs across the frame); and a view from the deck along it, at 1.6 m above the deck
+const PLAN = `
+const L = window.lab, cands = L.bridgeDecks.filter((x) => x.road && x.wet).sort((a, b) => b.L - a.L);
+const d = cands[0];
+if (!d) return null;
+const m = d.n >> 1, mp = d.xy[m], top = d.y[m];
+const ax = d.xy[0], bx = d.xy[d.n];
+const tl = Math.hypot(bx[0] - ax[0], bx[1] - ax[1]) || 1, tx = (bx[0] - ax[0]) / tl, tz = (bx[1] - ax[1]) / tl;
+// the bank: the end whose land lies behind it (not water, not under the deck), 6 m back on the land at 1.6 m above the ground
+let bank = null;
+const tried = [];
+for (const back of [6, 12, 20, 30, 45, 60]) for (const [p, dir] of [[ax, 1], [bx, -1]]) {
+  const bxp = [p[0] - tx * dir * back, p[1] - tz * dir * back];
+  tried.push([back, L.coverAt(bxp[0], bxp[1]), L.deckAt(bxp[0], bxp[1]) == null]);
+  if (!bank && L.coverAt(bxp[0], bxp[1]) !== L.coverAt(mp[0], mp[1]) && L.deckAt(bxp[0], bxp[1]) == null) {
+    bank = { eye: [bxp[0], L.heightAt(bxp[0], bxp[1]) + 1.6, bxp[1]], target: [mp[0], top + 1.0, mp[1]] };
+  }
+}
+const eyeD = [mp[0] - tx * 22, d.y[Math.max(0, m - 11)] + 1.6, mp[1] - tz * 22];
+const deck = { eye: eyeD, target: [mp[0] + tx * 160, eyeD[1] - 0.6, mp[1] + tz * 160] };
+return { info: { L: Math.round(d.L), layer: d.layer, mid: mp.map((v) => +v.toFixed(1)), midCover: L.coverAt(mp[0], mp[1]), tried: tried.slice(0, 6) }, bank, deck };
+`;
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME, headless: true, args: ['--mute-audio', '--ignore-gpu-blocklist', process.platform === 'darwin' ? '--use-angle=metal' : '--use-angle=d3d11', '--enable-gpu'] });
 const report = [];
@@ -82,19 +105,16 @@ try {
       const w = await page.evaluate(`(() => { ${WALK} })()`);
       Object.assign(summary, w);
       // stills: the bank looking along the first wet deck, and the deck from above
-      const d = stats.decksInfo.find((x) => x.road && x.wet) ?? stats.decksInfo[0];
-      const [ax, az] = d.a, [bx, bz] = d.b, Ln = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / Ln, uz = (bz - az) / Ln;
-      const shots = [
-        { name: 'bank', eye: [ax - ux * 40, 0, az - uz * 40], target: [(ax + bx) / 2, 0, (az + bz) / 2], dy: 9 },
-        { name: 'deck', eye: [(ax + bx) / 2 - ux * 14, 0, (az + bz) / 2 - uz * 14], target: [(ax + bx) / 2 + ux * 60, 0, (az + bz) / 2 + uz * 60], dy: 3 },
-      ];
-      for (const s of shots) {
-        await page.evaluate(`(() => { const L = window.lab; const g = (x, z) => L.heightAt(x, z); const e = ${JSON.stringify(s.eye)}, t = ${JSON.stringify(s.target)}; const ey = Math.max(g(e[0], e[2]), L.deckAt(e[0], e[2]) ?? -1e9) + ${s.dy}; const ty = Math.max(g(t[0], t[2]), L.deckAt(t[0], t[2]) ?? -1e9) + 1.5; L.view([e[0], ey, e[2]], [t[0], ty, t[2]]); L.step(1 / 60, 3); })()`);
-        const path = join(shotDir, `${tag}-${s.name}.png`);
+      const plan = await page.evaluate(`(() => { ${PLAN} })()`);
+      const shots = plan ? [['bank', plan.bank], ['deck', plan.deck]].filter(([, v]) => v) : [];
+      for (const [name, v] of shots) {
+        await page.evaluate(`(() => { const L = window.lab; L.view(${JSON.stringify(v.eye)}, ${JSON.stringify(v.target)}); L.step(1 / 60, 3); })()`);
+        const path = join(shotDir, `${tag}-${name}.png`);
         await page.screenshot({ path });
         execFileSync('sips', ['-Z', '1400', path, '--out', path.replace('.png', '-1400.jpg'), '-s', 'format', 'jpeg']);
       }
-      summary.shots = shots.map((s) => join(shotDir, `${tag}-${s.name}.png`));
+      summary.plan = plan;
+      summary.shots = shots.map(([name]) => join(shotDir, `${tag}-${name}.png`));
     }
     summary.vantage = vantage;
     report.push(summary);
