@@ -11,7 +11,7 @@
  * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number, force?: Uint8Array }} [opt]
  * @returns {{ lowered: number, islands: number, meanDrop: number, maxDrop: number, mask: Uint8Array }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0, 1, 5], islandR = 30, islandShare = 0.5, water = 9, waterShare = 0.3, waterPct = 0.05, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0, 1, 5], islandR = 30, islandShare = 0.5, water = 9, waterShare = 0.3, waterPct = 0.05, road = 12, roadR = 25, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
   // the nodes of a palace court (force) take the same lowering whatever their class (a court is bare ground, not a town)
@@ -61,7 +61,7 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
   }
   // apply, then smooth the dropped nodes with their 3 by 3 neighbours (from a copy, so the order does not matter)
   const before = near.slice();
-  let lowered = 0, drop = 0, maxDrop = 0;
+  let lowered = 0, drop = 0, maxDrop = 0, roadFitted = 0;
   for (let k = 0; k < N * N; k++) {
     if (Number.isNaN(target[k])) continue;
     const d = before[k] - target[k];
@@ -85,16 +85,34 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
   }
   // the town ground is then smoothed over 20 m (a box blur of the town nodes alone, twice, so a tent): the percentile
   // still follows the roofs of a dense block, and at the true vertical scale those read as grey hills between the
-  // buildings (명동, 2026-11-25). The slope of the town as a whole stays
+  // buildings (명동, 2026-11-25). The slope of the town as a whole stays.
+  // Under the streets (T4 round 1) that was not enough: a footway beside a tower took the roofs round it into its
+  // percentile and stood 1.2 to 1.5 m over the carriageway, a dune between the road and the walls. The road nodes are the
+  // surest bare ground the DSM has (it sees the asphalt between the blocks), so where a road is within reach the town
+  // ground is the road nodes' heights spread over it (a tent of roadR m, weighted by road); a node deep in a block, with
+  // little road round it, keeps its own 20 m blur, and between the two the share of road decides
   if (blurR > 0) {
-    const r = Math.round(blurR / STEP), w = new Float32Array(N * N), v = new Float32Array(N * N);
     const blurred = (k) => (isUrban[k] === 1 || isUrban[k] === 2) && before[k] > 0.5;
-    for (let k = 0; k < N * N; k++) if (blurred(k)) { w[k] = 1; v[k] = near[k]; }
-    for (let pass = 0; pass < 2; pass++) { boxBlur(v, N, r); boxBlur(w, N, r); }
-    for (let k = 0; k < N * N; k++) if (blurred(k) && w[k] > 1e-6) near[k] = v[k] / w[k];
+    const tent = (r, pick) => {
+      const w = new Float32Array(N * N), v = new Float32Array(N * N), all = new Float32Array(N * N).fill(1);
+      for (let k = 0; k < N * N; k++) if (pick(k)) { w[k] = 1; v[k] = near[k]; }
+      for (let pass = 0; pass < 2; pass++) { boxBlur(v, N, r); boxBlur(w, N, r); boxBlur(all, N, r); }
+      return { w, v, all };
+    };
+    const own = tent(Math.round(blurR / STEP), blurred);
+    const rd = tent(Math.round(roadR / STEP), (k) => isUrban[k] === 1 && cls[k] === road && before[k] > 0.5);
+    let fitted = 0;
+    for (let k = 0; k < N * N; k++) {
+      if (!blurred(k) || own.w[k] <= 1e-6) continue;
+      const h = own.v[k] / own.w[k], share = rd.w[k] / rd.all[k];
+      const t = share <= 0.02 ? 0 : share >= 0.08 ? 1 : ((share - 0.02) / 0.06) ** 2 * (3 - 2 * ((share - 0.02) / 0.06));
+      near[k] = t > 0 ? h + (rd.v[k] / rd.w[k] - h) * t : h;
+      if (t > 0) fitted++;
+    }
+    roadFitted = fitted;
   }
   // mask: 1 a built-up or court node, 2 an island node (cover.js judges no rock on either)
-  return { lowered, islands, waters, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2), mask: isUrban };
+  return { lowered, islands, waters, roadFitted, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2), mask: isUrban };
 }
 
 /** A box blur of radius r (nodes) along the rows and then the columns, in place (sums, so the cost is per node). */

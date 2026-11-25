@@ -222,6 +222,9 @@ export function planBuildings(list, heritage, kinds = null, ctx = null) {
 function fillHeight(p, known, lu) {
   const deep = 2 * Math.min(p.R.hu, p.R.hv), long = 2 * Math.max(p.R.hu, p.R.hv);
   const vary = Math.floor(rnd(p.c[0] * 0.37 + 1.3, p.c[1] * 0.41 - 0.7) * 3) - 1;
+  // a footprint under 40 m² is a kiosk, a stair head or a subway entrance: one storey (T4 round 1: three storeys stood a
+  // grey tower of windows in the middle of a 홍대 street)
+  if (p.area < 40) return 3.6;
   if (lu === 1 && p.rect >= 0.8 && deep >= 10 && deep <= 20 && long >= 30 && long / deep >= 2.5) return (15 + vary) * 2.8 + 1;
   const A = p.area, storeys = (A < 150 ? 3 : A < 400 ? 4 : A < 1000 ? 6 : 8) + (lu === 2 ? 2 : 0) + vary;
   const typical = Math.max(2, storeys) * 3.4 + 1;

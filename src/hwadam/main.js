@@ -156,8 +156,12 @@ const floor = createFloor(shared);
 const sky = createSky(shared);
 // a place's falling leaves keep off the sea, sand, rock and built-up ground (T2); the autumn wood has no exclusion
 const leaves = createLeaves(shared, 2400, { head: COVER_GLSL, exclude: 'if (bareCover(coverClass(p.xz))) { d.alive = 0.0; return; }' });
-// the shade is taken over the whole walk (its middle, and a box as wide as the ground), not the autumn wood's 330 m
-const shade = createShade(renderer, shared, forest.shade, { sun, centre: [-40, 10, 20], box: [270, 270], back: 500, far: 1000 });
+// the shade is taken over the whole walk (its middle, and a box as wide as the ground), not the autumn wood's 330 m.
+// travel (T4 round 1): the whole 512 m square, round its centre, whose corners are 362 m out; beyond the picture the floor
+// takes the wood's shade patches (common.js woodSunAt), and in a town those read as black stains on the road
+const shade = createShade(renderer, shared, forest.shade, travel
+  ? { sun, centre: [0, heightAt(0, 0), 0], box: [370, 370], back: 500, far: 1100 }
+  : { sun, centre: [-40, 10, 20], box: [270, 270], back: 500, far: 1000 });
 lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();

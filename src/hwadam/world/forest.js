@@ -336,7 +336,9 @@ export function createForest(shared, { streetTrees = [], keepOut = null } = {}) 
     const perLobe = t.nearPine ? 26 : full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
-      lobes.push(lx, ly, lz, lr);
+      // a street tree's crown casts no shade (T4 round 1): the town's shade holds the trees and not the buildings, so a
+      // crown out of the frame dropped a dark blot on the road with nothing to cast it, read as a stain
+      if (!t.street) lobes.push(lx, ly, lz, lr);
       const away = v.set(lx - crown.x, ly - crown.y, lz - crown.z).normalize().clone();
       for (let k = 0; k < perLobe; k++) {
         const d = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(away, 0.5).add(new THREE.Vector3(0, 0.15, 0)).normalize();
