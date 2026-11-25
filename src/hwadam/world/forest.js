@@ -174,7 +174,11 @@ function plant(streetTrees, keepOut = null, town = false) {
     const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
     // the birch aisles hold here too: a birch only where its column of the walk's strip is kept
     if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
+    // only the tree just planted leans over the way: when the cover or a view's fan refused it, the last tree of the list
+    // was bent and shortened again (a town refuses most, and a Gyeongbokgung beech came down to 0.3 mm)
+    const before = trees.length;
     add(x, z, type, type === MAPLE ? 0 : 1);
+    if (trees.length === before) continue;
     const near = trees[trees.length - 1];
     near.toward = Math.atan2(wz - z, wx - x);
     near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
