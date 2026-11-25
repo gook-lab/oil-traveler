@@ -157,11 +157,11 @@ function boxFaces(out, c, yaw, h, col) {
 }
 
 /** The first footway spot beside a crossing's kerb on side sg (plain or paved cover, not road or built), searched along the road and out. */
-function footSpot(c, sg, r0, r1, ex, ez) {
+function footSpot(c, sg, r0, r1, ex, ez, keep) {
   for (const along of [c.Lb / 2 + 0.9, c.Lb / 2 + 2.4, c.Lb / 2 - 0.6]) for (const extra of [0, 0.6, 1.2]) {
     const t = c.w / 2 + 0.9 + extra;
     const x = c.C[0] + r0 * along + ex * sg * t, z = c.C[1] + r1 * along + ez * sg * t;
-    if (inSquare(x, z) && PLAIN.has(coverAt(x, z))) return { along, t };
+    if (inSquare(x, z) && PLAIN.has(coverAt(x, z)) && keep(x, z)) return { along, t };
   }
   return null;
 }
@@ -179,8 +179,9 @@ const solid = (boxes, c, yaw, h) => boxes.push({ c, h, q: [0, Math.sin(yaw / 2),
 /**
  * The streets of the cover as a group: the marks and the furniture, painted; plus the collision boxes. `ground(x, z)` is
  * the scene's ground (heightAt); `cover` is the object fetchCover returned (roads, paths, pois); `near` is the start.
+ * `keep(x, z)` is false where nothing of the street stands (inside a town stream's walls, bridges-6).
  */
-export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
+export function createStreets(shared, cover, ground, { cap = CAP, keep = () => true } = {}) {
   const roads = (cover.roads ?? [])
     .filter((r) => r.brunnel !== 'bridge' && !r.ramp && r.cls !== 'pedestrian')
     .map((r) => ({ ...r, pts: cleanPts(r.pts) }))
@@ -223,6 +224,8 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
   const isCross = (C) => crossings.some((c) => Math.hypot(c.C[0] - C[0], c.C[1] - C[1]) < 6);
   const addCross = (C, d, w, kind) => {
     if (!inSquare(C[0], C[1]) || isCross(C) || coverAt(C[0], C[1]) !== COVER.ROAD) return;
+    // a zebra half over a stream's wall would bend down to the promenade (bridges-6)
+    if ([[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([p, q]) => !keep(C[0] + d[0] * p * (ZEBRA_LEN / 2 + STOP_D) - d[1] * q * w / 2, C[1] + d[1] * p * (ZEBRA_LEN / 2 + STOP_D) + d[0] * q * w / 2))) return;
     crossings.push({ C, d, w, kind, Lb: ZEBRA_LEN });
   };
   for (const p of walkSegs) for (const s of candidates(grid, p)) {
@@ -280,7 +283,7 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
     const yaw = Math.atan2(-ez, ex);
     for (const sg of [1, -1]) {
       // the mast goes on the footway beside the kerb (not the carriageway): the first spot off the road, else none
-      const spot = footSpot(c, sg, r0, r1, ex, ez);
+      const spot = footSpot(c, sg, r0, r1, ex, ez, keep);
       if (!spot) continue;
       const { along, t } = spot;
       const lat = (u) => [c.C[0] + r0 * along + ex * sg * u, c.C[1] + r1 * along + ez * sg * u];
@@ -306,7 +309,7 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
   }
 
   // ---- lane lines and kerbs along each road ----
-  const plainOk = (x, z) => inSquare(x, z) && PLAIN.has(coverAt(x, z));
+  const plainOk = (x, z) => inSquare(x, z) && PLAIN.has(coverAt(x, z)) && keep(x, z);
   const laneOk = (x, z) => inSquare(x, z) && ROADISH.has(coverAt(x, z)) && !inZebra(x, z) && !nearJunction(x, z);
   for (const r of roads) {
     const line = makeLine(r.pts);

@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { paintSurfaces } from './buildings.js';
 import { COVER, coverAt } from '../hwadam/world/cover.js';
+import { streamSunk } from '../hwadam/world/stream.js';
 
 export const DECK = {
   seg: 2, ramp: 0.12, wetLong: 8, wetShort: 4, longM: 200, layerLift: 4, landClear: 4.5, dryClear: 1.5,
@@ -68,6 +69,32 @@ function linesOf(list) {
     lines.push({ pts, layer: list[s].layer, w: Math.max(...members.map((m) => m.w)), road: members.some((m) => m.road) });
   }
   return lines;
+}
+
+/**
+ * The bridge lines of a cover, each run inside the square. A line whose end stops inside a town stream's walls (the
+ * map's bridge is shorter than the channel, so its end stood on the promenade and the deck sloped down into the channel)
+ * is carried on along its own direction to 1 m past the wall's face, onto the street (bridges-6).
+ */
+function bridgeLines(cover) {
+  const sunk = cover.stream?.field ? streamSunk(cover.stream.field) : null;
+  const reach = (pts) => {
+    if (!sunk) return pts;
+    const out = pts.slice();
+    for (const atStart of [true, false]) {
+      const a = atStart ? out[0] : out[out.length - 1], b = atStart ? out[1] : out[out.length - 2];
+      if (!sunk(a[0], a[1])) continue;
+      const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, ux = (a[0] - b[0]) / L, uz = (a[1] - b[1]) / L;
+      for (let s = 0.5; s <= 16; s += 0.5) {
+        if (sunk(a[0] + ux * s, a[1] + uz * s)) continue;
+        const q = [a[0] + ux * (s + 1), a[1] + uz * (s + 1)];
+        if (atStart) out.unshift(q); else out.push(q);
+        break;
+      }
+    }
+    return out;
+  };
+  return linesOf(piecesOf(cover)).map((l) => ({ ...l, pts: reach(l.pts) }));
 }
 
 /** The runs of a polyline inside the square of `R` metres about the start: the rest of a long line is not walked or painted. */
@@ -323,7 +350,7 @@ export function createBridges(shared, cover, ground, { cap = 2500, near = null }
   const T = performance.now();
   // a run cut by the square's edge ends in the open: it gets an end rail there (see geometryOf)
   const edgeCut = (p) => Math.abs(Math.abs(p[0]) - SQUARE_M) < 1e-6 || Math.abs(Math.abs(p[1]) - SQUARE_M) < 1e-6;
-  const lines = linesOf(piecesOf(cover)).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({ ...l, pts, cutA: edgeCut(pts[0]), cutB: edgeCut(pts[pts.length - 1]) })));
+  const lines = bridgeLines(cover).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({ ...l, pts, cutA: edgeCut(pts[0]), cutB: edgeCut(pts[pts.length - 1]) })));
   const decks = [];
   for (const line of lines.sort((a, b) => b.w - a.w)) {
     const d = deckOf(line, ground);
@@ -387,7 +414,7 @@ function distSegMin(d, x, z) {
  * it: a trunk under a deck stood through the slab, and the walker stopped against it (T4, Hangang span 153 m).
  */
 export function deckKeepOut(cover, margin = 1.5) {
-  const lines = linesOf(piecesOf(cover)).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({
+  const lines = bridgeLines(cover).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({
     pts, hw: (l.road ? l.w / 2 + DECK.sidewalk : DECK.pathW / 2) + margin,
     x0: Math.min(...pts.map((p) => p[0])), x1: Math.max(...pts.map((p) => p[0])),
     z0: Math.min(...pts.map((p) => p[1])), z1: Math.max(...pts.map((p) => p[1])),

@@ -176,6 +176,9 @@ void makeDab(inout Dab d) {
   float cls = coverClass(xz);
   bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, paved = abs(cls - 10.0) < 0.5, basalt = abs(cls - 11.0) < 0.5, road = abs(cls - 12.0) < 0.5;
   if (!(sand || rock || built || water || paved || basalt || road)) { d.alive = 0.0; return; }
+  // the top of a town stream's wall: its stone and paving are drawn (streamwalls.js); a dab on the ground's ramp under it
+  // stood up through the top and the face
+  if (abs(coverStream(xz) - 2.0) < 0.5) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33 && !(paved || road)) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
