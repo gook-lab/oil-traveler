@@ -16,7 +16,7 @@ const MIDZONE = (typeof location !== 'undefined' && new URLSearchParams(location
 /** The highest absolute height (m) of the sea in the midground: the measured sea cells of Hyeopjae sit at -1.5 to 0.5 m. */
 const SEA_M = 0.5;
 
-export function createMidground(shared, mid, H0) {
+export function createMidground(shared, mid, H0, { urban = false } = {}) {
   const { n, step, half, h } = mid;
   const y = new Float32Array(n * n);
   for (let k = 0; k < n * n; k++) y[k] = (h[k] - H0) * verticalScale();
@@ -81,6 +81,8 @@ export function createMidground(shared, mid, H0) {
         float r = texture(tNoise, sq / 41.0).r;
         vec3 moss = vec3(0.2, 0.3, 0.14), ochre = vec3(0.6, 0.44, 0.2), rust = vec3(0.5, 0.2, 0.12);
         vec3 base = r < 0.4 ? moss : r < 0.75 ? ochre : rust;
+        // a town: its ground is city ground, grey-brown and grey-blue in patches, not the autumn colours
+        ${urban ? 'base = mix(vec3(0.46, 0.45, 0.42), vec3(0.4, 0.43, 0.48), step(0.5, r));' : ''}
         // the sun from the slope: lit faces bright, the others deep
         float lit = clamp(dot(normalize(vN), uSunDir) * 1.4 + 0.25, 0.0, 1.0);
         vec3 c = mix(base * 0.55, base * 1.25 + vec3(0.06, 0.04, 0.0), lit);

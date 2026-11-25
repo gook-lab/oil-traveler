@@ -12,6 +12,8 @@ const NEAR_COL = [0.3, 0.34, 0.38], FAR_COL = [0.6, 0.66, 0.74];
 // angle is kept, the distance is not (the ranges are a backdrop, nothing walks to them). The rings are kept apart by
 // STEP metres so their depths do not tie: the far one stands furthest, the near one in front of it.
 const CAP = 1900, STEP = 10;
+// the elevation (rad) the near band of a town may reach: roof height at 2 km, about 1 degree (38 m)
+const TOWN_CAP = 0.02;
 const SKIRT = (10 * Math.PI) / 180; // how far below the eye the skirt goes, as an angle at the band distance
 // below the eye the ranges turn to the far ground, not to the sky's blue: dusty green-grey, nearer bands darker, far ones paler
 const LAND_NEAR = [0.36, 0.42, 0.34], LAND_FAR = [0.5, 0.55, 0.5];
@@ -27,7 +29,7 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
  * the band distances in metres; the eye stands at (ex, ey, ez) in world metres; `VS` is the vertical scale of the ground
  * (the angles are of the true ground, the world's ground is scaled by VS, so the tops are scaled the same way).
  */
-export function createRanges(shared, horizon, bands, ex, ey, ez, VS) {
+export function createRanges(shared, horizon, bands, ex, ey, ez, VS, { urban = false } = {}) {
   const group = new THREE.Group();
   const nb = bands.length;
   for (let b = nb - 1; b >= 0; b--) {
@@ -37,7 +39,11 @@ export function createRanges(shared, horizon, bands, ex, ey, ez, VS) {
     const vs = VS + (FAR_VS - VS) * smooth(2000, 5000, d);
     const pos = new Float32Array(361 * 2 * 3);
     for (let a = 0; a <= 360; a++) {
-      const az = (a * Math.PI) / 180, th = horizon[b * 360 + (a % 360)];
+      const az = (a * Math.PI) / 180;
+      // a town: the DSM reads the roofs of the near 2 km as a plateau, a flat wall. Its top is held low, so the far city
+      // stands in front of it; the real ranges (the bands beyond 2 km) keep their angles
+      let th = horizon[b * 360 + (a % 360)];
+      if (urban && d <= 2000) th = Math.min(th, TOWN_CAP);
       const top = ey + dp * Math.tan(th) * vs;
       // the skirt: the band reaches down below the eye, so where the ground falls away (a bearing under the horizon) it is
       // not left as background. The nearer picture stands in front of it (the depth test); the skirt fills only the gap

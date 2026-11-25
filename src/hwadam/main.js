@@ -13,7 +13,8 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, verticalScale } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
-import { viewShares, coverWithin, COVER_GLSL, coverAt } from './world/cover.js';
+import { viewShares, coverWithin, COVER_GLSL, coverAt, isUrban } from './world/cover.js';
+import { createFar } from '../travel/far.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
 import { mountHud } from '../travel/hud.js';
@@ -159,12 +160,14 @@ lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
 const kick = createKick(shared);
+// travel: a town's ground beyond the square is city ground (midground, ranges)
+const urban = travel && isUrban(place.cover?.grid);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 // the far ranges: the real skyline of three horizon bands (2, 5, 15 km), each a mountain line at its own distance, from the eye (M3, baked Hwadam walk)
 // travel (runtime places only: their skyline is taken from the start): the far ranges, one silhouette per band (src/travel/ranges.js)
 const rangesMesh = travel
-  ? (place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, verticalScale()) : null)
+  ? (place.source === 'runtime' ? createRanges(shared, place.horizon, place.meta.bands, vantage.x, heightAt(vantage.x, vantage.z) + 1.6, vantage.z, verticalScale(), { urban }) : null)
   : createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, heightAt(CLEARING.x, CLEARING.z) + 1.6, CLEARING.z, verticalScale());
 if (rangesMesh) scene.add(rangesMesh);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
@@ -172,12 +175,15 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 // colliders below (src/travel/buildings.js)
 const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 if (bld) scene.add(bld.group);
+// travel: the far buildings stand out to 1.3 km beyond the square (src/travel/far.js)
+const farCity = travel && place.mid && place.cover?.far?.length ? createFar(shared, place.cover.far, place.mid, place.way.startHeight) : null;
+if (farCity) scene.add(farCity.group);
 // travel: the streets of the near square (T4): zebra crossings, lane lines, kerbs, lamps, signals, bus shelters (src/travel/streets.js)
 if (streets) scene.add(streets.group);
 // check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
 if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
-const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight) : null;
+const midMesh = travel && place.mid ? createMidground(shared, place.mid, place.way.startHeight, { urban }) : null;
 if (midMesh) scene.add(midMesh);
 // check only (?band=k): only the range of band k (bands in place.meta.bands order), in its own colour
 if (q.has('band') && rangesMesh) rangesMesh.children.forEach((m, i) => { m.visible = rangesMesh.children.length - 1 - i === Number(q.get('band')); });
@@ -188,7 +194,7 @@ if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.mat
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, streets: streets?.group };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, streets: streets?.group, far: farCity?.group };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -364,7 +370,7 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
-  streets: streets?.stats ?? null, streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
+  streets: streets?.stats ?? null, far: farCity?.stats ?? null, streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,

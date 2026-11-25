@@ -176,22 +176,7 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     paint('building', () => COVER.BUILT);
     paint('water', (p) => (WATER_CLASSES.has(p.class) || !p.class ? COVER.WATER : 0));
     // the outlines (outer rings only; a courtyard hole is left out) and the heritage points of this tile
-    const B = vt.layers.building;
-    for (let f = 0; B && f < B.length; f++) {
-      const feat = B.feature(f);
-      if (feat.type !== 3) continue;
-      const raw = feat.loadGeometry();
-      const big = raw.reduce((m, r) => (Math.abs(ringArea(r)) > Math.abs(ringArea(m)) ? r : m), raw[0]);
-      const sign = Math.sign(ringArea(big));
-      const p = feat.properties;
-      for (const r of raw) {
-        if (r.length < 3 || Math.sign(ringArea(r)) !== sign) continue;
-        const cx = r.reduce((s, q) => s + q.x, 0) / r.length, cy = r.reduce((s, q) => s + q.y, 0) / r.length;
-        if (cx < 0 || cy < 0 || cx >= B.extent || cy >= B.extent) continue; // the piece belongs to the tile it lies in
-        const pts = r.map((q) => { const m = toMetres(x, y, n, B.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; });
-        buildings.push({ pts, h: p.render_height ?? 6, mh: p.render_min_height ?? 0, colour: p.colour ?? null, hide3d: !!p.hide_3d });
-      }
-    }
+    buildings.push(...outlinesOf(vt.layers.building, x, y, n, lat, lon, m0));
     const P = vt.layers.poi;
     for (let f = 0; P && f < P.length; f++) {
       const feat = P.feature(f);
@@ -301,6 +286,62 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
   // natural: the near square before the town step lowered it (place-check compares the terrain port on it)
   return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, landuse, town, natural };
+}
+
+/** The building outlines of one tile (outer rings; a piece belongs to the tile it lies in), in metres from the centre. */
+function outlinesOf(B, x, y, n, lat, lon, m0) {
+  const out = [];
+  for (let f = 0; B && f < B.length; f++) {
+    const feat = B.feature(f);
+    if (feat.type !== 3) continue;
+    const raw = feat.loadGeometry();
+    const big = raw.reduce((m, r) => (Math.abs(ringArea(r)) > Math.abs(ringArea(m)) ? r : m), raw[0]);
+    const sign = Math.sign(ringArea(big));
+    const p = feat.properties;
+    for (const r of raw) {
+      if (r.length < 3 || Math.sign(ringArea(r)) !== sign) continue;
+      const cx = r.reduce((s, q) => s + q.x, 0) / r.length, cy = r.reduce((s, q) => s + q.y, 0) / r.length;
+      if (cx < 0 || cy < 0 || cx >= B.extent || cy >= B.extent) continue;
+      const pts = r.map((q) => { const m = toMetres(x, y, n, B.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; });
+      out.push({ pts, h: p.render_height ?? 6, mh: p.render_min_height ?? 0, colour: p.colour ?? null, hide3d: !!p.hide_3d });
+    }
+  }
+  return out;
+}
+
+/**
+ * The building outlines beyond the near square (T4 critique 1, the far city): the tiles within `radius` m of (lat, lon), kept where
+ * the outline's centre lies beyond `range` m on either axis (the near square's own outlines are those inside it). Only
+ * the outline is kept; buildings.js plans the heights the same way as for the near square. Its grid is not touched.
+ */
+export async function fetchFarOutlines({ lat, lon, radius = 1260, range = 250 }) {
+  const { VectorTile } = await import('@mapbox/vector-tile');
+  const Pbf = (await import('pbf')).default;
+  const template = await tileUrlTemplate();
+  const m0 = mPerDegLon(lat);
+  const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
+  const far = [];
+  for (let x = a.x; x <= b.x; x++) for (let y = a.y; y <= b.y; y++) {
+    const url = template.replace('{z}', Z).replace('{x}', x).replace('{y}', y);
+    let res;
+    try { res = await fetch(url); } catch { throw new Error(`cover: net far ${Z}/${x}/${y}`); }
+    if (!res.ok) throw new Error(`cover: far tile ${Z}/${x}/${y} HTTP ${res.status}`);
+    const vt = new VectorTile(new Pbf(new Uint8Array(await res.arrayBuffer())));
+    for (const o of outlinesOf(vt.layers.building, x, y, 2 ** Z, lat, lon, m0)) {
+      const cx = o.pts.reduce((s, q) => s + q[0], 0) / o.pts.length, cz = o.pts.reduce((s, q) => s + q[1], 0) / o.pts.length;
+      if (Math.max(Math.abs(cx), Math.abs(cz)) <= range || Math.hypot(cx, cz) > radius) continue;
+      far.push(o);
+    }
+  }
+  return far;
+}
+
+/** True when the built-up, paved and road classes cover half the near square or more: a town (the far ground is city). */
+export function isUrban(g) {
+  if (!g) return false;
+  let k = 0;
+  for (const v of g) if (v === COVER.BUILT || v === COVER.PAVED || v === COVER.ROAD) k++;
+  return k / g.length >= 0.5;
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
