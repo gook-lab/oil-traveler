@@ -14,6 +14,10 @@ const NEAR_COL = [0.3, 0.34, 0.38], FAR_COL = [0.6, 0.66, 0.74];
 const CAP = 1900, STEP = 10;
 // the elevation (rad) the near band of a town may reach: roof height at 2 km, about 1 degree (38 m)
 const TOWN_CAP = 0.02;
+// a real mountain stays in a town (skyline-2): beyond the 1 km band, its mean height over the 21 bearings round it is at
+// least MOUNT_M. A roof plateau at 2 km reads about 38 m, and a tower is narrow. Namsan from Myeongdong (1.3 km) reads
+// 150 to 315 m on its bearings, while a town's roofs and towers at 1 km reach 90 to 250 m, so the 1 km band is always capped.
+const MOUNT_M = 150, MOUNT_HALF = 10;
 const SKIRT = (10 * Math.PI) / 180; // how far below the eye the skirt goes, as an angle at the band distance
 // below the eye the ranges turn to the far ground, not to the sky's blue: dusty green-grey, nearer bands darker, far ones paler
 const LAND_NEAR = [0.36, 0.42, 0.34], LAND_FAR = [0.5, 0.55, 0.5];
@@ -23,6 +27,13 @@ const skirtOn = typeof location === 'undefined' || new URLSearchParams(location.
 // The far ranges are real peaks, and they take the full scale by 5 km (smoothstep from 2 km), so no seam shows at 2 km.
 const FAR_VS = 1.0;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+/** True when the bearing a of band b is a real mountain: its mean height (m) over MOUNT_HALF bearings either side is MOUNT_M or more. */
+function isMountain(horizon, b, a, d) {
+  let s = 0;
+  for (let k = -MOUNT_HALF; k <= MOUNT_HALF; k++) s += Math.max(0, d * Math.tan(horizon[b * 360 + ((a + k + 360) % 360)]));
+  return s / (2 * MOUNT_HALF + 1) >= MOUNT_M;
+}
 
 /**
  * Builds the ranges. `horizon` is 360 bearings per band (0 north, clockwise; radians of elevation, from the eye); `bands`
@@ -43,7 +54,7 @@ export function createRanges(shared, horizon, bands, ex, ey, ez, VS, { urban = f
       // a town: the DSM reads the roofs of the near 2 km as a plateau, a flat wall. Its top is held low, so the far city
       // stands in front of it; the real ranges (the bands beyond 2 km) keep their angles
       let th = horizon[b * 360 + (a % 360)];
-      if (urban && d <= 2000) th = Math.min(th, TOWN_CAP);
+      if (urban && d <= 2000 && !(d > 1000 && isMountain(horizon, b, a, d))) th = Math.min(th, TOWN_CAP);
       const top = ey + dp * Math.tan(th) * vs;
       // the skirt: the band reaches down below the eye, so where the ground falls away (a bearing under the horizon) it is
       // not left as background. The nearer picture stands in front of it (the depth test); the skirt fills only the gap
