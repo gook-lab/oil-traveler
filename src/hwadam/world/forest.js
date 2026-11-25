@@ -9,6 +9,7 @@ import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
 import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
 import { hasCover, coverAt, coniferChance, NO_TREE, COVER } from './cover.js';
+import { NEAR_M, NEAR_STEP } from './bake.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
@@ -16,6 +17,26 @@ const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], 
 
 // travel: the tier by the distance to the start (m): full detail under TIER_TRAVEL[0], some under [1], far beyond
 const TIER_TRAVEL = [50, 120];
+// a town's park trees (skyline-3): in a town, a tree that is not a street tree and stands within `reach` m of a building,
+// a road or paved ground is a city tree, `h` m high with its crown from the middle of its trunk. The wood's 21 to 29 m
+// beeches with their crowns at the top stood at a Myeongdong crossing as a forest of bare poles (T4 round 2)
+const PARK = { reach: 30, h: [8, 14] };
+
+/** In a town, whether a building, a road or paved ground lies within PARK.reach m (a square about (x, z), on the cover's nodes). */
+function townNear() {
+  const N = NEAR_M / NEAR_STEP, S = new Float64Array((N + 1) * (N + 1));
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const c = coverAt((i - N / 2) * NEAR_STEP, (N / 2 - j) * NEAR_STEP);
+    const v = c === COVER.BUILT || c === COVER.ROAD || c === COVER.PAVED ? 1 : 0;
+    S[(j + 1) * (N + 1) + i + 1] = v + S[j * (N + 1) + i + 1] + S[(j + 1) * (N + 1) + i] - S[j * (N + 1) + i];
+  }
+  const R = Math.round(PARK.reach / NEAR_STEP), at = (v) => Math.min(N, Math.max(0, v));
+  return (x, z) => {
+    const i = Math.round(x / NEAR_STEP + N / 2), j = Math.round(N / 2 - z / NEAR_STEP);
+    const a = at(i - R), b = at(j - R), c = at(i + R + 1), d = at(j + R + 1);
+    return S[d * (N + 1) + c] - S[b * (N + 1) + c] - S[d * (N + 1) + a] + S[b * (N + 1) + a] > 0;
+  };
+}
 
 export const BARK = /* glsl */ `
 uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
@@ -79,7 +100,7 @@ const inFan = (x, z) => FANS.some(({ a, d }) => {
   return r > 0.01 && r < 30 && (dx * d[0] + dz * d[1]) / r > 0.9063;
 });
 
-function plant(streetTrees, keepOut = null) {
+function plant(streetTrees, keepOut = null, town = false) {
   const rand = rng(4471);
   const trees = [];
   // `pave`: a street tree in its pit on the footway (paved), the one cover the other trees keep off
@@ -153,7 +174,11 @@ function plant(streetTrees, keepOut = null) {
     const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
     // the birch aisles hold here too: a birch only where its column of the walk's strip is kept
     if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
+    // only the tree just planted leans over the way: when the cover or a view's fan refused it, the last tree of the list
+    // was bent and shortened again (a town refuses most, and a Gyeongbokgung beech came down to 0.3 mm)
+    const before = trees.length;
     add(x, z, type, type === MAPLE ? 0 : 1);
+    if (trees.length === before) continue;
     const near = trees[trees.length - 1];
     near.toward = Math.atan2(wz - z, wx - x);
     near.lean = [Math.cos(near.toward) * 0.14, Math.sin(near.toward) * 0.14];
@@ -196,8 +221,10 @@ function plant(streetTrees, keepOut = null) {
     }
   }
   // the old oak that stands in the clearing, and two great beeches that make a gate where the way begins
+  // (a place's cover holds it to the other trees' ground: in travel the clearing is the way's goal, which in Myeongdong
+  // fell on a road, and the 23 m oak stood in the street)
   const hero = { x: CLEARING.x + 3, z: CLEARING.z - 2 };
-  trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });
+  if (!hasCover() || !NO_TREE.has(coverAt(hero.x, hero.z))) trees.push({ ...hero, y: heightAt(hero.x, hero.z), type: OAK, tier: 0, r: 1.25, h: 23, family: 1, seed: 77, lean: [0.03, -0.02], hero: true });
   for (const [x, z, s] of [[START.x - 5.5, START.z - 13, 1.9], [START.x + 6.2, START.z - 19, 1.6]]) add(x, z, BEECH, 0, s);
   // no trunk stands in front of a view the picture is taken from (the walk's stills, src/hwadam/main.js's views):
   // the 12 m ahead of the camera, 6.4 m behind the wanderer, stay clear
@@ -222,13 +249,21 @@ function plant(streetTrees, keepOut = null) {
     return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
   };
   const kept = trees.filter((t) => !blocks(t) && !(keepOut && keepOut(t.x, t.z)) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
-  for (const t of kept) if (!t.nearPine && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  // a town's park trees are city trees (PARK): their height and trunk come down together, and they are not lowered again
+  // for the first view's sight band (they stand under the buildings' line already)
+  const near = town && hasCover() ? townNear() : null;
+  for (const t of kept) {
+    if (!near || t.street || t.hero || !near(t.x, t.z)) continue;
+    const h = PARK.h[0] + (PARK.h[1] - PARK.h[0]) * (t.seed / 1000);
+    t.r *= h / t.h; t.h = h; t.park = true;
+  }
+  for (const t of kept) if (!t.nearPine && !t.park && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
   return kept;
 }
 
-export function createForest(shared, { streetTrees = [], keepOut = null } = {}) {
+export function createForest(shared, { streetTrees = [], keepOut = null, town = false } = {}) {
   shared.uForestHaze = shared.uForestHaze ?? { value: CLEAR.fan ? 0.5 : 1.0 };
-  const trees = plant(streetTrees, keepOut);
+  const trees = plant(streetTrees, keepOut, town);
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
   const barkDabs = []; // pos 3, dir 3, nrm 3, data 4 (seed, across, kind, along)
@@ -268,8 +303,10 @@ export function createForest(shared, { streetTrees = [], keepOut = null } = {}) 
     // crown; the others keep the old density. Only these have bare trunks in the picture (Bukhansan, Hwadam)
     const seen = CLEAR.fan && Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) < 300 && (((t.x - CLEAR.x) * CLEAR.fx + (t.z - CLEAR.z) * CLEAR.fz) / Math.max(1e-6, Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z))) > Math.cos((40 * Math.PI) / 180);
     // --- crown: limbs, and the lobes of leaves they hold up ---
-    const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
-    const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
+    // a park tree (PARK) carries its crown from the middle of its trunk, as wide as its height allows
+    const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero || t.park ? 0.66 : 0.8), t.z + t.lean[1] * top);
+    const spread = (t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2) * (t.park ? 0.55 : 1);
+    const lobeR = t.park ? 0.6 : 1; // a park tree's leaf masses, to its size
     const treeLobes = [];
     if (t.conifer && !t.nearPine) {
       // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
@@ -285,7 +322,7 @@ export function createForest(shared, { streetTrees = [], keepOut = null } = {}) 
       const limbs = t.nearPine ? 4 : t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
-        const from = t.nearPine ? top * (0.62 + 0.12 * (i / limbs)) : t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
+        const from = t.nearPine ? top * ((t.park ? 0.45 : 0.62) + 0.12 * (i / limbs)) : t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : t.park ? 0.42 + 0.4 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
         const p0 = new THREE.Vector3();
         const r0 = trunkAt(from, p0);
         const tilt = t.nearPine ? 0.5 + rand() * 0.3 : t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
@@ -317,23 +354,24 @@ export function createForest(shared, { streetTrees = [], keepOut = null } = {}) 
             for (let q = 0; q < 2; q++) treeLobes.push([c.x + (rand() - 0.5) * 2.4, c.y - 0.4 * q, c.z + (rand() - 0.5) * 2.4, 1.3 + rand() * 0.6]);
             continue;
           }
-          treeLobes.push([c.x, c.y, c.z, (t.hero ? 2.3 : 1.25) + rand() * 1.0 + t.r * 0.6]);
+          treeLobes.push([c.x, c.y, c.z, ((t.hero ? 2.3 : 1.25) + rand() * 1.0 + t.r * 0.6) * lobeR]);
         }
       }
       if (!t.nearPine) for (let i = 0; i < (t.hero ? 8 : 3); i++) treeLobes.push([crown.x + (rand() - 0.5) * spread * 0.9, t.y + t.h * (t.hero ? 0.92 : 0.96) + (rand() - 0.5) * 3, crown.z + (rand() - 0.5) * spread * 0.9, 1.5 + rand() * (t.hero ? 1.6 : 0.9)]);
     } else {
-      const n = some ? 7 : 4;
+      // a park tree has the nearer tier's seven lobes at any distance: four small ones read as a sapling's scattered leaves
+      const n = some || t.park ? 7 : 4;
       for (let i = 0; i < n; i++) {
         const a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * spread;
-        treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, (some ? 2.3 : 3.4) + rand() * 1.2]);
+        treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, ((some || t.park ? 2.3 : 3.4) + rand() * 1.2) * lobeR]);
       }
       // travel broadleaves: two lobes low on the trunk (0.42 to 0.62 of the height), so the crown reaches down and the
       // bare lower trunk does not read as a stick (the Bukhansan beech at 0.62 of its height)
-      if (seen && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, 2.2 + rand() * 1.0]);
+      if (seen && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, (2.2 + rand() * 1.0) * lobeR]);
     }
     // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
     // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
-    const perLobe = t.nearPine ? 26 : full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
+    const perLobe = t.nearPine ? 26 : full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : t.park ? 14 : seen && t.type !== BIRCH ? 18 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       // a street tree's crown casts no shade (T4 round 1): the town's shade holds the trees and not the buildings, so a

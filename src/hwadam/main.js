@@ -155,8 +155,12 @@ const deckOut = travel && place.cover ? deckKeepOut(place.cover) : null;
 const walls = travel && place.cover ? createStreamWalls(shared, place.cover, heightAt, { keepOut: deckOut ?? undefined, near: vantage }) : null;
 const streetAt = walls ? (x, z) => Math.max(heightAt(x, z), walls.topAt(x, z) ?? -Infinity) : heightAt;
 const streets = travel && place.cover ? createStreets(shared, place.cover, streetAt, walls ? { keep: (x, z) => !walls.sunk(x, z) } : {}) : null;
+// travel: a town's ground beyond the square is city ground (midground, ranges); its park trees are city trees (forest.js
+// PARK) and its fallen leaves are dulled (floor.js)
+const urban = travel && isUrban(place.cover?.grid);
+shared.uTown = { value: urban ? 1 : 0 };
 // travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4) or on a stream's wall
-const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [], keepOut: deckOut ? (walls ? (x, z) => deckOut(x, z) || walls.topAt(x, z) != null : deckOut) : null });
+const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [], keepOut: deckOut ? (walls ? (x, z) => deckOut(x, z) || walls.topAt(x, z) != null : deckOut) : null, town: urban });
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
@@ -172,8 +176,6 @@ lap('shade');
 say(0.25, 'Fetching the wanderer');
 await turn();
 const kick = createKick(shared);
-// travel: a town's ground beyond the square is city ground (midground, ranges)
-const urban = travel && isUrban(place.cover?.grid);
 const horizon = place.horizon; // the real skyline round the viewpoint (see tools/fetch-dem.mjs, src/hwadam/world/bake.js)
 const scenery = createScenery(shared, horizon, heightAt(CLEARING.x, CLEARING.z) + 1.6);
 // the far ranges: the real skyline of three horizon bands (2, 5, 15 km), each a mountain line at its own distance, from the eye (M3, baked Hwadam walk)

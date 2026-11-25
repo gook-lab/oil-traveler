@@ -31,6 +31,10 @@ int pickKind(float pick, vec4 sw, float v) {
   return 5;
 }
 vec3 litter(int k, float lit, float r) { return paint3(LIT_L[k], LIT_M[k], LIT_S[k], lit, r); }
+// a town's fallen leaves and fronds (skyline-3, uTown 1 in a town): half their colour goes to a dull ochre grey, so a bed
+// of them under a park tree reads as leaves on the ground and not as red paint spilled on the pavement
+uniform float uTown;
+vec3 townLeaf(vec3 c) { return mix(c, vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(1.05, 0.98, 0.88), 0.55 * uTown); }
 `;
 
 const carpet = /* glsl */ `
@@ -72,8 +76,8 @@ void makeDab(inout Dab d) {
   // the moss garden's cover stops at the bare way: the path stays visible through the garden
   c1 = mix(c1, mossC, sw.x * (1.0 - m.r));
   c2 = mix(c2, mossC * 0.92, sw.x * (1.0 - m.r));
-  c1 = jitter(c1, r.wzy, 0.5);
-  c2 = jitter(c2, q.wzy, 0.5);
+  c1 = townLeaf(jitter(c1, r.wzy, 0.5));
+  c2 = townLeaf(jitter(c2, q.wzy, 0.5));
   // leaves lie any way round, though those that fell together lie much alike; the moss touches each turn their own way
   // (a slow noise alone gave neighbours the same turn, which read as one stamp repeated)
   float a = (texture(tNoise, xz / 6.3).a * 0.5 + q.y * 0.3 + r.x * 0.45) * TAU;
@@ -144,7 +148,7 @@ void makeDab(inout Dab d) {
     float gg = sw.x;
     c = paint3(gg * vec3(0.36, 0.46, 0.24) + (1.0 - gg) * vec3(1.0, 0.88, 0.46), gg * vec3(0.22, 0.3, 0.14) + (1.0 - gg) * vec3(0.76, 0.6, 0.24), gg * vec3(0.16, 0.26, 0.16) + (1.0 - gg) * vec3(0.3, 0.27, 0.2), lit, f.w);
   }
-  c = jitter(c, f.zwx, 0.55);
+  c = townLeaf(jitter(c, f.zwx, 0.55));
   float sway = sin(uTime * (1.6 + f.z) + f.w * 40.0) * (0.04 + 0.1 * gust);
   vec2 lean = fan * mix(0.9 + 1.3 * f.y, 0.12 + 0.4 * f.y, grass) + uWind.xy * (0.08 + 0.6 * gust + sway);
   d.dir = normalize(vec3(lean.x, 1.0, lean.y));
