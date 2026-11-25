@@ -97,7 +97,12 @@ export function createStreamWalls(shared, cover, ground, { keepOut = () => false
       out.push({ P00: [A[0], yA, A[1]], P10: [B[0], yB, B[1]], P01: [cA[0], yA, cA[1]], P11: [cB[0], yB, cB[1]], n: [0, 1, 0], cell: [WALL.block, WALL.coping], col: (uu, vv, r) => tone(COLOR.coping, r), noDab: !near1 });
       const mid = back([(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], m, (WALL.coping + cfg.top) / 2);
       const onRoad = coverAt(mid[0], mid[1]) === COVER.ROAD;
-      out.push({ P00: [cA[0], yA, cA[1]], P10: [cB[0], yB, cB[1]], P01: [kA[0], yA, kA[1]], P11: [kB[0], yB, kB[1]], n: [0, 1, 0], cell: [2, 2], col: (uu, vv, r) => tone(onRoad ? COLOR.asphalt : COLOR.walk, r), noDab: true });
+      // the street on the top takes the floor's strokes in rows (the floor lays no dab over a wall's top, its ground being a
+      // ramp under it): left to the solid alone, a 4 m strip of road read as a smooth grey slab lying on the street
+      // (T4 confirmation round, the rail view)
+      const topC = (uu, vv, r) => tone(onRoad ? COLOR.asphalt : COLOR.walk, r);
+      out.push({ P00: [cA[0], yA, cA[1]], P10: [cB[0], yB, cB[1]], P01: [kA[0], yA, kA[1]], P11: [kB[0], yB, kB[1]], n: [0, 1, 0], cell: [2, 2], col: () => tone(onRoad ? COLOR.asphalt : COLOR.walk, 0.5),
+        rows: [0.1, 0.3, 0.5, 0.7, 0.9].map((v) => ({ v, across: 0.8, every: 1.1, along: 1.5, col: topC })) });
       // the wall's box: from the face back past the ground's ramp, from under the promenade to the street
       const y0 = Math.min(yLow[m], yLow[m + 1]) - 0.6, y1 = (yTop[m] + yTop[m + 1]) / 2;
       const cx = (A[0] + B[0]) / 2 - nW[0] * cfg.top / 2, cz = (A[1] + B[1]) / 2 - nW[2] * cfg.top / 2;

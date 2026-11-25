@@ -207,7 +207,13 @@ export function createLand(shared) {
   const geometry = new THREE.PlaneGeometry(2 * EXTENT, 2 * EXTENT, seg, seg);
   geometry.rotateX(-Math.PI / 2);
   const pos = geometry.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)) - 0.04);
+  // each vertex takes the lowest of the ground at it and half a metre round it: the mesh's 1 m triangles bridged the
+  // 0.5 m ground's creases (a town stream's banks, a kerb's ramp) and stood over the dabs as a smooth grey slab on the
+  // street (T4 confirmation round, the rail view; hidden, the dabs were there under it)
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    pos.setY(i, Math.min(heightAt(x, z), heightAt(x + 0.5, z), heightAt(x - 0.5, z), heightAt(x, z + 0.5), heightAt(x, z - 0.5)) - 0.04);
+  }
   const material = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
     uniforms: shared,

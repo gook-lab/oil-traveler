@@ -70,6 +70,8 @@ const USE_WALLS = {
 /** A glass tower's tints, low and high (it takes more of the sky up its face): blue, green-grey, bronze, silver. */
 export const GLASS = [[[0.4, 0.5, 0.58], [0.66, 0.74, 0.8]], [[0.4, 0.5, 0.48], [0.64, 0.72, 0.7]], [[0.46, 0.41, 0.35], [0.7, 0.65, 0.57]], [[0.54, 0.57, 0.6], [0.78, 0.8, 0.82]]];
 /** The poi classes of a shop on a street's ground floor (상가). */
+/** The goods behind a lit shop pane (red, blue, green, white, yellow, plum), mixed with the shop's warm light. */
+const GOODS = [[0.78, 0.3, 0.25], [0.3, 0.45, 0.7], [0.35, 0.6, 0.4], [0.92, 0.9, 0.86], [0.9, 0.72, 0.3], [0.55, 0.4, 0.6]];
 export const SHOP_POI = new Set(['restaurant', 'cafe', 'shop', 'fast_food', 'bar', 'beer', 'pub', 'bakery', 'hairdresser', 'beauty', 'clothing_store', 'bank', 'pharmacy', 'chemist', 'grocery', 'supermarket', 'convenience', 'ice_cream', 'alcohol_shop', 'butcher', 'deli', 'confectionery', 'laundry', 'dentist', 'doctors', 'optician', 'mobile_phone', 'cosmetics', 'perfumery', 'jewelry', 'books', 'stationery', 'gift', 'shoes', 'bag', 'florist', 'toys', 'music', 'furniture', 'hardware', 'electronics', 'sports', 'variety_store', 'department_store', 'mall', 'karaoke', 'nightclub', 'tobacco']);
 /** A modern block within this distance (m) of a palace point is quiet: no shopfront behind a throne hall (r70). */
 const QUIET_M = 150;
@@ -477,7 +479,11 @@ function surfacesOf(p, ground) {
               if (((x % 1.3) + 1.3) % 1.3 < 0.12) return [0.22, 0.22, 0.24];
               if (fy >= 1.6) return (litPane(x) ? [0.95, 0.88, 0.72] : [0.66, 0.74, 0.8]).map((c) => c * tone);
               if (!litPane(x)) return [0.32, 0.36, 0.4].map((c) => c * tone);
-              return (fy >= 1.1 && fy < 1.16 ? [0.35, 0.28, 0.22] : [0.92, 0.8, 0.56]).map((c) => c * tone);
+              // a lit pane's goods: a colour on the low shelf and another on the one above, in the shop's light, with a
+              // pale glass shelf between (T4 confirmation round: one warm beige under a dark line read as a boarded-up pane)
+              if (fy >= 1.1 && fy < 1.16) return [0.86, 0.86, 0.82];
+              const pane = Math.floor(x / 1.3), g = GOODS[Math.floor(rnd(pane * 0.53 + (fy < 1.1 ? 0 : 7.7), p.c[0] * 0.011 + p.c[1] * 0.007) * GOODS.length)];
+              return g.map((c, i) => (c * 0.7 + [0.95, 0.86, 0.66][i] * 0.3) * tone);
             }
             if (fy < 2.95) return [0.18, 0.18, 0.2];
             const xm = ((x % 3.9) + 3.9) % 3.9;

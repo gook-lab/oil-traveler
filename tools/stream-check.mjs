@@ -17,6 +17,8 @@ const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i
 const root = resolve(here, flag('dist', 'dist'));
 const outDir = resolve(here, flag('out', 'shots/stream-b6'));
 const place = flag('place', '37.569,126.985');
+// --extra: more query for the page (e.g. hide=streets, to see which part paints a patch)
+const extra = flag('extra', '');
 mkdirSync(outDir, { recursive: true });
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.glb': 'model/gltf-binary', '.wasm': 'application/wasm' };
 const server = createServer((req, res) => {
@@ -33,7 +35,7 @@ try {
   page.on('pageerror', (e) => console.log('pageerror', e.message));
   // the travel walk starts in the first person, which sets the camera after the fixed view of lab.view: third person here
   await page.addInitScript(() => { try { localStorage.setItem('oil-forest-view', '0'); } catch { /* private window */ } });
-  await page.goto(`http://127.0.0.1:${server.address().port}/?capture&nopad&scene=travel&place=${place}&clean`);
+  await page.goto(`http://127.0.0.1:${server.address().port}/?capture&nopad&scene=travel&place=${place}&clean${extra ? `&${extra}` : ''}`);
   await page.waitForFunction(() => window.lab?.ready, null, { timeout: 90000 });
   const report = await page.evaluate(() => {
     const L = window.lab, P = L.player, W = L.streamWalls, base = L.input.read(1 / 60);
