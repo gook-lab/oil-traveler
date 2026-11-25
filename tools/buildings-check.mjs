@@ -20,9 +20,14 @@ mkdirSync(outDir, { recursive: true });
 const ALL = [
   { name: 'gyeongbokgung', lat: 37.5788, lon: 126.9770, label: '경복궁' },
   { name: 'myeongdong', lat: 37.5636, lon: 126.9826, label: '명동' },
+  // T4: the uses of a block (a street of shops, towers, apartments)
+  { name: 'hongdae', lat: 37.5563, lon: 126.9236, label: '홍대' },
+  { name: 'gangnam', lat: 37.4979, lon: 127.0276, label: '강남역' },
+  { name: 'banpo', lat: 37.505, lon: 126.997, label: '반포 아파트' },
+  { name: 'cheonggye', lat: 37.569, lon: 126.985, label: '청계천' },
 ];
 const only = flag('only', '');
-const PLACES = ALL.filter((p) => !only || p.name === only);
+const PLACES = ALL.filter((p) => !only || only.split(',').includes(p.name));
 const t0 = Date.now();
 const step = (what) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}s] ${what}`);
 
