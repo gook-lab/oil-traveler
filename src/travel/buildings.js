@@ -50,7 +50,7 @@ const STONE_MARK = [0.3, 1.0];
  *   quiet     near a palace: small windows in a plain wall, no shop and no sign
  *   shop      근린상가: big windows, and on some storeys a sign board under the next slab
  *   tower     glass by the storey: a spandrel band and thin mullions
- *   apartment balconies along its long sides (parapet, glass, lintel), a blank gable
+ *   apartment balconies along its long sides (a pier, parapet, handrail, glass, lintel), its number on each gable
  *   house     빌라: brick or tile, small windows
  */
 const FACADE = {
@@ -58,7 +58,7 @@ const FACADE = {
   quiet: { fl: 3.5, per: 3.2, u: [0, 1.1], v: [0, 0.22, 1.1, 2.1] },
   shop: { fl: 3.5, per: 3.9, u: [0, 0.3], v: [0, 0.22, 0.9, 2.4, 2.55, 3.3] },
   tower: { fl: 3.8, per: 1.5, u: [0, 0.08], v: [0, 0.9] },
-  apartment: { fl: 2.8, per: 1.2, u: [0, 0.08], v: [0, 0.2, 1.1, 2.6] },
+  apartment: { fl: 2.8, per: 3.6, u: [0, 0.35, 1.95, 2.03], v: [0, 0.2, 1.05, 1.15, 2.45] },
   house: { fl: 2.8, per: 3.2, u: [0, 0.9, 2.3], v: [0, 0.2, 1.0, 2.2] },
 };
 /** The walls of a block by its use (the data's colour wins for an office, a shop or a quiet block). */
@@ -396,6 +396,19 @@ function surfacesOf(p, ground) {
     const pal = USE_WALLS[use];
     const wallC = p.wall ? [0.74, 0.62, 0.46] : pal && !(base && use === 'quiet') ? pal[Math.floor(rnd(p.c[0] + 5.3, p.c[1] - 2.9) * pal.length)] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : pick;
     const roofC = [0.3, 0.3, 0.31];
+    // an apartment's number (T4 round 2: the blocks read as offices): on a slab's two gables, high up; on a tower block
+    // (탑상형, most of 반포: outlines of 12 to 30 points) in its crown, on its longest edge and the edges facing away from it
+    const aptNum = use === 'apartment' && !p.wall && ytAll - ybAll >= 18;
+    const crown = aptNum && !slab;
+    const edgeOf = (k) => { const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length]; const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez) || 1; return { ex, ez, L }; };
+    const kMax = aptNum ? p.pts.reduce((m, _, k) => (edgeOf(k).L > edgeOf(m).L ? k : m), 0) : 0;
+    const numbered = (k) => {
+      if (!aptNum) return false;
+      const { ex, ez, L } = edgeOf(k);
+      if (slab) return Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9 && L >= 8;
+      const M = edgeOf(kMax);
+      return k === kMax || ((ex * M.ex + ez * M.ez) / (L * M.L) < -0.8 && L >= 0.6 * M.L);
+    };
     for (let k = 0; k < p.pts.length; k++) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
@@ -488,13 +501,14 @@ function surfacesOf(p, ground) {
         // counted from the block's foot and its rhythm along the edge. The base pattern decides the colour; the dabs read
         // it where they sit
         if (H - G > 0.3) out.push({
-          P00: [A[0], yb + G, A[1]], P10: [B[0], yb + G, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb: yb + G, H: H - G, fac, y0 },
+          P00: [A[0], yb + G, A[1]], P10: [B[0], yb + G, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb: yb + G, H: H - G, fac, y0, cuts: crown ? [yt - APT_CROWN] : [] },
           col: (u, v, r) => {
             const fy = G + v * (H - G), x = s0 + u * Lk;
             if (p.wall && fy > H - 0.5) return COPING; // the band of dark tiles under the coping
             if (p.wall && fy < 1.1) return [0.56, 0.55, 0.52].map((c) => c * (0.92 + 0.16 * r)); // a course of granite blocks at its foot
             if (p.wall) return wallC.map((c) => c * (0.95 + 0.1 * r));
             if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
+            if (crown && fy > H - APT_CROWN) return wallC.map((c) => c * (0.95 + 0.1 * r)); // a tower apartment's blank crown
             return facadeColour(look, wallC, fac, x, yb + fy - y0, r, !(slab && Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9), p.c, tv);
           },
           // a tower's glass and stone take no touches: the solid's own strokes paint it (r71: dark touches on the mullions
@@ -528,6 +542,19 @@ function surfacesOf(p, ground) {
             }
           }
         }
+      }
+      // the apartment's number (numbered above): three digits, 101 to 112, in a dark grey; high on a slab's gable, in the
+      // middle of a tower block's crown
+      if (numbered(k) && L >= 1.2 + 2.46) {
+        // the digits fit the edge (three of 0.62 h with two gaps of 0.3 h, and 0.6 m each side)
+        const dh = Math.min(crown ? APT_CROWN - 1.2 : Math.min(3.2, 0.07 * (ytAll - ybAll)), (L - 1.2) / 2.46);
+        const num = String(101 + Math.floor(rnd(p.c[0] * 0.13 + 2.7, p.c[1] * 0.11 - 1.9) * 12));
+        const w = 3 * 0.62 * dh + 2 * 0.3 * dh, half = Math.min(L / 2 - 0.3, w / 2 + 0.6), W = 2 * half, Hm = dh + 1;
+        const n = p.ccw ? [ez / L, 0, -ex / L] : [-ez / L, 0, ex / L], y1 = crown ? ytAll - APT_CROWN / 2 - Hm / 2 : ytAll - 2.2 - dh - 0.5;
+        const P = (s, y) => [a[0] + (ex * s) / L + n[0] * 0.05, y, a[1] + (ez * s) / L + n[2] * 0.05];
+        const marks = digitMarks(num, (W - w) / 2, 0.5, dh, [0.26, 0.29, 0.34], (x, y) => [x / W, y / Hm]);
+        out.push({ P00: P(L / 2 - half, y1), P10: P(L / 2 + half, y1), P01: P(L / 2 - half, y1 + Hm), P11: P(L / 2 + half, y1 + Hm), n,
+          cell: [W, Hm], breaks: { u: [0, 1], v: [0, 1] }, marks, col: (u, v, r) => wallC.map((c) => c * (0.95 + 0.1 * r)) });
       }
     }
     if (!p.wall) out.push({ poly: p.pts, y: ytAll, n: [0, 1, 0], col: () => roofC });
@@ -832,6 +859,24 @@ function surfacesOf(p, ground) {
   return { out, yb, yt: y2, kind: 'traditional', hullTop: y1, hullRect: wallPts(0), solids };
 }
 
+/** The blank crown (m) on top of a tower apartment, where its number is painted. */
+const APT_CROWN = 3.6;
+/** The seven segments of a digit, in a unit box (x right, y up): [x, y, upright]. */
+const SEG = { a: [0.5, 1, 0], b: [1, 0.75, 1], c: [1, 0.25, 1], d: [0.5, 0, 0], e: [0, 0.25, 1], f: [0, 0.75, 1], g: [0.5, 0.5, 0] };
+const DIGITS = ['abcdef', 'bc', 'abged', 'abgcd', 'fgbc', 'afgcd', 'afgedc', 'abc', 'abcdefg', 'abcdfg'];
+/** A number as marks: digits h high from (x0, y0) in a face's metres, toUV turning them into its (u, v). */
+function digitMarks(text, x0, y0, h, ink, toUV) {
+  const w = 0.62 * h, gap = 0.3 * h, th = 0.15 * h, marks = [];
+  [...text].forEach((ch, i) => {
+    for (const sg of DIGITS[+ch] ?? '') {
+      const [sx, sy, up] = SEG[sg];
+      const [u, v] = toUV(x0 + i * (w + gap) + sx * w, y0 + sy * h);
+      marks.push({ u, v, size: [th, up ? h / 2 + th / 2 : w + th / 2], up: !!up, col: ink });
+    }
+  });
+  return marks;
+}
+
 /** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
  *  2.6 m, along the run) and at each window band's edges (1.0 and 2.3 m of every 3.5 m, in world height). */
 /** Whether storey st of a shop block carries sign boards: the second floor of most blocks, the third of about half, none
@@ -891,9 +936,14 @@ function facadeColour(use, wallC, fac, x, y, r, long, c, tv = 0) {
       return mixc(g0, g1, Math.min(1, Math.max(0, (y - 4) / 60))).map((q) => q * t);
     }
     case 'apartment':
+      // a unit's balcony a bay (T4 round 2: a ribbon of pale glass read as an office): a pier of wall, a parapet a little
+      // brighter than the wall, a dark handrail, the dark glass of the expanded balcony with its middle frame, the lintel
       if (row < 0.2) return slab;
-      if (!long || row < 1.1 || row >= 2.6) return wall;
-      return col < fac.u[1] ? [0.84, 0.84, 0.82] : [0.6, 0.68, 0.74].map((q) => q * t);
+      if (!long || col < fac.u[1] || row >= 2.45) return wall;
+      if (row < 1.05) return wallC.map((q) => Math.min(1, q * 1.06) * t);
+      if (row < 1.15) return [0.34, 0.36, 0.4];
+      if (col >= fac.u[2] && col < fac.u[3]) return [0.86, 0.86, 0.84];
+      return [0.36, 0.43, 0.49].map((q) => q * t);
     case 'house':
       if (row < 0.2) return [0.76, 0.75, 0.72].map((q) => q * t);
       if (row >= 1.0 && row < 2.2 && col >= 0.9 && col < 2.3) return col < 0.98 || col > 2.22 ? [0.88, 0.87, 0.84] : [0.24, 0.28, 0.32].map((q) => q * t);
@@ -911,7 +961,7 @@ function facadeColour(use, wallC, fac, x, y, r, long, c, tv = 0) {
   }
 }
 
-function runBreaks({ s0, Lk, yb, H, fac = FACADE.office, y0 = 0 }) {
+function runBreaks({ s0, Lk, yb, H, fac = FACADE.office, y0 = 0, cuts = [] }) {
   const u = [0, 1], v = [0, 1];
   for (let m = Math.floor(s0 / fac.per) * fac.per - fac.per; m <= s0 + Lk + fac.per; m += fac.per) for (const off of fac.u) {
     const p = m + off - s0;
@@ -921,6 +971,7 @@ function runBreaks({ s0, Lk, yb, H, fac = FACADE.office, y0 = 0 }) {
     const y = y0 + k * fac.fl + c, vv = (y - yb) / H;
     if (vv > 0.02 && vv < 0.98) v.push(vv);
   }
+  for (const y of cuts) { const vv = (y - yb) / H; if (vv > 0.02 && vv < 0.98) v.push(vv); }
   const uniq = (a) => [...new Set(a.map((x) => +x.toFixed(4)))].sort((x, y) => x - y);
   return { u: uniq(u), v: uniq(v) };
 }
