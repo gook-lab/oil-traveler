@@ -85,12 +85,12 @@ export function createFar(shared, outlines, mid, H0) {
         c *= 1.0 - band * wall;
         // the air takes most of the far city: the haze of the walk, with the distance
         vec3 air = airColour(normalize(vWorld - cameraPosition));
-        outC = vec4(mix(c, air, clamp(0.25 + 0.5 * mistBetween(vWorld), 0.0, 0.85)), 1.0);
+        outC = vec4(mix(c, air, clamp(0.1 + 0.3 * mistBetween(vWorld), 0.0, 0.5)), 1.0);
       }`,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.frustumCulled = false;
   const group = new THREE.Group();
   group.add(mesh);
-  return { group, stats: { plans: plans.length, outlines: outlines.length, tris, msBuild: Math.round(performance.now() - T0) } };
+  return { group, plans, stats: { plans: plans.length, outlines: outlines.length, tris, msBuild: Math.round(performance.now() - T0) } };
 }
