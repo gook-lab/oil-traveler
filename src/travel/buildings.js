@@ -421,6 +421,14 @@ function surfacesOf(p, ground) {
   const sides = [[R.ux, R.uz, R.hu], [-R.ux, -R.uz, R.hu], [R.vx, R.vz, R.hv], [-R.vx, -R.vz, R.hv]];
   const [o0, o1, hd] = sides.reduce((best, c) => (c[1] > best[1] ? c : best));
   const STAIR_W = 2;
+  // the solid parts round the hall that the walker meets (the podium's tiers, its steps and balustrades, the stone base):
+  // physics boxes { c, h, q } as the outline walls below, laid where each part is drawn (r71: he walked through the podium)
+  const solids = [];
+  const solid = (P4, y0, y1) => {
+    const ex = P4[1][0] - P4[0][0], ez = P4[1][1] - P4[0][1], phi = Math.atan2(-ez, ex);
+    const Lv = Math.hypot(P4[3][0] - P4[0][0], P4[3][1] - P4[0][1]);
+    solids.push({ c: [(P4[0][0] + P4[2][0]) / 2, (y0 + y1) / 2, (P4[0][1] + P4[2][1]) / 2], h: [Math.hypot(ex, ez) / 2, (y1 - y0) / 2, Lv / 2], q: [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)] });
+  };
   if (big) {
     // the podium (월대): two tiers of 1.2 m, 5 m and 2.5 m out from the posts, of dark grey-brown stone in thin strokes along
     // it (so a tier keeps its straight edge), each with its top and a pale stone balustrade (0.7 m) round its edge, open
@@ -430,6 +438,7 @@ function surfacesOf(p, ground) {
       const y0 = i === 0 ? yb - 0.2 : yb + TIER - 0.01, y1 = yb + TIER * (i + 1);
       face(wallPts(pad), y0, y1, podC, [3.2, TIER], { mark: STONE_MARK });
       lid(wallPts(pad), y1, podTopC);
+      solid(wallPts(pad), yb - 0.6, y1);
       const P = wallPts(pad - 0.15);
       for (let k = 0; k < 4; k++) {
         const a = P[k], b = P[(k + 1) % 4], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -439,6 +448,7 @@ function surfacesOf(p, ground) {
         const runs = front ? [[0, L / 2 - STAIR_W - 0.3], [L / 2 + STAIR_W + 0.3, L]] : [[0, L]];
         for (const [s0, s1] of runs) {
           const A = [a[0] + ux * s0, a[1] + uz * s0], B = [a[0] + ux * s1, a[1] + uz * s1], Lr = s1 - s0;
+          solid([[A[0] - n[0] * 0.1, A[1] - n[2] * 0.1], [B[0] - n[0] * 0.1, B[1] - n[2] * 0.1], [B[0] + n[0] * 0.1, B[1] + n[2] * 0.1], [A[0] + n[0] * 0.1, A[1] + n[2] * 0.1]], y1, y1 + 0.7);
           out.push({ P00: [A[0], y1, A[1]], P10: [B[0], y1, B[1]], P01: [A[0], y1 + 0.7, A[1]], P11: [B[0], y1 + 0.7, B[1]], n, cell: [2, 0.7], mark: [0.2, 0.8],
             // a post every 2 m (0.25 m wide, brighter), the rail between them a shade darker
             breaks: { u: [0, ...Array.from({ length: Math.floor(Lr / 2) }, (_, m) => [((m + 1) * 2 - 0.125) / Lr, ((m + 1) * 2 + 0.125) / Lr]).flat().filter((x) => x > 0 && x < 1), 1], v: [0, 1] },
@@ -455,6 +465,7 @@ function surfacesOf(p, ground) {
         const d0 = dEdge + 0.5 * j, d1 = d0 + 0.5, top = yTop - 0.3 * (j + 1), low = yb - 0.2;
         out.push({ P00: wp(d0, -STAIR_W, top), P10: wp(d0, STAIR_W, top), P01: wp(d1, -STAIR_W, top), P11: wp(d1, STAIR_W, top), n: [0, 1, 0], cell: [1.6, 0.5], mark: STONE_MARK, col: stoneC });
         out.push({ P00: wp(d1, -STAIR_W, low), P10: wp(d1, STAIR_W, low), P01: wp(d1, -STAIR_W, top), P11: wp(d1, STAIR_W, top), n: [o0, 0, o1], cell: [1.6, 0.4], mark: STONE_MARK, col: stoneC });
+        solid([wp(d0, -STAIR_W, 0), wp(d1, -STAIR_W, 0), wp(d1, STAIR_W, 0), wp(d0, STAIR_W, 0)].map((q) => [q[0], q[2]]), low - 0.4, top);
       }
     };
     flight(PADS[1], yb + 2 * TIER);
@@ -462,6 +473,7 @@ function surfacesOf(p, ground) {
   } else {
     face(wallPts(STONE_PAD), yb - 0.2, floor, stoneC, [3.2, 0.8], { mark: STONE_MARK });
     lid(wallPts(STONE_PAD), floor, stoneC);
+    solid(wallPts(STONE_PAD), yb - 0.6, floor);
   }
   // the long side toward the court: the long sides are 0 and 2 or 1 and 3
   const frontPts = wallPts(0);
@@ -655,7 +667,7 @@ function surfacesOf(p, ground) {
     const yEave = floor + Math.max(3.2, Math.min(WALL_MAX, WALL_FRAC * p.h));
     storey(R, floor, yEave);
     hipRoof(R, yEave, eaveOf(yEave - floor), Math.max(1.5, 0.4 * 2 * R.hv), big, null, Math.min(DROP, 0.2 * (yEave - floor)));
-    return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
+    return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0), solids };
   }
   // 중층: the lower storey (5.5 m) and the lower roof: the same hip function over the lower eave, its height chosen so that
   // it meets the upper storey's foot 1.2 m over the lower posts' top, and left out inside the upper storey
@@ -670,7 +682,7 @@ function surfacesOf(p, ground) {
   storey(R2, yFoot, y2);
   const rise = 0.5 * 2 * R2.hv;
   hipRoof(R2, y2, eo2, Math.max(1.5, p.filled ? rise : Math.min(rise, yb + p.h - (y2 - DROP))), true);
-  return { out, yb, yt: y2, kind: 'traditional', hullTop: y1, hullRect: wallPts(0) };
+  return { out, yb, yt: y2, kind: 'traditional', hullTop: y1, hullRect: wallPts(0), solids };
 }
 
 /** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
@@ -925,6 +937,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
       const phi = Math.atan2(-ez, ex); // the box runs along the edge: its x axis is the edge, turned about y
       boxes.push({ c: [(p0[0] + p1[0]) / 2, (floor + ceil) / 2, (p0[1] + p1[1]) / 2], h: [L / 2 + 0.2, (ceil - floor) / 2, 0.2], q: [0, Math.sin(phi / 2), 0, Math.cos(phi / 2)] });
     }
+    for (const s of b.solids ?? []) boxes.push(s);
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
