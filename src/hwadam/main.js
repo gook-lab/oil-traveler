@@ -191,8 +191,10 @@ if (travel) scenery.group.visible = false;
 await RAPIER.init();
 const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 {
-  // the travel ground is the whole baked square (its boundary is at 250 m), the walk's is the middle 384 m
-  const f = travel ? land.heightField(480, 250) : land.heightField();
+  // the travel ground is the whole baked square (its boundary is at 250 m), the walk's is the middle 384 m. The cells are
+  // the drawn ground's own (heightAt's 0.5 m nodes), so the two meet at every node: on the cliffs of Bukhansan a 1.04 m
+  // field that missed the nodes stood up to 5.7 m off the drawn ground, and he walked under trunks and into the rock
+  const f = travel ? land.heightField(1000, 250) : land.heightField(768, 192);
   physics.createCollider(RAPIER.ColliderDesc.heightfield(f.cells, f.cells, f.heights, { x: 2 * f.half, y: 1, z: 2 * f.half }));
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
   // the walls of the buildings: a thin box on every edge of each outline (T3, src/travel/buildings.js)

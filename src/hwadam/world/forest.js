@@ -253,7 +253,9 @@ export function createForest(shared) {
       outP.lerpVectors(pts[i], pts[i + 1], k);
       return radii[i] + (radii[i + 1] - radii[i]) * k;
     };
-    if (full && wayDist(t.x, t.z) < 60) colliders.push({ x: t.x, z: t.z, y: t.y, r: t.r * 1.15 });
+    // every trunk stops the walker, whatever its tier (r71: only the near tier within 60 m of the Hwadam way had one,
+    // and in the travel scene he walked through the trunks of the farther trees)
+    colliders.push({ x: t.x, z: t.z, y: t.y, r: t.r * 1.15 });
 
     // travel only: a tree in the first view (within 300 m and 40 degrees either side of the gaze) gets the denser
     // crown; the others keep the old density. Only these have bare trunks in the picture (Bukhansan, Hwadam)

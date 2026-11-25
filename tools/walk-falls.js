@@ -12,7 +12,7 @@ for (let k = 0; k < 8; k++) {
   L.teleport(sp.x, sp.z, sp.x + fx * 10, sp.z + fz * 10);
   L.setInput(() => ({ ...base, move: { x: 0, y: 1 }, sprint: true }));
   const d = { dir: k * 45, events: [], maxBelow: 0, airRuns: 0, longestAir: 0, end: null };
-  let far = 0, air = 0;
+  let far = 0, air = 0, last = { x: sp.x, z: sp.z };
   for (let i = 0; i < 240; i++) {
     L.step(1 / 60, 15);
     const f = P.feet, g = L.heightAt(f.x, f.z), b = bottom();
@@ -20,8 +20,10 @@ for (let k = 0; k < 8; k++) {
     if (below > d.maxBelow) d.maxBelow = +below.toFixed(2);
     if (below > 0.6 && d.events.length < 6) d.events.push({ t: i / 4, kind: 'below', x: +f.x.toFixed(1), z: +f.z.toFixed(1), ground: +g.toFixed(1), body: +b.toFixed(1), mode: P.mode });
     const dist = Math.hypot(f.x - sp.x, f.z - sp.z);
-    if (far > 20 && dist < 3 && d.events.length < 6) d.events.push({ t: i / 4, kind: 'respawn', from: far });
+    // edge: the last sample's distance from the square's edge line (250 m from the centre, not from the pin)
+    if (far > 20 && dist < 3 && d.events.length < 6) d.events.push({ t: i / 4, kind: 'respawn', from: far, edge: +Math.max(Math.abs(last.x), Math.abs(last.z)).toFixed(1) });
     far = dist;
+    last = { x: f.x, z: f.z };
     if (P.mode === 'air' || P.mode === 'jump') { air++; if (air === 1) d.airRuns++; d.longestAir = Math.max(d.longestAir, air / 4); }
     else air = 0;
   }
