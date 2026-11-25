@@ -81,7 +81,7 @@ for (const p of PLACES) {
   page.on('pageerror', (e) => step(`${p.name}: pageerror ${e.message.slice(0, 200)}`));
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') step(`${p.name}: console.${m.type()} ${m.text().slice(0, 200)}`); });
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text().slice(0, 240)}`); });
-  const q = `scene=travel&place=${p.lat},${p.lon}&name=${encodeURIComponent(p.label)}&clean${flag('hide', '') ? `&hide=${flag('hide', '')}` : ''}`;
+  const q = `scene=travel&place=${p.lat},${p.lon}&name=${encodeURIComponent(p.label)}&clean${flag('hide', '') ? `&hide=${flag('hide', '')}` : ''}${flag('extra', '') ? `&${flag('extra', '')}` : ''}`;
   step(`${p.name}: goto`);
   await page.goto(`${base}?${q}`);
   step(`${p.name}: loaded, waiting for ready`);
