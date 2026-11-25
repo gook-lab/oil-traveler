@@ -6,6 +6,8 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 const here = resolve(fileURLToPath(import.meta.url), '..', '..');
 const root = resolve(here, 'dist');
@@ -59,6 +61,45 @@ await page.waitForTimeout(7000); // the terrain tiles and the flight of the map
 report.searched = await page.evaluate(() => document.querySelector('.tm-label')?.textContent ?? '');
 report.markers = await page.evaluate(() => [...document.querySelectorAll('.maplibregl-marker')].map((m) => ({ t: m.style.transform, display: getComputedStyle(m).display })));
 await page.screenshot({ path: join(shotDir, 'map-search.png') });
+
+// a chosen spot is a paint dab that can be dragged: let go after a drag, the spot moves and is looked up again
+const before = await page.evaluate(() => globalThis.__travelTest?.pick() ?? null);
+const dab = await page.locator('.tm-dab').boundingBox().catch(() => null);
+if (!dab || !before) failures.push('no dab to drag');
+else {
+  const x = dab.x + dab.width / 2, y = dab.y + dab.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(x + i * 9, y + i * 6);
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  const after = await page.evaluate(() => globalThis.__travelTest?.pick() ?? null);
+  report.drag = { before, after, movedDeg: after ? Math.hypot(after.lat - before.lat, after.lon - before.lon) : 0 };
+  if (!after || report.drag.movedDeg < 0.0005) failures.push('the dab did not move when dragged');
+  const label = await page.evaluate(() => document.querySelector('.tm-label')?.textContent ?? '');
+  report.dragLabel = label;
+  if (!/\d+\.\d+,\s*\d+\.\d+/.test(label) && !label) failures.push('no card after the drag');
+}
+
+// a wide result (한라산): the pin goes to the highest ground inside its box, and the page's own rule agrees
+await page.fill('#tm-q', '한라산 국립공원');
+await page.press('#tm-q', 'Enter');
+await page.waitForSelector('.tm-results button', { timeout: 30000 }).catch(() => failures.push('no list for 한라산 국립공원'));
+await page.click('.tm-results button').catch(() => failures.push('no 한라산 국립공원 result to pick'));
+await page.waitForTimeout(6000);
+const wide = await page.evaluate(async () => {
+  const hooks = globalThis.__travelTest;
+  const first = hooks.results()[0];
+  if (!first) return { error: 'no result' };
+  if (!first.box) return { error: 'no box', label: first.label };
+  const pick = hooks.pick();
+  const spot = await hooks.highestSpot(first.box);
+  const [[w, s], [e, n]] = first.box;
+  return { label: first.label, box: first.box, pick, expected: spot, inside: pick ? pick.lon >= w && pick.lon <= e && pick.lat >= s && pick.lat <= n : false,
+    offsetDeg: pick && spot ? Math.hypot(pick.lat - spot.lat, pick.lon - spot.lon) : null };
+});
+report.wide = wide;
+if (wide.error) failures.push('wide result: ' + wide.error);
+else if (!wide.inside || wide.offsetDeg === null || wide.offsetDeg > 0.0002) failures.push('pin is not on the highest ground of the box');
 
 // the "여기로 떠나기" button goes to the walk on that spot
 await page.click('.tm-go');

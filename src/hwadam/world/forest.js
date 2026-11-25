@@ -14,7 +14,12 @@ const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
 const SIGHTS = [[-8, 98, -26, 82], [-75, -6, -89, -25], [-150, -74, -158, -92], [-192, -190, -155, -175], [-192, -175, -168, -143]];
 
+// travel: the tier by the distance to the start (m): full detail under TIER_TRAVEL[0], some under [1], far beyond
+const TIER_TRAVEL = [50, 120];
+
 export const BARK = /* glsl */ `
+uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
+vec3 hazedW(vec3 c, vec3 w) { return mix(c, airColour(normalize(w - cameraPosition)), uForestHaze * mistBetween(w)); }
 const vec3 BARK_L[4] = vec3[4](vec3(0.88, 0.6, 0.33), vec3(1.0, 0.94, 0.74), vec3(0.84, 0.6, 0.34), vec3(0.86, 0.62, 0.4));
 const vec3 BARK_M[4] = vec3[4](vec3(0.37, 0.3, 0.31), vec3(0.76, 0.71, 0.68), vec3(0.3, 0.22, 0.2), vec3(0.5, 0.42, 0.36));
 const vec3 BARK_S[4] = vec3[4](vec3(0.15, 0.12, 0.19), vec3(0.4, 0.4, 0.53), vec3(0.12, 0.09, 0.14), vec3(0.26, 0.2, 0.18));
@@ -29,9 +34,11 @@ vec3 bark(int k, vec3 P, vec3 Nn, float r, float foot) {
 
 // seven kinds of leaf: 0 crimson, 1 vermilion, 2 yellow, 3 orange-gold, 4 moss green, 5 birch yellow, 6 maroon
 const LEAF = /* glsl */ `
-const vec3 LEAF_L[7] = vec3[7](vec3(0.8, 0.14, 0.16), vec3(0.98, 0.42, 0.12), vec3(1.0, 0.86, 0.26), vec3(0.98, 0.64, 0.2), vec3(0.56, 0.7, 0.28), vec3(0.98, 0.9, 0.44), vec3(0.56, 0.16, 0.2));
-const vec3 LEAF_M[7] = vec3[7](vec3(0.52, 0.08, 0.11), vec3(0.74, 0.22, 0.09), vec3(0.78, 0.6, 0.18), vec3(0.74, 0.4, 0.13), vec3(0.32, 0.46, 0.2), vec3(0.8, 0.7, 0.26), vec3(0.34, 0.09, 0.14));
-const vec3 LEAF_S[7] = vec3[7](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec3(0.42, 0.3, 0.14), vec3(0.4, 0.2, 0.11), vec3(0.16, 0.26, 0.16), vec3(0.44, 0.38, 0.2), vec3(0.2, 0.05, 0.1));
+uniform float uForestHaze; // 1 for the baked walk; travel keeps half of the mist on the wood (the far wood read as a lilac lake)
+vec3 hazedW(vec3 c, vec3 w) { return mix(c, airColour(normalize(w - cameraPosition)), uForestHaze * mistBetween(w)); }
+const vec3 LEAF_L[8] = vec3[8](vec3(0.8, 0.14, 0.16), vec3(0.98, 0.42, 0.12), vec3(1.0, 0.86, 0.26), vec3(0.98, 0.64, 0.2), vec3(0.56, 0.7, 0.28), vec3(0.98, 0.9, 0.44), vec3(0.56, 0.16, 0.2), vec3(0.16, 0.34, 0.2));
+const vec3 LEAF_M[8] = vec3[8](vec3(0.52, 0.08, 0.11), vec3(0.74, 0.22, 0.09), vec3(0.78, 0.6, 0.18), vec3(0.74, 0.4, 0.13), vec3(0.32, 0.46, 0.2), vec3(0.8, 0.7, 0.26), vec3(0.34, 0.09, 0.14), vec3(0.11, 0.24, 0.14));
+const vec3 LEAF_S[8] = vec3[8](vec3(0.26, 0.05, 0.09), vec3(0.38, 0.1, 0.1), vec3(0.42, 0.3, 0.14), vec3(0.4, 0.2, 0.11), vec3(0.16, 0.26, 0.16), vec3(0.44, 0.38, 0.2), vec3(0.2, 0.05, 0.1), vec3(0.07, 0.14, 0.09));
 `;
 
 // which leaf a maple, a beech, an oak or a birch carries: most of a maple's are reds, a beech's are green and gold
@@ -79,7 +86,7 @@ function plant() {
     if (inFan(x, z)) return;
     // a place's land cover (T2): no tree on water, sand, rock or built-up ground
     if (hasCover() && NO_TREE.has(coverAt(x, z))) return;
-    const r = (type === BIRCH ? 0.13 + rand() * 0.08 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
+    const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
       : type === MAPLE ? MAPLE_LEAVES[Math.floor(rand() * MAPLE_LEAVES.length)]
@@ -107,13 +114,23 @@ function plant() {
       const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
       const u = rand();
       const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
-      add(x, z, type, corridor < 22 ? 0 : corridor < 60 ? 1 : 2);
+      // the birch stands in columns with aisles between them: only every third 3.2 m strip of the ground (by x) takes birch,
+      // so the trunks further back show between the ones in front (a wall of trunks covered the picture's width)
+      if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
+
+      // the tier is the distance to the way, except in travel: there the way is the place's own, and the start is the
+      // centre of the picture, so the tier is the distance to the start (near trees get the full detail)
+      const dd = CLEAR.fan ? Math.hypot(x - CLEAR.x, z - CLEAR.z) : corridor;
+      const tier = CLEAR.fan ? (dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2) : dd < 22 ? 0 : dd < 60 ? 1 : 2;
+      add(x, z, type, tier);
     }
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
-  for (let i = 0; i < 400; i++) {
-    const k = 40 + Math.floor(rand() * 120);
+  // a short runtime way (travel) has fewer than 160 points: the stretch is cut to what it has (the baked walk keeps 120)
+  const span = Math.min(120, way.length - 42);
+  for (let i = 0; span > 0 && i < 400; i++) {
+    const k = 40 + Math.floor(rand() * span);
     const [wx, wz] = way[k];
     const [nx, nz] = way[k + 1];
     const dx = nx - wx, dz = nz - wz, len = Math.hypot(dx, dz) || 1;
@@ -127,6 +144,8 @@ function plant() {
     const pOak = 0.1 * sw[1] + 0.05 * sw[0] + 0.3 * sw[3];
     const u = rand();
     const type = u < pBirch ? BIRCH : u < pBirch + pMaple ? MAPLE : u < pBirch + pMaple + pOak ? OAK : BEECH;
+    // the birch aisles hold here too: a birch only where its column of the walk's strip is kept
+    if (type === BIRCH && Math.floor(x / 3.2) % 3 !== 0) continue;
     add(x, z, type, type === MAPLE ? 0 : 1);
     const near = trees[trees.length - 1];
     near.toward = Math.atan2(wz - z, wx - x);
@@ -136,11 +155,25 @@ function plant() {
   // the birch view's sight: a close set of birches 10 to 40 m ahead of its camera, along its line and 6 m to either side
   const BC = { x: -150, z: -74 }, BT = { x: -158, z: -92 };
   const bl = Math.hypot(BT.x - BC.x, BT.z - BC.z), bfx = (BT.x - BC.x) / bl, bfz = (BT.z - BC.z) / bl;
-  for (let i = 0; i < 900; i++) {
+  // fewer trunks, in rows with gaps between them: in each row (3 m deep) a lane of the sight (4 m wide) stays empty, so
+  // the wood reads as trunks standing at different depths, not as one even wall; the far trunks are thinner
+  const placedBirch = [];
+  for (let i = 0; i < 620; i++) {
     const dist = 12 + rand() * 28, lat = (rand() < 0.5 ? -1 : 1) * (3.5 + rand() * 11.5);
+    const row = Math.floor(dist / 3), lane = Math.floor((lat + 15) / 4);
+    if ((row * 5 + lane * 3) % 4 === 0) continue;
+    // the far rows (20 m and beyond) keep a twentieth of their trunks: together they covered two thirds of the picture's width
+    if (dist >= 14 && rand() < 0.75) continue;
     const x = BC.x + bfx * dist - bfz * lat, z = BC.z + bfz * dist + bfx * lat;
     if (wayDist(x, z) < 3.5 || clearingAt(x, z) > 0.25) continue;
-    add(x, z, BIRCH, 2);
+    // a fifth of the near ones stand thicker; the rest taper to half their width at 40 m
+    // no two birches of the sight stand close in both depth and side (a jittered spacing, not columns): from the walk's
+    // eye they would overlap into one white pillar
+    if (placedBirch.some((q) => (Math.abs(q[0] - dist) < 2.5 && Math.abs(q[1] - lat) < 2.4) || (Math.abs(q[1] / q[0] - lat / dist) < 0.015 && Math.abs(q[0] - dist) > 2.5))) continue;
+    placedBirch.push([dist, lat]);
+    let sc = 1.0 - 0.5 * (dist - 12) / 28;
+    if (dist < 20 && rand() < 0.2) sc *= 1.6;
+    add(x, z, BIRCH, 2, sc);
   }
   // a place with a cover (T2): conifers stand at the sides of the first view, 32 to 44 m out and 28 to 34 degrees off
   // the sight, so that the first frame has pines in its near field (they are not lowered with the sight band)
@@ -149,8 +182,9 @@ function plant() {
       const side = rand() < 0.5 ? -1 : 1, th = side * (28 + rand() * 6) * (Math.PI / 180), d = 32 + rand() * 12;
       const dx = CLEAR.fx * Math.cos(th) - CLEAR.fz * Math.sin(th), dz = CLEAR.fx * Math.sin(th) + CLEAR.fz * Math.cos(th);
       const before = trees.length;
-      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 1, 0.8);
-      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 4; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; }
+      // the pines in front of the start stand at full detail (tier 0): as tier 1 their six lobes read as bare poles
+      add(CLEAR.x + dx * d, CLEAR.z + dz * d, rand() < 0.5 ? BEECH : OAK, 0, 0.8);
+      if (trees.length > before) { const t = trees[trees.length - 1]; t.conifer = true; t.family = 7; t.h = 17 + rand() * 6; t.r = 0.3 + rand() * 0.15; t.nearPine = true; } // family 7: the dark needle green of the front pines (travel only)
       if (trees.filter((t) => t.nearPine).length >= 14) break;
     }
   }
@@ -186,6 +220,7 @@ function plant() {
 }
 
 export function createForest(shared) {
+  shared.uForestHaze = shared.uForestHaze ?? { value: CLEAR.fan ? 0.5 : 1.0 };
   const trees = plant();
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
@@ -196,15 +231,17 @@ export function createForest(shared) {
   const v = new THREE.Vector3();
 
   for (const t of trees) {
+    const b0 = barkDabs.length, l0 = leafDabs.length; // T2: the dabs this tree adds (lab.treeStats)
     const full = t.tier === 0, some = t.tier === 1;
     const top = t.h * (t.type === BIRCH ? 0.95 : t.conifer ? 0.97 : 0.8);
     // --- trunk ---
     const rings = full ? 9 : some ? 5 : 3;
     const pts = [], radii = [];
     for (let i = 0; i < rings; i++) {
-      const u = i / (rings - 1), y = u * u * 0.4 + u * 0.6;
+      const u = i / (rings - 1), y = i === 0 ? -0.6 / (top + 0.3) : u * u * 0.4 + u * 0.6; // the first ring sinks 0.6 m under the ground: no flat cut
       const bend = Math.sin(u * 2.4 + t.seed) * 0.25 * (t.type === BIRCH ? 1.6 : 1);
       pts.push(new THREE.Vector3(t.x + t.lean[0] * y * top + bend * t.lean[1] * 8, t.y - 0.3 + y * (top + 0.3), t.z + t.lean[1] * y * top - bend * t.lean[0] * 8));
+      // a birch's foot spreads where it meets the ground (the roots), so it stands on the ground, not on a point
       radii.push(t.r * (1 - 0.6 * y) * (1 + 0.5 * Math.exp(-(y * top) / (0.35 + t.r * 0.6))));
     }
     tube(wood, pts, radii, full ? 9 : some ? 7 : 5, t.type, t.seed);
@@ -218,27 +255,32 @@ export function createForest(shared) {
     };
     if (full && wayDist(t.x, t.z) < 60) colliders.push({ x: t.x, z: t.z, y: t.y, r: t.r * 1.15 });
 
+    // travel only: a tree in the first view (within 300 m and 40 degrees either side of the gaze) gets the denser
+    // crown; the others keep the old density. Only these have bare trunks in the picture (Bukhansan, Hwadam)
+    const seen = CLEAR.fan && Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) < 300 && (((t.x - CLEAR.x) * CLEAR.fx + (t.z - CLEAR.z) * CLEAR.fz) / Math.max(1e-6, Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z))) > Math.cos((40 * Math.PI) / 180);
     // --- crown: limbs, and the lobes of leaves they hold up ---
     const crown = new THREE.Vector3(t.x + t.lean[0] * top, t.y + t.h * (t.hero ? 0.66 : 0.8), t.z + t.lean[1] * top);
     const spread = t.hero ? 11.5 : t.type === OAK ? 7.5 : t.type === BIRCH ? 2.6 + rand() : 4 + rand() * 1.8 + t.r * 2;
     const treeLobes = [];
-    if (t.conifer) {
+    if (t.conifer && !t.nearPine) {
       // a conifer (T2): lobes stacked up a narrow cone, the widest low down, with no limbs
       const steps = full ? 9 : 6;
       for (let i = 0; i < steps; i++) {
-        const u = i / steps, y = t.y + t.h * (0.22 + 0.72 * u);
+        // the front pines (nearPine, travel) carry their lobes up to the leader, so no bare pole shows above the crown
+        const u = i / steps, y = t.y + t.h * (0.22 + (t.nearPine ? 0.8 : 0.72) * u);
         const lr = Math.max(0.9, spread * 0.55 * (1 - u) + 0.9);
         treeLobes.push([t.x + t.lean[0] * (y - t.y) + (rand() - 0.5) * lr * 0.4, y, t.z + t.lean[1] * (y - t.y) + (rand() - 0.5) * lr * 0.4, lr * (0.9 + 0.2 * rand())]);
       }
     } else if (full) {
-      const limbs = t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
+      // the front pine (nearPine, T2 critic round 4): 4 bent limbs from the upper third, the foliage only in flat clouds at their tips
+      const limbs = t.nearPine ? 4 : t.hero ? 9 : t.type === BIRCH ? 4 : 5 + Math.floor(rand() * 3);
       for (let i = 0; i < limbs; i++) {
         const a = t.toward !== undefined ? t.toward + (rand() - 0.5) * 1.6 : (i / limbs) * Math.PI * 2 + rand() * 1.2;
-        const from = t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
+        const from = t.nearPine ? top * (0.62 + 0.12 * (i / limbs)) : t.toward !== undefined ? top * (0.2 + 0.12 * (i / limbs)) : top * (t.hero ? 0.2 + 0.5 * (i / limbs) : 0.48 + 0.45 * (i / limbs));
         const p0 = new THREE.Vector3();
         const r0 = trunkAt(from, p0);
-        const tilt = t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
-        const len = (spread / Math.sin(tilt)) * (0.7 + rand() * 0.4) * (1 - 0.35 * (i / limbs));
+        const tilt = t.nearPine ? 0.5 + rand() * 0.3 : t.hero ? 0.9 + rand() * 0.5 : t.type === BIRCH ? 0.35 : 0.45 + rand() * 0.45;
+        const len = t.nearPine ? spread * (0.75 + rand() * 0.35) : (spread / Math.sin(tilt)) * (0.7 + rand() * 0.4) * (1 - 0.35 * (i / limbs));
         const out = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
         const p2 = p0.clone().addScaledVector(out, len * Math.sin(tilt)).add(new THREE.Vector3(0, len * Math.cos(tilt), 0));
         const p1 = p0.clone().lerp(p2, 0.45).add(new THREE.Vector3(0, -len * 0.1, 0)).addScaledVector(out, len * 0.12);
@@ -262,18 +304,27 @@ export function createForest(shared) {
           const w = 1 - u;
           const c = new THREE.Vector3().addScaledVector(p0, w * w).addScaledVector(p1, 2 * w * u).addScaledVector(p2, u * u);
           c.add(v.set(rand() - 0.5, rand() * 0.9, rand() - 0.5).multiplyScalar(1.6));
+          if (t.nearPine) { // a flat cloud of needles at the tip: two lobes, spread out and low
+            for (let q = 0; q < 2; q++) treeLobes.push([c.x + (rand() - 0.5) * 2.4, c.y - 0.4 * q, c.z + (rand() - 0.5) * 2.4, 1.3 + rand() * 0.6]);
+            continue;
+          }
           treeLobes.push([c.x, c.y, c.z, (t.hero ? 2.3 : 1.25) + rand() * 1.0 + t.r * 0.6]);
         }
       }
-      for (let i = 0; i < (t.hero ? 8 : 3); i++) treeLobes.push([crown.x + (rand() - 0.5) * spread * 0.9, t.y + t.h * (t.hero ? 0.92 : 0.96) + (rand() - 0.5) * 3, crown.z + (rand() - 0.5) * spread * 0.9, 1.5 + rand() * (t.hero ? 1.6 : 0.9)]);
+      if (!t.nearPine) for (let i = 0; i < (t.hero ? 8 : 3); i++) treeLobes.push([crown.x + (rand() - 0.5) * spread * 0.9, t.y + t.h * (t.hero ? 0.92 : 0.96) + (rand() - 0.5) * 3, crown.z + (rand() - 0.5) * spread * 0.9, 1.5 + rand() * (t.hero ? 1.6 : 0.9)]);
     } else {
       const n = some ? 7 : 4;
       for (let i = 0; i < n; i++) {
         const a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * spread;
         treeLobes.push([crown.x + Math.cos(a) * d, crown.y + (rand() - 0.45) * t.h * 0.3, crown.z + Math.sin(a) * d, (some ? 2.3 : 3.4) + rand() * 1.2]);
       }
+      // travel broadleaves: two lobes low on the trunk (0.42 to 0.62 of the height), so the crown reaches down and the
+      // bare lower trunk does not read as a stick (the Bukhansan beech at 0.62 of its height)
+      if (seen && t.type !== BIRCH) for (let i = 0; i < 2; i++) treeLobes.push([t.x + t.lean[0] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, t.y + t.h * (0.42 + 0.2 * rand()), t.z + t.lean[1] * (t.h * 0.5) + (rand() - 0.5) * spread * 0.8, 2.2 + rand() * 1.0]);
     }
-    const perLobe = full ? (t.hero ? 150 : 54) : some ? (t.type === BIRCH ? 36 : 20) : 11;
+    // a travel conifer off the full detail gets the lobes' leaves too (78 to 132 dabs were too few: its lobes read as poles)
+    // far broadleaves in travel (tier 2) had 52 leaf dabs: their bare lower trunks read as sticks in the Bukhansan frame
+    const perLobe = t.nearPine ? 26 : full ? (t.hero ? 150 : 54) : t.conifer && CLEAR.fan ? 30 : some ? (t.type === BIRCH ? 36 : 20) : seen && t.type !== BIRCH ? 18 : 11;
     const touch = full ? (t.hero ? 0.2 : 0.27) : 0.4;
     for (const [lx, ly, lz, lr] of treeLobes) {
       lobes.push(lx, ly, lz, lr);
@@ -300,8 +351,14 @@ export function createForest(shared) {
       const r = trunkAt(y, p);
       const nx = Math.cos(a), nz = Math.sin(a);
       const across = Math.min(0.5, r * (t.type === BIRCH ? 1.5 : 0.75)) * (some ? 1.5 : 1);
-      barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 1.0 + rand() * 1.5) * (some ? 1.6 : 1));
+      barkDabs.push(p.x + nx * r, p.y, p.z + nz * r, t.lean[0], 1, t.lean[1], nx, 0, nz, rand() * 1000, across, t.type, (t.type === BIRCH ? Math.min(0.5, r * 2.3) : 0.5 + rand() * 0.6) * (some ? 1.6 : 1));
     }
+    t.dabs = (barkDabs.length - b0) / 13 + (leafDabs.length - l0) / 10;
+    // T2 check: the foliage's vertical extent (world y) and its dab count, for the bare stems above the leaves (lab.treeStats)
+    t.leaves = (leafDabs.length - l0) / 10;
+    let y0 = Infinity, y1 = -Infinity;
+    for (let k = l0; k < leafDabs.length; k += 10) { y0 = Math.min(y0, leafDabs[k + 1]); y1 = Math.max(y1, leafDabs[k + 1]); }
+    t.leafY0 = t.leaves ? y0 : t.y; t.leafY1 = t.leaves ? y1 : t.y;
   }
 
   // --- the understorey: saplings and bushes that hold their leaves at eye height, of the colours of their part ---
@@ -316,7 +373,8 @@ export function createForest(shared) {
     const family = rand() < sw[0] ? 4 : rand() < sw[1] ? (rand() < 0.6 ? 0 : 1) : rand() < sw[2] ? 5 : 2;
     const n = 3 + Math.floor(rand() * 4);
     for (let k = 0; k < n; k++) {
-      const lx = x + (rand() - 0.5) * tall * 0.9, ly = y + tall * (0.45 + rand() * 0.6), lz = z + (rand() - 0.5) * tall * 0.9, lr = 0.38 + rand() * 0.5;
+      // the clump sits low on the ground (its leaves start a fifth of its height up), so it reads as a bush, not a ball in the air
+      const lx = x + (rand() - 0.5) * tall * 0.9, ly = y + tall * (0.2 + rand() * 0.5), lz = z + (rand() - 0.5) * tall * 0.9, lr = 0.38 + rand() * 0.5;
       for (let j = 0; j < 12; j++) {
         const d = new THREE.Vector3(rand() - 0.5, rand() - 0.3, rand() - 0.5).normalize();
         leafDabs.push(lx + d.x * lr, ly + d.y * lr, lz + d.z * lr, d.x, d.y, d.z, rand() * 1000, 0.22 + rand() * 0.2, rand() < 0.2 ? Math.floor(rand() * 7) : family, 0);
@@ -325,7 +383,12 @@ export function createForest(shared) {
       // its stem: from the foot to the middle of the leaves it holds, so the leaves hang from something
       const dir = v.set(lx - x, ly - y, lz - z).normalize();
       const len = Math.hypot(lx - x, ly - y, lz - z);
-      barkDabs.push((x + lx) / 2, (y + ly) / 2, (z + lz) / 2, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.05, MAPLE, len);
+      barkDabs.push((x + lx) / 2, (y + ly) / 2, (z + lz) / 2, dir.x, dir.y, dir.z, dir.z, 0, -dir.x, rand() * 1000, 0.09, MAPLE, len);
+    }
+    // the foot: a few touches of the ground's own colour (litter and earth) lie round the stems, so the clump grows out of it
+    for (let f = 0; f < 4; f++) {
+      const a = rand() * Math.PI * 2, fr = rand() * tall * 0.4;
+      leafDabs.push(x + Math.cos(a) * fr, y + 0.02, z + Math.sin(a) * fr, Math.cos(a), 0, Math.sin(a), rand() * 1000, 0.2 + rand() * 0.15, 4, 0);
     }
   }
 
@@ -351,8 +414,31 @@ export function createForest(shared) {
       void main() {
         vec3 Nn = normalize(vN);
         float grain = texture(tNoise, vec2(atan(Nn.z, Nn.x) * 1.3 + vData.y, vWorld.y * 0.07)).r;
-        vec3 c = bark(int(vData.x + 0.5), vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
-        outC = vec4(hazed(c, vWorld), 1.0);
+        int kind = int(vData.x + 0.5);
+        if (kind == 1) {
+          // birch: white bark, warm where the sun falls and cool blue in the shade; brushed up the trunk, with the
+          // black transverse marks painted as dark dashes; far trunks are thinner-looking, paler and bluer
+          float lit = sunAt(vWorld + Nn * 0.35) * clamp(dot(Nn, uSunDir) * 1.2 + 0.25, 0.0, 1.0);
+          vec3 white = mix(vec3(0.7, 0.72, 0.78), vec3(0.98, 0.93, 0.8), lit);
+          float ang = atan(Nn.z, Nn.x);
+          float stroke = texture(tNoise, vec2(ang * 5.0 + vData.y, vWorld.y * 0.22)).r;
+          vec3 c = white * (0.86 + 0.2 * stroke);
+          float band = texture(tNoise, vec2(ang * 1.7 + vData.y * 0.5, vWorld.y * 0.12)).g;
+          // the dashes are not one spacing: each row's height varies round the trunk, and some dashes are missing
+          float rowy = vWorld.y * (1.3 + 0.9 * band) + stroke * 0.9 + texture(tNoise, vec2(ang * 0.9, vWorld.y * 0.3)).b * 2.0;
+          float mark = step(0.84, fract(rowy)) * step(0.62, band) * step(0.35, texture(tNoise, vec2(ang * 3.1, vWorld.y * 0.7)).g);
+          c = mix(c, vec3(0.14, 0.12, 0.16), mark * 0.9);
+          float far = smoothstep(18.0, 80.0, length(vWorld.xz - cameraPosition.xz));
+          // the blue-lavender cast is for the shade only; the sunlit bark stays warm white
+          // the far trunks take the wood's warm light (they melt into the background); the near shade side is darkened
+          c = mix(c, vec3(0.8, 0.84, 0.92), far * 0.35 * (1.0 - lit));
+          c = mix(c, vec3(0.9, 0.82, 0.56), far * 0.4);
+          c *= mix(1.0, 0.78, (1.0 - lit) * (1.0 - far));
+          outC = vec4(c, 1.0);
+          return;
+        }
+        vec3 c = bark(kind, vWorld, Nn, grain, vData.z) * (0.72 + 0.3 * grain);
+        outC = vec4(hazedW(c, vWorld), 1.0);
       }`,
   });
   const woodMesh = new THREE.Mesh(woodGeometry, woodMaterial);
@@ -393,8 +479,8 @@ export function createForest(shared) {
         d.pos = aPos;
         d.size = vec2(aData.y, aData.w);
         // the birch stand is not hazed: its trunks read white against the wood
-        d.c1 = k == 1 ? c : hazed(c, aPos);
-        d.c2 = k == 1 ? c * 1.08 : hazed(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
+        d.c1 = k == 1 ? c : hazedW(c, aPos);
+        d.c2 = k == 1 ? c * 1.08 : hazedW(jitter(c * 1.2 + vec3(0.02, 0.02, 0.05), r.wxy, 0.6), aPos);
         d.seed = aData.x;
         d.lift = 0.5;
       }`,
@@ -451,9 +537,12 @@ export function createForest(shared) {
         d.spin = turn;
         d.pos = P;
         float s = aData.y / sqrt(aData.w > 0.5 ? 1.0 : keep);
-        d.size = vec2(s, s * (aData.w > 0.5 ? 1.2 : 1.5 + 0.5 * q.z));
-        d.c1 = hazed(c, P);
-        d.c2 = hazed(jitter(c * 1.16, q.zxy, 0.7), P);
+        // the stroke size steps down with distance: a leaf 45 m off is 0.55 of its near size, so the mid-forest reads as
+        // many small touches, not as near bushes (the gate 1 critic's distance rule)
+        float dz = mix(1.0, 0.55, smoothstep(10.0, 45.0, distance(P, cameraPosition)));
+        d.size = vec2(s, s * (aData.w > 0.5 ? 1.2 : 1.5 + 0.5 * q.z)) * dz;
+        d.c1 = hazedW(c, P);
+        d.c2 = hazedW(jitter(c * 1.16, q.zxy, 0.7), P);
         d.seed = aData.x;
         d.lift = aData.w > 0.5 ? -0.2 : 0.5;
         d.turnabout = 1.0;

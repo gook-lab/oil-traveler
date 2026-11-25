@@ -240,7 +240,7 @@ function run() {
   if (want === running) return;
   running = want;
   last = performance.now();
-  renderer.setAnimationLoop(want ? () => { const now = performance.now(); tick((now - last) / 1000); last = now; } : null);
+  renderer.setAnimationLoop(want ? () => { const now = performance.now(); try { tick((now - last) / 1000); } catch (err) { renderer.setAnimationLoop(null); console.error(err); window.__fail?.('그리는 중에 문제가 생겼어요. 새로고침해 주세요.'); } last = now; } : null);
 }
 if (!capture) {
   const hint = document.getElementById('hint');

@@ -10,4 +10,5 @@ until mkdir "$L" 2>/dev/null; do
   sleep 30
 done
 trap 'rmdir "$L" 2>/dev/null' EXIT INT TERM
-"$@"
+# 명령에 GPU_LOCK_HELD=1 을 넘깁니다. 헤드리스 Chrome 도구는 이 값이 없으면 시작에서 멈춥니다(no-pointer-lock.mjs).
+GPU_LOCK_HELD=1 "$@"

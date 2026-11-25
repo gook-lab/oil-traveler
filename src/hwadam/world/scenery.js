@@ -12,15 +12,22 @@ const STONE = /* glsl */ `
 void makeDab(inout Dab d) {
   vec4 r = hash4(aData.x);
   float lit = sunAt(aPos + vec3(0.0, 0.5, 0.0));
-  vec3 c = paint3(vec3(0.5, 0.5, 0.46), vec3(0.33, 0.35, 0.32), vec3(0.14, 0.17, 0.16), lit, r.x);
+  // lighter than the green floor by 15 L* or more, so the stones read against the moss (measured on the moss shot,
+  // stone L* about 49 in shade, 60 mid, 80 lit against the floor's 24 to 46); the value is lifted, the hue is kept
+  vec3 c = paint3(vec3(0.82, 0.82, 0.76), vec3(0.6, 0.62, 0.57), vec3(0.46, 0.48, 0.46), lit, r.x);
+  // the shade side is a cool dark grey-teal, so the stone reads as a lump, not a white slab
+  c = mix(c, vec3(0.2, 0.26, 0.26), (1.0 - smoothstep(0.1, 0.45, lit)) * 0.7);
   // moss on the top of some of them, more where the sun falls
   float mossy = step(0.15, r.y) * (0.5 + 0.5 * step(0.3, lit));
   c = mix(c, vec3(0.4, 0.52, 0.2) * (0.6 + 0.6 * lit), mossy * 0.8);
+  // the cap stroke is moss on top of the stone, so the stone reads as a rounded lump under the moss
+  c = mix(c, vec3(0.36, 0.5, 0.18) * (0.6 + 0.6 * lit), aData.w * 0.9);
   c = jitter(c, r.zxy, 0.5);
   float a = r.w * TAU;
   d.pos = aPos;
   d.dir = vec3(cos(a), 0.0, sin(a));
-  d.size = vec2(aData.y, aData.y * 0.6);
+  // a round lump: the stone's two sides are its own size (the 0.6 ratio stood it up as a thin sliver, seen edge-on)
+  d.size = vec2(aData.y, aData.y * 0.9);
   d.lie = 0.0;
   d.nrm = vec3(0.0, 1.0, 0.0);
   d.height = aData.z;
@@ -33,13 +40,17 @@ void makeDab(inout Dab d) {
 `;
 
 // the rings: r = radius of the wall (m), top = how high its skyline stands in the north (m), col = its colour
+// five ranges, near to far; the baked horizon has three bands, so two ranges share a band at a different radius
+// (band: which horizon band gives the skyline). Each farther range is lighter and less saturated than the one before.
 const RINGS = [
-  { r: 330, top: 95, seed: 3.1, col: [0.17, 0.23, 0.26], count: 3600, size: 40 },
-  { r: 480, top: 160, seed: 11.7, col: [0.27, 0.36, 0.44], count: 1800, size: 55 },
-  { r: 640, top: 230, seed: 23.9, col: [0.42, 0.5, 0.62], count: 700, size: 70 },
+  { r: 330, band: 0, col: [0.24, 0.3, 0.33], count: 3000, size: 40 },
+  { r: 410, band: 0, col: [0.29, 0.35, 0.39], count: 1400, size: 46 },
+  { r: 480, band: 1, col: [0.34, 0.4, 0.45], count: 1000, size: 52 },
+  { r: 560, band: 1, col: [0.4, 0.45, 0.5], count: 700, size: 60 },
+  { r: 640, band: 2, col: [0.46, 0.5, 0.55], count: 500, size: 68 },
 ];
-const AIR = [0.25, 0.45, 0.65]; // how much of the sky's colour each ring takes, near to far
-const RING_COL = /* glsl */ `const vec3 RING_COL[3] = vec3[3](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
+const AIR = [0.22, 0.32, 0.42, 0.5, 0.58]; // how much of the sky's colour each ring takes, near to far
+const RING_COL = /* glsl */ `const vec3 RING_COL[5] = vec3[5](${RINGS.map((o) => `vec3(${o.col.join(', ')})`).join(', ')});`;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 /**
@@ -49,8 +60,22 @@ const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a)
  */
 function crest(k, az, horizon, eyeY) {
   const deg = (((az * 180) / Math.PI) % 360 + 360) % 360;
-  const i0 = Math.floor(deg) % 360, i1 = (i0 + 1) % 360, f = deg - Math.floor(deg);
-  const th = horizon[k * 360 + i0] * (1 - f) + horizon[k * 360 + i1] * f;
+  // the horizon samples come one per degree and carry the terrain's spikes (the sawtooth and thorns on the ring
+  // skyline), so the skyline is a triangle-weighted mean over three degrees either side
+  const sample = (d) => {
+    const i0 = Math.floor(d) % 360, i1 = (i0 + 1) % 360, f = d - Math.floor(d);
+    return horizon[RINGS[k].band * 360 + i0] * (1 - f) + horizon[RINGS[k].band * 360 + i1] * f;
+  };
+  let th = 0, wsum = 0;
+  for (let j = -3; j <= 3; j++) {
+    const w = 4 - Math.abs(j);
+    th += w * sample((deg + j + 360) % 360);
+    wsum += w;
+  }
+  th /= wsum;
+  // the middle ranges (330 to 650 m) fall back in the two sight bearings of the view (112 and 143 degrees): the sight
+  // opens to the far ridge there, and the wood between does not hide it
+  if (Math.min(Math.abs(deg - 112), Math.abs(deg - 143)) < 22 && RINGS[k].r < 650) th *= 0.4;
   return Math.max(-15, eyeY + RINGS[k].r * Math.tan(th));
 }
 
@@ -66,7 +91,8 @@ function slopeDir(k, az, horizon, eyeY, r) {
 
 const RANGE = /* glsl */ `
 ${RING_COL}
-const float RING_AIR[3] = float[3](0.25, 0.45, 0.65);
+// air perspective per ring: the farther ring fades toward the sky, but keeps a step darker than it (0.65 made it vanish)
+const float RING_AIR[5] = float[5](0.22, 0.32, 0.42, 0.5, 0.58);
 `;
 
 export function createScenery(shared, horizon, eyeY) {
@@ -98,10 +124,18 @@ export function createScenery(shared, horizon, eyeY) {
   const mossCam = [-8, 98], mossAt = [-26, 82];
   const fl = Math.hypot(mossAt[0] - mossCam[0], mossAt[1] - mossCam[1]);
   const fwd = [(mossAt[0] - mossCam[0]) / fl, (mossAt[1] - mossCam[1]) / fl];
-  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8]]) {
+  for (const [dist, side, size] of [[4.5, -1.2, 0.9], [7, 1.6, 1.1], [9.5, -3.2, 0.8], [5.8, 0.5, 0.7], [12.5, -1.0, 1.2], [3.2, 0.3, 0.9], [8.5, -0.6, 1.4], [14.5, 2.2, 1.5]]) {
     const x = mossCam[0] + fwd[0] * dist - fwd[1] * side, z = mossCam[1] + fwd[1] * dist + fwd[0] * side;
-    sp.push(x, heightAt(x, z), z);
-    sd.push(rand() * 1000, size, 0.7, 0); // a stone of its size, its height above the garden's mounds so it is not buried
+    // one brush mark shows only a sliver of its card, so each stone is a cluster of marks like the rest of the garden's stones
+    // six marks per stone: the lower ones stone-grey, the top one (flag 1 in data.w) the moss cap
+    for (let j = 0; j < 6; j++) {
+      const ox = (rand() - 0.5) * size * 0.6, oz = (rand() - 0.5) * size * 0.6;
+      const cap = j === 5 ? 1 : 0;
+      // the grey marks sink a little into the moss (a stone lies in the ground, it does not sit on it)
+      sp.push(x + ox, heightAt(x, z) + (cap ? 0.12 : -0.08 * size), z + oz);
+      // the grey marks are wider than the cap, so the stone keeps its grey rim under the moss
+      sd.push(rand() * 1000, cap ? size * 0.7 : size * (1.1 + 0.4 * rand()), cap ? 0.62 : 0.3 + 0.15 * j / 5, cap);
+    }
     placed++;
   }
 
@@ -112,6 +146,42 @@ export function createScenery(shared, horizon, eyeY) {
     minPx: [3, 6], maxPx: [300, 420], cells: [0, 4],
   }), 5);
   group.add(stoneMesh);
+
+  // --- the sun gaps: where the canopy opens on the sun, the sky shows as a flat cream patch. A few hundred pale leaves
+  // hang in the sky round the sun's direction, far beyond the trees, so the gap has touches in it (no shared sky changed)
+  const sun = shared.uSunDir.value;
+  const gp = [], gd = [];
+  for (let i = 0; i < 320; i++) {
+    const v = [sun.x + (rand() - 0.5) * 0.7, sun.y + (rand() - 0.5) * 0.5, sun.z + (rand() - 0.5) * 0.7];
+    const L = Math.hypot(v[0], v[1], v[2]) || 1;
+    if (v[1] / L < 0.02) continue;
+    gp.push(v[0] / L, v[1] / L, v[2] / L);
+    gd.push(rand() * 1000, 0.6 + 0.8 * rand(), rand(), rand());
+  }
+  const sunMesh = dabMesh(dabGeometry(gd.length / 4, { aPos: [new Float32Array(gp), 3], aData: [new Float32Array(gd), 4] }), dabMaterial(shared, {
+    head: /* glsl */ `in vec3 aPos; in vec4 aData;`,
+    body: /* glsl */ `
+void makeDab(inout Dab d) {
+  vec4 r = hash4(aData.x);
+  vec3 v = normalize(aPos);
+  vec3 c = paint3(vec3(0.98, 0.92, 0.62), vec3(0.94, 0.78, 0.4), vec3(0.62, 0.44, 0.22), 1.0, r.x);
+  c = mix(c, vec3(0.92, 0.56, 0.24), step(0.6, r.y) * 0.7);
+  d.pos = cameraPosition + v * 420.0;
+  d.dir = vec3(cos(r.z * TAU), 0.0, sin(r.z * TAU));
+  d.size = vec2(16.0 + 22.0 * aData.y, 7.0 + 8.0 * aData.y);
+  d.lie = 0.0;
+  d.nrm = vec3(0.0, 1.0, 0.0);
+  d.height = 0.0;
+  d.lift = 0.0;
+  d.c1 = hazed(c, d.pos);
+  d.c2 = hazed(c * 1.1, d.pos);
+  d.seed = aData.x;
+  d.turnabout = 0.0;
+}
+`,
+    minPx: [2, 4], maxPx: [40, 60], cells: [0, 4],
+  }), 2);
+  group.add(sunMesh);
 
   // --- the ranges: far ring first. Each is a wall from -20 up to its skyline, with strokes over it ---
   const SEG = 360;
@@ -144,6 +214,8 @@ export function createScenery(shared, horizon, eyeY) {
         void main() {
           // the top of a band is its darkest, and its foot fades into the valley haze: the reverse of a cloud
           vec3 c = uCol * mix(1.06, 0.84, smoothstep(-20.0, 90.0, vWorld.y));
+          // the wall is broken by noise along its length, so it does not read as one even slab
+          c *= 0.9 + 0.2 * texture(tNoise, vec2(atan(vWorld.z, vWorld.x) * 3.0, vWorld.y / 60.0)).r;
           c = mix(c, uHaze, 0.5 * (1.0 - smoothstep(-20.0, 60.0, vWorld.y)));
           outC = vec4(mix(c, uHaze, uAir), 1.0);
         }`,
@@ -172,10 +244,11 @@ export function createScenery(shared, horizon, eyeY) {
           vec3 c = RING_COL[int(aData.w + 0.5)] * (1.0 + amp * (r.x - 0.5) * 0.14);
           c = jitter(c, r.yzw, 0.03 * amp);
           c = mix(c, uHaze, RING_AIR[int(aData.w + 0.5)]);
-          // the fall line: a short upright stroke down the slope, tilted and lengthened a little by its own seed
-          d.dir = normalize(vec3(aDir.x * 0.5 + (r.y - 0.5) * 0.3, -1.0, aDir.z * 0.5 + (r.z - 0.5) * 0.3));
+          // the skyline's own direction: a level touch along the crest (tilted a little by the slope), not an upright
+          // one (the upright touches read as vertical plates standing on the sky)
+          d.dir = normalize(vec3(aDir.x + (r.y - 0.5) * 0.2, aDir.y * 0.6, aDir.z + (r.z - 0.5) * 0.2));
           d.pos = aPos;
-          d.size = vec2(aData.y * 0.2, aData.y * (0.3 + 0.2 * r.w));
+          d.size = vec2(aData.y * 0.2, aData.y * (0.6 + 0.4 * r.w));
           d.c1 = c;
           d.c2 = c * 1.08;
           d.seed = aData.x;
@@ -189,5 +262,5 @@ export function createScenery(shared, horizon, eyeY) {
 
   });
 
-  return { group, stones: placed };
+  return { group, stones: placed, stonePos: sp, stoneData: sd };
 }

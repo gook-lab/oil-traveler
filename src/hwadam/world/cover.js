@@ -9,8 +9,9 @@ import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
 import { applyPaving } from './paved.js';
 import { lowerTown } from './townground.js';
 
-export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10 };
-export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved'];
+// PAVED (10): a town's paved ground (paved.js). BASALT (11): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
+export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10, BASALT: 11 };
+export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved', 'basalt'];
 /** Higher wins where two features overlap (water over everything, buildings over the land under them). */
 const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
 const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
@@ -30,7 +31,7 @@ export function hasCover() { return grid !== null; }
 /** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
 export function coniferChance() { return conifer; }
 /** Classes where no tree stands: water, sand, rock and built-up ground. */
-export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED]);
+export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED, COVER.BASALT]);
 /** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
 export function coverTexture() {
   // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
@@ -66,7 +67,7 @@ bool wetCover(vec2 xz) {
   return false;
 }
 bool bareCover(float c) {
-  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5;
+  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5 || abs(c - 11.0) < 0.5;
 }
 `;
 /** Class at world (x, z), nearest node (x east, z south as in land.js). NONE when no place is set. */
@@ -122,7 +123,7 @@ async function tileUrlTemplate() {
 }
 
 /** Rasterises the land cover of the square about (lat, lon) from OpenFreeMap tiles. Returns { grid, counts }. */
-export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
+export async function fetchCover({ lat, lon, near, basalt = false, onProgress = () => {} }) {
   const { VectorTile } = await import('@mapbox/vector-tile');
   const Pbf = (await import('pbf')).default;
   const template = await tileUrlTemplate();
@@ -134,6 +135,8 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
   const tiles = [];
   for (let x = a.x; x <= b.x; x++) for (let y = a.y; y <= b.y; y++) tiles.push([x, y]);
+  // beach points of the poi layer (class or subclass beach · beach_resort, or a name with 해수욕장 · 해변 · beach)
+  const beaches = [];
   let done = 0;
   for (const [x, y] of tiles) {
     const url = template.replace('{z}', Z).replace('{x}', x).replace('{y}', y);
@@ -180,8 +183,11 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     for (let f = 0; P && f < P.length; f++) {
       const feat = P.feature(f);
       const p = feat.properties;
+      if (feat.type !== 1) continue;
+      // a beach point (the sand of a named beach, T2)
+      if (isBeachPoi(p)) { const g = feat.loadGeometry()[0][0]; beaches.push(toNode(x, y, n, P.extent, g.x, g.y, lat, lon, m0)); }
       const heritagePoint = HERITAGE_POI.has(p.class) || (p.class === 'place_of_worship' && p.subclass === 'buddhist');
-      if (feat.type !== 1 || !heritagePoint) continue;
+      if (!heritagePoint) continue;
       const q = feat.loadGeometry()[0][0];
       const m = toMetres(x, y, n, P.extent, q.x, q.y, lat, lon, m0);
       heritage.push([m.x, m.z]);
@@ -208,11 +214,32 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
     if (out[k] > COVER.GRASS || near[k] > 0.5) continue;
     if (nearWater(sea, i, j, 3)) out[k] = COVER.WATER;
   }
-  // sand: the strip of open ground behind the sea, 30 m wide and under 8 m high (OSM often leaves beaches untagged)
+  // the untagged shore, in the Jeju box only (the lava coast of the place): OSM's own sand and beaches stay sand
+  // (their class is set already); the inferred sand is the strip 14 m from the sea, within 150 m of a beach point of
+  // the poi layer (a beach of 200 to 300 m; OSM has no sand tag at 협재, the beach is named in the poi layer only);
+  // the rest of the untagged land at the sea (0 to 8 m) is basalt, and so is the rock within 30 m of the sea; a few
+  // blocks stand in the shallow water in front of the basalt shore
+  // sand: the strip of open ground behind the sea, under 8 m high (OSM often leaves beaches untagged)
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i;
     if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 8) continue;
-    if (nearWater(sea, i, j, 15)) out[k] = COVER.SAND;
+    if (!nearWater(sea, i, j, basalt ? 7 : 15)) continue;
+    if (basalt && !beaches.some((b) => Math.hypot(i - b.x, j - b.y) * NEAR_STEP <= 150)) continue;
+    out[k] = COVER.SAND;
+  }
+  // basalt (Jeju only, after the sand): the untagged land (none, grass) 0 to 8 m from the sea, below 10 m high
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if ((out[k] !== COVER.NONE && out[k] !== COVER.GRASS) || near[k] <= 0.5 || near[k] > 10) continue;
+    if (nearWater(sea, i, j, 4)) out[k] = COVER.BASALT;
+  }
+  // blocks in the shallow water in front of the basalt shore (within 4 m of it): one shallow sea cell in 30. They were
+  // water, so the reef mask keeps them: the sea share of a view counts them as water (the land of the start does not)
+  const reef = new Uint8Array(N * N);
+  if (basalt) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (out[k] !== COVER.WATER || near[k] <= -1 || (i * 7 + j * 3) % 30 !== 0) continue;
+    if (withinValue(out, i, j, 2, COVER.BASALT)) { out[k] = COVER.BASALT; reef[k] = 1; }
   }
   // paved ground (T4) before the rock: stone in a town is paved, and rock is for the natural rock alone
   applyPaving(out, { buildings, heritage, roads, N, STEP: NEAR_STEP });
@@ -235,16 +262,22 @@ export async function fetchCover({ lat, lon, near, onProgress = () => {} }) {
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
     const k = j * N + i;
     if (out[k] !== COVER.NONE && out[k] !== COVER.GRASS && out[k] !== COVER.ROCK) continue;
-    if (natural[k] <= 0.5) continue;
+    if (natural[k] <= 0.5 || town.mask[k]) continue;
     const dx = (natural[k + 1] - natural[k - 1]) / (2 * NEAR_STEP), dz = (natural[k + N] - natural[k - N]) / (2 * NEAR_STEP);
     if (Math.hypot(dx, dz) > ROCK_SLOPE) out[k] = COVER.ROCK;
+  }
+  // the lava rock of the Jeju shore (within 30 m of the sea) is basalt too: rock would take the granite brush
+  if (basalt) for (let k = 0; k < N * N; k++) {
+    const i = k % N, j = (k - i) / N;
+    if (out[k] === COVER.ROCK && nearWater(sea, i, j, 15)) out[k] = COVER.BASALT;
   }
   onProgress(1, 'cover');
   const counts = {};
   for (const v of out) counts[COVER_NAMES[v]] = (counts[COVER_NAMES[v]] || 0) + 1;
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
-  return { grid: out, depth: dep, counts, buildings, heritage, heritageKinds, heritageNames, town };
+  // natural: the near square before the town step lowered it (place-check compares the terrain port on it)
+  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, town, natural };
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
@@ -262,6 +295,22 @@ function toMetres(tx, ty, n, ext, px, py, lat0, lon0, m0) {
   const lon = ((tx + px / ext) / n) * 360 - 180;
   const lat = (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + py / ext)) / n))) * 180) / Math.PI;
   return { x: (lon - lon0) * m0, z: -(lat - lat0) * M_LAT };
+}
+
+/** A poi-layer point that names a beach: class or subclass beach · beach_resort, or a name with 해수욕장 · 해변 · beach. */
+function isBeachPoi(p) {
+  if (['beach', 'beach_resort'].includes(p.class) || ['beach', 'beach_resort'].includes(p.subclass)) return true;
+  return ['name', 'name_ko', 'name_en'].some((k) => typeof p[k] === 'string' && /해수욕장|해변|beach/i.test(p[k]));
+}
+
+// true when a cell within r nodes of (i, j) holds the value v of the grid
+function withinValue(arr, i, j, r, v) {
+  for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    const a = i + di, b = j + dj;
+    if (a < 0 || b < 0 || a >= N || b >= N) continue;
+    if (arr[b * N + a] === v) return true;
+  }
+  return false;
 }
 
 function nearWater(sea, i, j, r) {
@@ -304,12 +353,13 @@ export function raySpread(vx, vz, maxR, hit) {
 }
 
 /** The ground as the scene draws it: near heights above the entrance, at the scene's vertical scale (land.js VS). */
-const SCENE_VS = 0.5;
+/** The travel walk's vertical scale (1 = true). The baked Hwadam walk keeps land.js VS 0.5; see PLAN.md T2. */
+export const TRAVEL_VS = 1.0;
 export function sceneGround(near, H0) {
   return (x, z) => {
     const i = Math.min(N - 1, Math.max(0, Math.round(x / NEAR_STEP + N / 2)));
     const j = Math.min(N - 1, Math.max(0, Math.round(N / 2 - z / NEAR_STEP)));
-    return (near[j * N + i] - H0) * SCENE_VS;
+    return (near[j * N + i] - H0) * TRAVEL_VS;
   };
 }
 
@@ -338,7 +388,7 @@ export function frameShare(cover, ground, x, z, a, cls) {
 }
 
 /** Scene scale of the ground (land.js VS): near and midground heights are scaled alike, so the angles match the frame. */
-const VS_SCENE = 0.5;
+const VS_SCENE = TRAVEL_VS;
 /**
  * The steepest elevation angle (degrees) toward the ridges of the midground grid (600 m to 2 km, mid = bakeMidground) from the
  * start (x, z) along bearing a. hc is the near height at the start (metres, absolute); the eye is 1.6 m above it.
@@ -385,7 +435,7 @@ export function occludeShare(ground, x, z, a, maxT) {
 
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** The elevation (degrees) a ridge band is drawn at, as ranges.js draws it: the scene's VS (0.5, 1.0 beyond 5 km). */
-export function drawnElev(th, d) { return (Math.atan(Math.tan(th) * (0.5 + 0.5 * smoothstep(2000, 5000, d))) * 180) / Math.PI; }
+export function drawnElev(th, d) { return (Math.atan(Math.tan(th) * (TRAVEL_VS + (1 - TRAVEL_VS) * smoothstep(2000, 5000, d))) * 180) / Math.PI; }
 /**
  * The ridge layers in the lane of bearing a (gaze +-12 degrees) from a horizon of the place's bands (metres, nearest
  * first; horizon as bakeHorizon makes it). A band is a layer when its highest ridge rises 0.4 degree over the nearer ones.
@@ -400,6 +450,17 @@ export function laneLayers(horizon, bands, a) {
   for (let b = 1; b < top.length; b++) if (top[b] > cur + 0.4) { layers++; cur = top[b]; }
   return { layers, top };
 }
+/** The classes of the cover within r metres of (x, z): node counts (for the check at the start). */
+export function coverWithin(x, z, r) {
+  const out = {};
+  for (let dx = -r; dx <= r; dx += NEAR_STEP) for (let dz = -r; dz <= r; dz += NEAR_STEP) {
+    if (dx * dx + dz * dz > r * r) continue;
+    const name = COVER_NAMES[coverAt(x + dx, z + dz)];
+    out[name] = (out[name] || 0) + 1;
+  }
+  return out;
+}
+
 /** The most of class `cls` the first frame can show from (x, z), over the bearings (every 6 degrees). */
 export function frameNear(cover, near, H0, x, z, cls) {
   const g = sceneGround(near, H0);
@@ -449,7 +510,8 @@ export function chooseGaze(horizon, cover, near, vantage, H0, mid = null, bands 
  * meets no ground within 400 m. Called from the page (window.lab.coverView).
  */
 export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
-  const counts = {};
+  const counts = {}, lower = {};
+  let lowerTotal = 0;
   const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
   const p = new THREE.Vector3(), d = new THREE.Vector3();
   let total = 0, occ150 = 0;
@@ -462,6 +524,7 @@ export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
       if (y <= ground(x, z)) { name = COVER_NAMES[coverAt(x, z)]; hitT = t; break; }
     }
     counts[name] = (counts[name] || 0) + 1;
+    if (cy >= (rows * 2) / 3) { lower[name] = (lower[name] || 0) + 1; lowerTotal++; }
     // a hill over the view: a ray at or above the horizon that meets ground within 150 m (the floor below the
     // horizon is always near, and is not counted)
     if (hitT <= 150 && d.y >= -0.02) occ150 = (occ150 || 0) + 1;
@@ -470,5 +533,9 @@ export function viewShares(camera, THREE, ground, cols = 64, rows = 36) {
   for (const k of Object.keys(counts)) counts[k] = +(counts[k] / total).toFixed(3);
   // occ150: the share of the frame whose ground stands within 150 m (what hides the far view)
   counts.occ150 = +((occ150 || 0) / total).toFixed(3);
+  // the lower third of the frame (the foreground), by class, as shares of that third
+  const low = {};
+  for (const k of Object.keys(lower)) low[k] = +(lower[k] / lowerTotal).toFixed(3);
+  counts.lower = low;
   return counts;
 }

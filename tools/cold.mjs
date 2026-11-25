@@ -7,6 +7,8 @@
 //
 // Muted, headless Chromium. Other work on the GPU slows compiling a lot, so say what else was running.
 import { chromium } from 'playwright-core';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => { const hit = args.find((a) => a.startsWith(`--${name}=`)); return hit ? hit.slice(name.length + 3) : fallback; };

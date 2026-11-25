@@ -7,11 +7,14 @@ import * as THREE from 'three';
 import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
-import { setCover, hasCover, coverTexture, coniferShare, COVER_GLSL } from './cover.js';
+import { setCover, hasCover, coverTexture, coniferShare, COVER_GLSL, TRAVEL_VS } from './cover.js';
 export { noise, rng, segW };
 
 /** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
 export const VS = 0.5;
+// the scale in use: VS for the baked walk, TRAVEL_VS for a place baked at run time (set by setPlace)
+let vs = VS;
+export function verticalScale() { return vs; }
 
 // --- the way through ---------------------------------------------------------------------------------------------
 // The ground is set by setPlace() (src/hwadam/world/place.js: the baked Hwadam data, or a place baked at run time)
@@ -61,6 +64,7 @@ export function setPlace(place) {
   NEAR_STEP = place.meta.nearStep;
   near = place.near;
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
+  vs = place.source === 'runtime' ? TRAVEL_VS : VS;
   // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
   setCover(place.cover?.grid ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0, place.cover?.depth ?? null);
   START.x = place.way.start[0]; START.z = place.way.start[1];
@@ -130,7 +134,7 @@ export async function prepareLand(pause) {
       const x = -EXTENT + (i / (N - 1)) * 2 * EXTENT, z = -EXTENT + (j / (N - 1)) * 2 * EXTENT;
       const idx = j * N + i;
       const wd = dist[idx] * TEXEL_M;
-      const ground = (groundAt(x, z) - H0) * VS;
+      const ground = (groundAt(x, z) - H0) * vs;
       // the same small noise the autumn wood has, and the way worn a little into the ground
       heights[idx] = ground + 0.3 * noise(x / 8.3, z / 8.3) - 0.28 * Math.exp(-(wd * wd) / 3.2);
       const k = idx * 4;
@@ -254,6 +258,9 @@ export function createLand(shared) {
             // the mountain's rock is pale granite, lit in coarse strokes with some dark seams
             c = mix(vec3(0.66, 0.62, 0.58), vec3(0.86, 0.8, 0.76), strokeV) * (0.9 + 0.15 * sqn);
           }
+        } else if (abs(cls - 11.0) < 0.5) {
+          // the Jeju lava shore (T2, the user's rule): almost black, with a faint warm cast, pocked
+          c = mix(vec3(0.17, 0.16, 0.155), vec3(0.27, 0.255, 0.25), strokeV) * (0.85 + 0.3 * sqn);
         } else if (abs(cls - 8.0) < 0.5) {
           c = mix(vec3(0.56, 0.48, 0.42), vec3(0.78, 0.7, 0.6), sqn) * (0.9 + 0.2 * strokeV);
         } else if (abs(cls - 10.0) < 0.5) {

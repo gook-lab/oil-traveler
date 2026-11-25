@@ -2,7 +2,7 @@
 //   CHROME=<chromium> node tools/cover-shots.mjs [--out shots/cover-r1] [--dist dist]
 // Writes <out>/<name>.png at 2560x1440 and prints the cover histogram each place reports. Needs `npm run build`.
 // Coordinates are the place pins; nothing personal is sent.
-import { mkdirSync, createReadStream, existsSync, statSync } from 'node:fs';
+import { mkdirSync, createReadStream, existsSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,13 +16,20 @@ const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i
 const root = resolve(here, flag('dist', 'dist'));
 const outDir = resolve(here, flag('out', 'shots/cover'));
 mkdirSync(outDir, { recursive: true });
-// --hide <parts>: a check capture of the forest (the hwadam pin) with those parts switched off (?hide=, e.g. ranges)
+// --hide <parts>: a check capture with those parts switched off (?hide=, e.g. ranges); --place <name> picks the place (default hwadam)
 const hide = flag('hide', '');
-const PLACES = (hide ? [{ name: `hwadam-hide-${hide.replace(/,/g, '-')}`, query: `scene=travel&place=37.3419823,127.2885772&name=${encodeURIComponent('화담숲')}&clean&hide=${hide}` }] : [
+const FULL = [
   { name: 'hwadam', query: `scene=travel&place=37.3419823,127.2885772&name=${encodeURIComponent('화담숲')}&clean` },
   { name: 'bukhansan', query: `scene=travel&place=37.6588,126.9772&name=${encodeURIComponent('북한산')}&clean` },
   { name: 'hyeopjae', query: `scene=travel&place=33.3943,126.2396&name=${encodeURIComponent('협재')}&clean` },
-]);
+];
+// --gaze <deg> [--place <name>]: a bearing sweep check: only the bukhansan place (or --place), with its first bearing fixed (?gaze=, named -g<deg>)
+const gazeFix = flag('gaze', '');
+const PLACES = gazeFix
+  ? FULL.filter((p) => p.name === flag('place', 'bukhansan')).map((p) => ({ name: `${p.name}-g${gazeFix}`, query: `${p.query}&gaze=${gazeFix}` }))
+  : hide
+  ? FULL.filter((p) => p.name === flag('place', 'hwadam')).map((p) => ({ name: `${p.name}-hide-${hide.replace(/,/g, '-')}${flag('extra', '') ? '-x' : ''}`, query: `${p.query}&hide=${hide}${flag('extra', '') ? `&${flag('extra', '')}` : ''}` }))
+  : FULL;
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.bin': 'application/octet-stream', '.mjs': 'text/javascript' };
 const server = createServer((req, res) => {
@@ -60,6 +67,20 @@ for (const p of PLACES) {
   }) : null;
   const crowns = ready && p.name === 'hwadam' ? await page.evaluate(() => window.lab.crownView()) : null;
   if (crowns) console.log(`  crowns ${JSON.stringify(crowns)}`);
+  const horizon = ready ? await page.evaluate(() => window.lab.horizonRow()) : null;
+  const tiers = ready ? await page.evaluate(() => window.lab.treeTiers()) : null;
+  const startCover = ready ? await page.evaluate(() => window.lab.startCover()) : null;
+  if (horizon) console.log(`  horizon ${JSON.stringify(horizon)} tiers(frame) ${JSON.stringify(tiers)} start150m ${JSON.stringify(startCover)}`);
+  const drop = ready ? await page.evaluate(() => window.lab.drop50()) : null;
+  console.log(`  drop within 50 m along gaze (m) ${drop}`);
+  const stats = ready ? await page.evaluate(() => window.lab.treeStats()) : null;
+  if (ready && flag('span', '')) { const hit = await page.evaluate(([u, v]) => window.lab.pick(u, v)[0], [Number(flag('pu', '0.5')), Number(flag('pv', '0.42'))]); if (hit) console.log(`  span ${JSON.stringify(hit)} ${JSON.stringify(await page.evaluate(([x, z]) => window.lab.midSpan(x, z, 150), hit.at))}`); }
+  if (ready && flag('verts', '')) console.log(`  meshes ${JSON.stringify(await page.evaluate((n) => window.lab.meshesWithVerts(n), Number(flag('verts', '0'))))}`);
+  if (ready && p.name.includes('hide')) console.log(`  pick ${JSON.stringify(await page.evaluate(() => [window.lab.pick(0.5, 0.42), window.lab.pick(0.7, 0.38), window.lab.pick(0.25, 0.37)]))}`);
+  const mid = ready ? await page.evaluate(() => window.lab.midStats()) : null;
+  if (ready) writeFileSync(join(outDir, `${p.name}-trees.json`), JSON.stringify(await page.evaluate(() => window.lab.frameTrees())));
+  if (mid) console.log(`  midStats ${JSON.stringify(mid)}`);
+  if (stats) console.log(`  treeStats ${JSON.stringify(stats)}`);
   const conifers = ready ? await page.evaluate(() => window.lab.coniferView()) : null;
   console.log(`  conifers ${JSON.stringify(conifers)}`);
   // the skyline the first view looks at: the highest elevation (degrees) of the skyline's three bands within 20 degrees
@@ -96,6 +117,23 @@ for (const p of PLACES) {
   const need = { hyeopjae: ['water', 0.25], bukhansan: ['rock', 0.1] }[p.name];
   if (need && view && (view[need[0]] ?? 0) < need[1]) { bad++; console.log(`  FAIL ${p.name} first frame ${need[0]} ${view[need[0]] ?? 0} < ${need[1]}`); }
   await page.screenshot({ path: join(outDir, `${p.name}.png`) });
+  // walk test: from the start, 4 s of walking forward on each of the four axes; the distance moved (m)
+  const walked = [];
+  if (ready) {
+    for (const [fx, fz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const d = await page.evaluate(([fx, fz]) => {
+        const lab = window.lab, f = lab.feet();
+        lab.teleport(f.x, f.z, f.x + fx * 10, f.z + fz * 10);
+        const base = lab.input.read(1 / 60);
+        lab.setInput(() => ({ ...base, move: { x: 0, y: 1 }, sprint: false }));
+        return f;
+      }, [fx, fz]);
+      await page.waitForTimeout(4000);
+      const moved = await page.evaluate((d) => { const lab = window.lab, f = lab.feet(); lab.setInput(null); return +Math.hypot(f.x - d.x, f.z - d.z).toFixed(1); }, d);
+      walked.push(moved);
+    }
+    console.log(`  walk 4 s forward on 4 axes (m) ${JSON.stringify(walked)}`);
+  }
   console.log(p.name, ready ? 'ready' : 'NOT READY', JSON.stringify(cover), coverError ? `coverError=${coverError}` : '', problems.length ? problems.slice(0, 3) : '');
   console.log(`  first frame ${JSON.stringify(view)} gaze ${JSON.stringify(gaze)}`);
   await page.close();

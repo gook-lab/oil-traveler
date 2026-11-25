@@ -13,6 +13,7 @@ The Hwadam walk (`?scene=hwadam`), added by gook-lab:
 - Heights: Terrain Tiles on AWS Open Data. Global GMTED2010 and SRTM terrain data courtesy of the U.S. Geological Survey.
 - The centre point of the walk: © OpenStreetMap contributors (ODbL).
 - An impression of the place, made in code. No photograph, logo or map of it was used.
+- Background music: generated with ElevenLabs Eleven Music for this app. It is not under the MIT or CC0 grants and is not offered for reuse.
 
 The travel scene (`?scene=travel`), a walk on any place picked on the map:
 

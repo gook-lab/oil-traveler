@@ -4,6 +4,7 @@
 // The pins are circle layers drawn inside the map canvas (not DOM markers), so they move with the map and stay there.
 import './travel.css';
 import { geocodeMany, reverseName, highestSpot, PlaceError } from '../hwadam/world/place.js';
+import { playMusic } from '../music.js';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -24,7 +25,9 @@ const kindText = (s) => String(s || '').replace(/\s*·\s*장소$/, '').replace(/
 let overlay = null, map = null, maplibre = null, chosen = null, onBack = null, ready = false;
 let pickMarker = null, pickOn = false; // the chosen spot is a draggable paint dab (a MapLibre marker)
 let pins = { pick: null, own: null }; // { lat, lon } or null
-let lastReverse = 0;
+let lastReverse = 0, lastList = [];
+// read by tools/travel-check.mjs: the pick, the last results and the highest-spot rule, as the page holds them
+const testHooks = () => ({ pick: () => pins.pick, results: () => lastList, highestSpot });
 export const mapOpen = () => !!overlay && !overlay.hidden;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -114,16 +117,19 @@ async function ensureMap() {
   overlay.setAttribute('aria-label', '지도에서 걸을 곳 고르기');
   overlay.innerHTML = `
     <div class="tm-canvas" id="tm-canvas"></div>
+    <div class="tm-top">
     <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
-        <input id="tm-q" type="text" autocomplete="off" placeholder="주소나 장소 이름" aria-label="주소나 장소 이름" />
+        <input id="tm-q" type="text" autocomplete="off" placeholder="예: 북한산, 협재해변, 화담숲" aria-label="주소나 장소 이름" />
         <button type="button" class="tm-clear" aria-label="검색어 지우기" hidden>×</button>
       </div>
       <button type="submit">찾기</button>
     </form>
     <section class="tm-results" hidden aria-label="검색 결과"></section>
+    <button type="button" class="tm-back" hidden>걷기로 돌아가기</button>
     <p class="tm-status" role="status" aria-live="polite"></p>
+    </div>
     <div class="tm-bar">
       <div class="tm-card" hidden>
         <div class="tm-name"><p class="tm-label"></p><p class="tm-sub"></p></div>
@@ -131,7 +137,6 @@ async function ensureMap() {
       </div>
       <p class="tm-recommend"><span>추천 장소</span> <button type="button" class="tm-hwadam">화담숲 그대로 걷기</button></p>
     </div>
-    <button type="button" class="tm-back" hidden>걷기로 돌아가기</button>
     <p class="tm-credit">© OpenStreetMap contributors · <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">지형 Terrain Tiles</a></p>`;
   document.body.append(overlay);
   maplibre = await import('maplibre-gl');
@@ -158,6 +163,7 @@ async function ensureMap() {
     choose(e.lngLat.lat, e.lngLat.lng, coords(e.lngLat.lat, e.lngLat.lng), true);
   });
   wire();
+  globalThis.__travelTest = testHooks();
   return map;
 }
 
@@ -199,6 +205,7 @@ function status(text, warn = false) {
 
 /** Search results as a list, always (one result too): name, region and kind. Picking one flies there. */
 function showResults(list) {
+  lastList = list;
   const box = overlay.querySelector('.tm-results');
   box.innerHTML = `<p class="tm-count">${list.length}건 · 줄을 누르면 그곳으로 가요</p><ul>${list.map((r, i) => `<li><button type="button" data-i="${i}"><span class="tm-num">${i + 1}</span><span class="tm-txt"><b>${esc(r.label)}</b><small>${esc(kindText(r.sub))}</small></span><span class="tm-pick">고르기 ›</span></button></li>`).join('')}</ul>`;
   box.hidden = false;
@@ -290,6 +297,7 @@ function wire() {
  * from a failed bake; the map then says why and shows the spot. Never resolves: the walk starts by navigation.
  */
 export async function startMap({ err = '', place = '', name = '' } = {}) {
+  playMusic('map');
   document.getElementById('loading')?.remove();
   document.documentElement.dataset.scene = 'travel';
   await ensureMap();
@@ -315,6 +323,7 @@ export async function startMap({ err = '', place = '', name = '' } = {}) {
  * reloads the page on that spot. `pin` (the spot he set out from) is drawn too, when it is another point.
  */
 export async function openMap({ lat, lon, pin, back }) {
+  playMusic('map');
   await ensureMap();
   onBack = back;
   overlay.hidden = false;

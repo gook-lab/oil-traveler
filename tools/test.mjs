@@ -7,6 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 if (!process.env.PATCH_LAB) throw new Error('set PATCH_LAB to the folder of the lab');
 const { testBlock } = await import(pathToFileURL(path.join(process.env.PATCH_LAB, 'toolbox/block/test-block.mjs')).href);

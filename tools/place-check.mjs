@@ -13,6 +13,8 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { gazeBearing } from '../src/hwadam/world/bake.js';
+import { requireGpuLock } from './no-pointer-lock.mjs';
+requireGpuLock();
 
 const here = resolve(fileURLToPath(import.meta.url), '..', '..');
 const args = process.argv.slice(2);
@@ -79,7 +81,8 @@ async function openPlace(query, { shot, coverage = false } = {}) {
   if (ready) {
     out.place = await page.evaluate(() => {
       const p = window.lab.place;
-      return { name: p.name, source: p.source, near: Array.from(p.near), horizon: Array.from(p.horizon), way: p.way, meta: p.meta };
+      // the terrain port is compared on the heights as baked, before the town step of cover.js lowers the built-up nodes
+      return { name: p.name, source: p.source, near: Array.from(p.cover?.natural ?? p.near), horizon: Array.from(p.horizon), way: p.way, meta: p.meta };
     });
     if (coverage) {
       // what the first frame shows: the trunks' share of the frame's width (each trunk's width against the view), and

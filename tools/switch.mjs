@@ -1,5 +1,5 @@
 // Checks the scene switch inside a page that holds the demo in a frame, as Patch's does (build first: npm run
-// build): the demo opens on the aurora, each button on the page loads the other picture, and each time the demo
+// build): the demo opens on the aurora (named in the frame address: a bare address opens the traveller), each button on the page loads the other picture, and each time the demo
 // comes back ready. Headless and muted.
 //   node tools/switch.mjs
 import { createServer } from 'node:http';
@@ -12,7 +12,7 @@ import { guard } from './no-pointer-lock.mjs';
 guard(chromium);
 const root = resolve(fileURLToPath(import.meta.url), '..', '..', 'dist');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.glb': 'model/gltf-binary', '.wasm': 'application/wasm' };
-const HOST = `<!doctype html><meta charset="utf-8"><body style="margin:0"><iframe id="demo" src="/index.html?nopad" style="border:0;width:1280px;height:720px"></iframe><script>
+const HOST = `<!doctype html><meta charset="utf-8"><body style="margin:0"><iframe id="demo" src="/index.html?nopad&scene=aurora" style="border:0;width:1280px;height:720px"></iframe><script>
   const frame = document.getElementById('demo'), log = [];
   window.log = log;
   addEventListener('message', (e) => { if (e.data?.channel === 'patch-block' && e.data.type !== 'stats') log.push({ type: e.data.type }); });

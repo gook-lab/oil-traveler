@@ -5,8 +5,15 @@
 }
 .tm[hidden] { display: none; }
 .tm-canvas { position: absolute; inset: 0; }
+/* the top column: head, search, results, back button and status in one flow, so a longer line or a larger font pushes
+   the next one down instead of covering it */
+.tm-top {
+  position: absolute; left: 16px; top: 12px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  max-width: calc(100vw - 32px); pointer-events: none;
+}
+.tm-top > * { pointer-events: auto; }
 .tm-search {
-  position: absolute; left: 16px; top: 44px; z-index: 2; display: flex; gap: 6px;
+  display: flex; gap: 6px;
   width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
 }
 .tm-search input {
@@ -18,7 +25,7 @@
   background: #5b4636; border: 0; padding: 9px 13px; border-radius: 3px;
 }
 .tm-status {
-  position: absolute; left: 16px; top: 96px; z-index: 2; margin: 0; max-width: min(380px, calc(100vw - 32px));
+  margin: 0; max-width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
   padding: 4px 8px; background: rgba(252, 248, 238, 0.85); border-radius: 3px; font-size: 13px;
 }
 .tm-status:empty { display: none; }
@@ -30,7 +37,6 @@
 .tm-card[hidden] { display: none; }
 .tm-label { margin: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tm-go { background: #8a3a1c; }
-.tm-back { position: absolute; left: 16px; top: 96px; z-index: 3; }
 .tm-back[hidden] { display: none; }
 .tm-credit {
   position: absolute; right: 8px; bottom: 6px; z-index: 2; margin: 0; font-size: 11px; color: #4a3d33;
@@ -70,9 +76,9 @@
 }
 .tm-dab:active { cursor: grabbing; }
 @media (max-width: 600px) {
-  .tm-search { left: 12px; right: 12px; width: auto; top: 12px; }
-  .tm-status { left: 12px; top: 58px; }
-  .tm-back { left: 12px; top: 96px; }
+  .tm-top { left: 12px; right: 12px; top: 12px; max-width: none; align-items: stretch; }
+  .tm-search, .tm-results { width: auto; }
+  .tm-back, .tm-status { align-self: flex-start; }
   .tm-credit { font-size: 10px; }
 }
 
@@ -83,7 +89,7 @@
 /* search focus and results (palette: the brown of the pin and the warm paper) */
 .tm-search input:focus { outline: 2px solid rgba(70, 52, 40, 0.55); outline-offset: 1px; border-color: rgba(70, 52, 40, 0.55); }
 .tm-results {
-  position: absolute; left: 16px; top: 96px; z-index: 3; margin: 0; padding: 4px 0;
+  margin: 0; padding: 4px 0;
   width: min(380px, calc(100vw - 32px)); box-sizing: border-box;
   background: rgba(252, 248, 238, 0.97); border: 1px solid rgba(70, 52, 40, 0.25); border-radius: 3px;
 }
@@ -119,7 +125,7 @@
 
 /* the header line: always on, short */
 .tm-head {
-  position: absolute; left: 16px; top: 12px; z-index: 2; display: flex; gap: 10px; align-items: baseline;
+  display: flex; gap: 10px; align-items: baseline;
   padding: 6px 10px; background: rgba(252, 248, 238, 0.9); border-radius: 3px; font-size: 13px; color: #2a211b;
 }
 .tm-head b { font-weight: normal; letter-spacing: 0.06em; color: #8a3a1c; }
@@ -155,7 +161,13 @@
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.07' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0.8 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 @media (max-width: 600px) {
-  .tm-head { left: 12px; right: 12px; flex-wrap: wrap; }
-  .tm-results { left: 12px; right: 12px; width: auto; }
-  .tm-status { left: 12px; }
+  .tm-head { flex-wrap: wrap; }
 }
+
+/* the view toggle (src/travel/view-toggle.js): the walk's HUD colours, in the corner away from the keys */
+.walk-view {
+  position: fixed; right: 16px; bottom: 16px; z-index: 5; cursor: pointer;
+  font: 13px/1 Georgia, serif; letter-spacing: 0.03em; color: #f3e3c3;
+  background: rgba(28, 20, 18, 0.55); border: 0; border-radius: 3px; padding: 8px 12px;
+}
+.walk-view:hover { background: rgba(28, 20, 18, 0.72); }

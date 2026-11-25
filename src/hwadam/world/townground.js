@@ -9,13 +9,26 @@
  * @param {Uint8Array} cls the class of each node (cover.js COVER)
  * @param {number} N the side in nodes; @param {number} STEP the node size in metres
  * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number, force?: Uint8Array }} [opt]
- * @returns {{ lowered: number, meanDrop: number, maxDrop: number }}
+ * @returns {{ lowered: number, islands: number, meanDrop: number, maxDrop: number, mask: Uint8Array }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 60, pct = 0.15, stride = 4, force = null } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10], island = [0, 1, 5], islandR = 30, islandShare = 0.5, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
   // the nodes of a palace court (force) take the same lowering whatever their class (a court is bare ground, not a town)
   for (let k = 0; k < N * N; k++) if (urban.includes(cls[k]) || (force && force[k])) isUrban[k] = 1;
+  // an island of open ground in the town (a plaza or a lot the map leaves untagged): a none, grass or rock node with half
+  // or more of the nodes within 30 m built-up is town ground too. The DSM reads its roofs and trees as ground, and at the
+  // true vertical scale such an island stands 8 m over the street round it (명동, 2026-11-25)
+  const ri = Math.round(islandR / STEP), sat = new Uint32Array((N + 1) * (N + 1));
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) sat[(j + 1) * (N + 1) + i + 1] = isUrban[j * N + i] + sat[j * (N + 1) + i + 1] + sat[(j + 1) * (N + 1) + i] - sat[j * (N + 1) + i];
+  let islands = 0;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (isUrban[k] || !island.includes(cls[k])) continue;
+    const i0 = Math.max(0, i - ri), i1 = Math.min(N, i + ri + 1), j0 = Math.max(0, j - ri), j1 = Math.min(N, j + ri + 1);
+    const n = sat[j1 * (N + 1) + i1] - sat[j0 * (N + 1) + i1] - sat[j1 * (N + 1) + i0] + sat[j0 * (N + 1) + i0];
+    if (n >= islandShare * (i1 - i0) * (j1 - j0)) { isUrban[k] = 2; islands++; }
+  }
   const target = new Float32Array(N * N).fill(NaN);
   const vals = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -57,5 +70,31 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10], radius = 60, pc
     }
     if (n) near[k] = s / n;
   }
-  return { lowered, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2) };
+  // the town ground is then smoothed over 20 m (a box blur of the town nodes alone, twice, so a tent): the percentile
+  // still follows the roofs of a dense block, and at the true vertical scale those read as grey hills between the
+  // buildings (명동, 2026-11-25). The slope of the town as a whole stays
+  if (blurR > 0) {
+    const r = Math.round(blurR / STEP), w = new Float32Array(N * N), v = new Float32Array(N * N);
+    for (let k = 0; k < N * N; k++) if (isUrban[k] && before[k] > 0.5) { w[k] = 1; v[k] = near[k]; }
+    for (let pass = 0; pass < 2; pass++) { boxBlur(v, N, r); boxBlur(w, N, r); }
+    for (let k = 0; k < N * N; k++) if (isUrban[k] && before[k] > 0.5 && w[k] > 1e-6) near[k] = v[k] / w[k];
+  }
+  // mask: 1 a built-up or court node, 2 an island node (cover.js judges no rock on either)
+  return { lowered, islands, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2), mask: isUrban };
+}
+
+/** A box blur of radius r (nodes) along the rows and then the columns, in place (sums, so the cost is per node). */
+function boxBlur(a, N, r) {
+  const t = new Float32Array(N);
+  for (let pass = 0; pass < 2; pass++) for (let line = 0; line < N; line++) {
+    const at = (m) => (pass === 0 ? line * N + m : m * N + line);
+    let sum = 0;
+    for (let m = 0; m < Math.min(N, r + 1); m++) sum += a[at(m)];
+    for (let m = 0; m < N; m++) {
+      t[m] = sum;
+      if (m + r + 1 < N) sum += a[at(m + r + 1)];
+      if (m - r >= 0) sum -= a[at(m - r)];
+    }
+    for (let m = 0; m < N; m++) a[at(m)] = t[m];
+  }
 }

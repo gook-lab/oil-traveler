@@ -4,7 +4,7 @@
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
 import { planBuildings, clearGrid, clearance } from '../../travel/buildings.js';
-import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers } from './cover.js';
+import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers, COVER } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
   let best = 1;
@@ -45,7 +45,8 @@ export function placeFromUrl(q) {
   const bands = checkZooms ? BANDS : RUNTIME_BANDS, zooms = checkZooms ?? RUNTIME_BAND_ZOOMS;
   const viewAt = q.get('view') === 'goal' ? 'goal' : 'vantage'; // check mode: the skyline from the way's goal, as the baked data
   if (checkZooms && (checkZooms.length !== 3 || checkZooms.some((z) => !Number.isInteger(z) || z < 7 || z > 13))) throw new PlaceError('badparam', 'zooms');
-  return { lat, lon, zooms, bands, viewAt, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
+  const gaze = q.get('gaze') != null && q.get('gaze') !== '' ? Number(q.get('gaze')) : null; // a check: fixes the first bearing
+  return { lat, lon, zooms, bands, viewAt, gaze, name: (q.get('name') || '').trim() || `${lat.toFixed(4)}, ${lon.toFixed(4)}` };
 }
 
 /** Terrain tiles: a tile counts only when its imagery is SRTM or GMTED2010 (the same guard as tools/fetch-dem.mjs). */
@@ -68,7 +69,13 @@ function tileLoader(sources) {
  * Bakes a place from the terrain tiles. onProgress(fraction 0..1, label). Throws PlaceError with a code the page
  * can explain (net, source, water, noway).
  */
-export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, onProgress = () => {} }) {
+// the example pins whose first bearing is fixed by hand (degrees; temporary until the general rule for mountains works)
+const PIN_GAZE = {
+  '37.6588,126.9772': 210, // 북한산 예시 핀 — bearing sweep (cover-shots --gaze, 30 degree steps), see PLAN.md
+  '33.3943,126.2396': 40, // 협재 예시 핀 — 임시 (시선 후보 40 · 50 · 200 · 240 중 물 0.25 단언을 지키는 40), see PLAN.md
+};
+
+export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = RUNTIME_BANDS, viewAt = 'vantage', name, gaze: fixedGaze = null, onProgress = () => {} }) {
   const sources = new Set();
   const terrain = new Terrain(tileLoader(sources));
   onProgress(0.05, 'ground');
@@ -85,7 +92,9 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // plain ground (no cover), and the walk still opens
   let cover = null, coverError = '';
   try {
-    cover = await fetchCover({ lat, lon, near, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
+    // Jeju's coast is black lava (T2, the user's rule): only inside the island's box
+    const basalt = lat >= 33.1 && lat <= 33.6 && lon >= 126.1 && lon <= 127.0;
+    cover = await fetchCover({ lat, lon, near, basalt, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
   } catch (e) {
     coverError = e.message;
   }
@@ -93,14 +102,17 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // the skyline is taken from the travel start (the vantage point), so that it matches where he stands; or, for the
   // check against the baked data, from the way's goal (the baked skyline's point)
   const grid = cover?.grid ?? null;
+  // the sea of a view: the water as it was before the basalt blocks (they stand where water was, so they count as sea here;
+  // the start below stays off water and basalt, since the start takes the true grid). Land (basalt shore) stays land
+  const seaGrid = grid && cover.reef ? grid.map((v, k) => (cover.reef[k] ? COVER.WATER : v)) : grid;
   // the start looks at what the first frame is made of (T2): a mountain (rock on 5% of the square) at its rock, a
   // coast (sea on 5%) at its sea; elsewhere the plain pick
-  const share = (cls) => (grid ? grid.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / grid.length : 0);
-  const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9) > 0.05 ? 9 : null;
+  const share = (cls, g = grid) => (g ? g.reduce((n, v) => n + (v === cls ? 1 : 0), 0) / g.length : 0);
+  const focus = !grid ? null : share(5) > 0.05 ? 5 : share(9, seaGrid) > 0.05 ? 9 : null;
   // a mountain's start: the rock it can see, and the highest ridge of the midground over it (60 points a degree)
   const bonus = !focus ? null : focus === 5
     ? (x, z) => 400 * Math.min(0.3, frameNear(grid, near, way.startHeight, x, z, 5)) + 60 * Math.max(-30, ridgeNear(mid, near, N, NEAR_STEP, x, z)) - 800 * Math.max(0, minOcclusion(sceneGround(near, way.startHeight), x, z) - 0.3)
-    : (x, z) => 400 * frameNear(grid, near, way.startHeight, x, z, focus);
+    : (x, z) => 400 * frameNear(seaGrid, near, way.startHeight, x, z, focus);
   // the start stands 3 m clear of the buildings' outlines and walls (T3, buildings.js)
   const plansAll = cover ? planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null) : [];
   const clear = cover ? clearGrid(plansAll, N, NEAR_STEP) : null;
@@ -144,6 +156,44 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
       palaceGaze = (Math.atan2(best.target.c[0] - best.x, -(best.target.c[1] - best.z)) * 180) / Math.PI;
     }
   }
+  // a town (half the square or more built-up or paved, not a palace): the start stands on a road's centreline, 4 m or
+  // more clear of every outline, and looks along the road the way it runs clear the farthest (T3). pickVantage takes the
+  // highest open node, and in a town that is an untagged lot the DSM stands up over the street (the street is paved,
+  // which pickVantage leaves out)
+  let townGaze = null;
+  const town = palaceGaze == null && !!grid && share(COVER.BUILT) + share(COVER.PAVED) >= 0.5;
+  if (town && cover.roads?.length) {
+    const plansIn = plansAll.filter((b) => Math.hypot(b.c[0], b.c[1]) < 320);
+    const free = (x, z, d) => { const c = clearance(plansIn, x, z); return !c.inBuilding && c.d >= d; };
+    const run = (x, z, ux, uz) => { let t = 4; while (t <= 120 && free(x + ux * t, z + uz * t, 2)) t += 4; return t - 4; };
+    let best = null;
+    for (const r of cover.roads) {
+      if (r.w < 8) continue;
+      for (let s = 0; s + 1 < r.pts.length; s++) {
+        const [ax, az] = r.pts[s], [bx, bz] = r.pts[s + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 24) continue;
+        const ux = (bx - ax) / L, uz = (bz - az) / L;
+        for (let t = 8; t <= L - 8; t += 4) {
+          const x = ax + ux * t, z = az + uz * t, d0 = Math.hypot(x, z);
+          if (d0 > 150) continue;
+          const i = Math.round(x / NEAR_STEP + N / 2), j = Math.round(N / 2 - z / NEAR_STEP);
+          if (i < 0 || j < 0 || i >= N || j >= N || grid[j * N + i] === COVER.WATER || !free(x, z, 4)) continue;
+          const fwd = run(x, z, ux, uz), back = run(x, z, -ux, -uz);
+          // the camera of the third person stands 6.4 m behind him: the road must be clear 8 m back as well
+          const dir = fwd >= back ? 1 : -1, ahead = Math.max(fwd, back), behind = Math.min(fwd, back);
+          if (behind < 8) continue;
+          const score = ahead + 2 * r.w - 0.3 * d0;
+          if (!best || score > best.score) best = { x, z, h: near[j * N + i], score, ux: ux * dir, uz: uz * dir, ahead };
+        }
+      }
+    }
+    if (best) {
+      vantage = { x: best.x, z: best.z, h: best.h, score: best.score };
+      townGaze = (Math.atan2(best.ux, -best.uz) * 180) / Math.PI;
+      stages.town = { x: +best.x.toFixed(1), z: +best.z.toFixed(1), ahead: best.ahead, gaze: +townGaze.toFixed(1) };
+    }
+  }
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under
   // 30% of the frame hidden within 150 m gets 300 points (the bands and drawn heights are the ones ranges.js draws)
   if (focus === 5 && bonus) {
@@ -164,8 +214,10 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   onProgress(0.7, 'skyline');
   const { horizon, eye } = bakeHorizon(terrain, lat, lon, view, zooms, bands);
   // the first view's bearing: toward the sea or the rock when the square holds some (T2), else the skyline rule
-  let gaze = chooseGaze(horizon, grid, near, vantage, way.startHeight, mid, bands);
-  if (typeof palaceGaze === 'number') gaze = ((palaceGaze % 360) + 360) % 360;
+  const pinned = fixedGaze ?? PIN_GAZE[`${lat},${lon}`] ?? null;
+  let gaze = pinned != null ? pinned : chooseGaze(horizon, seaGrid, near, vantage, way.startHeight, mid, bands);
+  if (pinned == null && typeof palaceGaze === 'number') gaze = ((palaceGaze % 360) + 360) % 360;
+  if (pinned == null && typeof townGaze === 'number') gaze = ((townGaze % 360) + 360) % 360;
   // a mountain whose first view has no ridge above the eye (a summit pin) looks down about 8 degrees (pitch 0.14),
   // so that the skyline lies a third of the way down from the top of the frame; otherwise the start pitch (0.05)
   let pitch = 0.05;
@@ -173,6 +225,11 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     const j = Math.round(N / 2 - vantage.z / NEAR_STEP), i = Math.round(vantage.x / NEAR_STEP + N / 2);
     if (ridgeDeg(mid, near[j * N + i], vantage.x, vantage.z, gaze) <= 0) pitch = 0.14;
   }
+  // T2 check 4: a place that is not the sea looks down the same 8 degrees, so the sky takes 35 to 50% of the first frame
+  // (not in a palace court or a town street (T3): there the halls and the facades are the picture, and looking down
+  // would cut their roofs off the top of the frame)
+  const amongBuildings = typeof palaceGaze === 'number' || town;
+  if (focus !== 9 && gaze != null && !amongBuildings) pitch = 0.25;
   onProgress(1, 'done');
   const meta2 = {
     cover: cover ? cover.counts : null, coverError, gaze, palace: stages,
@@ -197,11 +254,11 @@ const subOf = (r) => [regionOf(r.address), kindOf(r)].filter(Boolean).join(' · 
  * box } where box is the result's own bounding box ([[west, south], [east, north]]) when it has one.
  */
 /**
- * The highest point of a box ([[west, south], [east, north]]), sampled on a 41 x 41 grid from the terrain tiles at zoom 10.
+ * The highest point of a box ([[west, south], [east, north]]), sampled on a 41 x 41 grid from the terrain tiles at zoom 11 (at zoom 10 some tiles mix in ETOPO1, which the source guard refuses).
  * A park's search point can sit on its edge; this moves the pin to where the ground is highest inside it.
  */
 export async function highestSpot(box) {
-  const [[w, s], [e, n]] = box, z = 10;
+  const [[w, s], [e, n]] = box, z = 11;
   const lat = (s + n) / 2, lon = (w + e) / 2;
   const radius = Math.max(((n - s) * 110940) / 2, ((e - w) * 111320 * Math.cos((lat * Math.PI) / 180)) / 2);
   const terrain = new Terrain(tileLoader(new Set()));
