@@ -221,9 +221,25 @@ export function createStreets(shared, cover, ground, { cap = CAP, keep = () => t
   // ---- crossings: a footway over a road (8 m or more), and the arms of a junction of two big roads (10 m or more) ----
   const crossings = [];
   const junctions = [];
-  const isCross = (C) => crossings.some((c) => Math.hypot(c.C[0] - C[0], c.C[1] - C[1]) < 6);
+  // a crossing's zebra with its stop lines, and a 1 m margin: no other crossing may enter it. Centres 6 m apart were not
+  // enough: a footway's crossing over one arm of a junction lay across the other arm's, at right angles, and the two wove
+  // a grid with dark diamonds between their bars (T4 round 5, Myeongdong)
+  const inBox = (c, x, z) => {
+    const dx = x - c.C[0], dz = z - c.C[1];
+    return Math.abs(dx * c.d[0] + dz * c.d[1]) < ZEBRA_LEN / 2 + STOP_D + 1 && Math.abs(-dx * c.d[1] + dz * c.d[0]) < c.w / 2 + 1;
+  };
+  const samples = (c) => {
+    const out = [];
+    for (const a of [-1, -0.5, 0, 0.5, 1]) for (const b of [-1, -0.5, 0, 0.5, 1]) {
+      const al = a * (ZEBRA_LEN / 2 + STOP_D), ac = b * (c.w / 2);
+      out.push([c.C[0] + c.d[0] * al - c.d[1] * ac, c.C[1] + c.d[1] * al + c.d[0] * ac]);
+    }
+    return out;
+  };
+  const isCross = (n) => crossings.some((c) => Math.hypot(c.C[0] - n.C[0], c.C[1] - n.C[1]) < 6
+    || samples(n).some(([x, z]) => inBox(c, x, z)) || samples(c).some(([x, z]) => inBox(n, x, z)));
   const addCross = (C, d, w, kind) => {
-    if (!inSquare(C[0], C[1]) || isCross(C) || coverAt(C[0], C[1]) !== COVER.ROAD) return;
+    if (!inSquare(C[0], C[1]) || isCross({ C, d, w }) || coverAt(C[0], C[1]) !== COVER.ROAD) return;
     // a zebra half over a stream's wall would bend down to the promenade (bridges-6)
     if ([[1, 1], [1, -1], [-1, 1], [-1, -1]].some(([p, q]) => !keep(C[0] + d[0] * p * (ZEBRA_LEN / 2 + STOP_D) - d[1] * q * w / 2, C[1] + d[1] * p * (ZEBRA_LEN / 2 + STOP_D) + d[0] * q * w / 2))) return;
     crossings.push({ C, d, w, kind, Lb: ZEBRA_LEN });
