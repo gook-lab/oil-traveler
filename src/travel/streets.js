@@ -10,6 +10,7 @@ const LIFT = 0.12;
 const WHITE = [0.93, 0.92, 0.88], YELLOW = [0.93, 0.72, 0.13], KERB = [0.64, 0.62, 0.58];
 const POLE = [0.22, 0.23, 0.25], LAMP_LIT = [0.92, 0.88, 0.7], SIGNAL = [0.12, 0.13, 0.14];
 const ROOF = [0.3, 0.3, 0.32], GLASS = [0.56, 0.7, 0.68];
+const SIG_RED = [0.95, 0.2, 0.14], SIG_AMBER_DIM = [0.42, 0.34, 0.14], SIG_GREEN_DIM = [0.16, 0.3, 0.2];
 const ZEBRA_LEN = 4, ZEBRA_BAR = 0.5, ZEBRA_PITCH = 1.0;
 const STOP_D = 0.9, STOP_T = 0.45, JUNC_MARGIN = 2.5, JUNC_KEEP = 9;
 const LAMP_STEP = 28, LAMP_OFF = 0.9, LAMP_H = 7.6;
@@ -129,6 +130,23 @@ function boxFaces(out, c, yaw, h, col) {
   }
 }
 
+/** The first footway spot beside a crossing's kerb on side sg (plain or paved cover, not road or built), searched along the road and out. */
+function footSpot(c, sg, r0, r1, ex, ez) {
+  for (const along of [c.Lb / 2 + 0.9, c.Lb / 2 + 2.4, c.Lb / 2 - 0.6]) for (const extra of [0, 0.6, 1.2]) {
+    const t = c.w / 2 + 0.9 + extra;
+    const x = c.C[0] + r0 * along + ex * sg * t, z = c.C[1] + r1 * along + ez * sg * t;
+    if (inSquare(x, z) && PLAIN.has(coverAt(x, z))) return { along, t };
+  }
+  return null;
+}
+
+/** A small lit lamp on a face: a flat quad, `U` and `V` its half sizes, `n` the face's normal, `c` its centre. */
+function dot(out, c, U, V, n, col) {
+  const o = c.map((v, q) => v + n[q] * 0.012);
+  const P = (sx, sy) => o.map((v, q) => v + U[q] * sx + V[q] * sy);
+  out.push({ P00: P(-1, -1), P10: P(1, -1), P01: P(-1, 1), P11: P(1, 1), n, cell: [0.1, 0.1], col: () => col });
+}
+
 /** The collision box of the same shape: a cuboid turned by yaw (quaternion x y z w, about Y). */
 const solid = (boxes, c, yaw, h) => boxes.push({ c, h, q: [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)] });
 
@@ -192,8 +210,9 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
   });
 
   const out = [];
-  const counts = { zebraBars: 0, stops: 0, yellow: 0, dashed: 0, edges: 0, kerbs: 0, lamps: 0, signals: 0, shelters: 0 };
+  const counts = { zebraBars: 0, stops: 0, yellow: 0, dashed: 0, edges: 0, kerbs: 0, lamps: 0, signals: 0, shelters: 0, trees: 0 };
   const boxes = [];
+  const masts = [];
 
   // ---- zebra stripes: bars along the road, one every metre across it, curb to curb ----
   for (const c of crossings) {
@@ -213,13 +232,32 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
       out.push(stripQuad(ground, [cx + ex * t0, cz + ez * t0], [cx + ex * t1, cz + ez * t1], [r0, r1], STOP_T / 2, WHITE));
       counts.stops++;
     }
-    // the signal poles on the pavement at each end of the zebra, one on each side of the road
+    // a mast on the pavement at each end of the zebra, one on each side: a pedestrian head on it (red and green men, the
+    // red lit) facing the crossing, and a vehicle head under an arm over the stop line (three lamps, the red lit)
+    const yaw = Math.atan2(-ez, ex);
     for (const sg of [1, -1]) {
-      const px = c.C[0] + ex * sg * (c.w / 2 + 0.9) + r0 * (c.Lb / 2 + 0.6), pz = c.C[1] + ez * sg * (c.w / 2 + 0.9) + r1 * (c.Lb / 2 + 0.6);
-      const base = ground(px, pz);
-      boxFaces(out, [px, base + 1.7, pz], 0, [0.09, 1.7, 0.09], POLE);
-      boxFaces(out, [px, base + 3.05, pz], 0, [0.17, 0.4, 0.14], SIGNAL);
-      solid(boxes, [px, base + 1.7, pz], 0, [0.09, 1.7, 0.09]);
+      // the mast goes on the footway beside the kerb (not the carriageway): the first spot off the road, else none
+      const spot = footSpot(c, sg, r0, r1, ex, ez);
+      if (!spot) continue;
+      const { along, t } = spot;
+      const lat = (u) => [c.C[0] + r0 * along + ex * sg * u, c.C[1] + r1 * along + ez * sg * u];
+      const [mx, mz] = lat(t), base = ground(mx, mz);
+      masts.push({ x: mx, z: mz, y: base, kind: 'signal' });
+      boxFaces(out, [mx, base + 2.7, mz], 0, [0.09, 2.7, 0.09], POLE);
+      solid(boxes, [mx, base + 2.7, mz], 0, [0.09, 2.7, 0.09]);
+      const pY = base + 2.4, nIn = [-sg * ex, 0, -sg * ez];
+      boxFaces(out, [mx, pY, mz], yaw, [0.1, 0.24, 0.09], SIGNAL);
+      for (const [dy, col] of [[0.12, SIG_RED], [-0.12, SIG_GREEN_DIM]]) {
+        dot(out, [mx + nIn[0] * 0.1, pY + dy, mz + nIn[2] * 0.1], [r0 * 0.05, 0, r1 * 0.05], [0, 0.05, 0], nIn, col);
+      }
+      const armL = t - c.w / 4, [ax, az] = lat(c.w / 4 + armL / 2), [hx, hz] = lat(c.w / 4);
+      boxFaces(out, [ax, base + 5.2, az], yaw, [armL / 2, 0.07, 0.07], POLE);
+      boxFaces(out, [hx, base + 4.95, hz], yaw, [0.7, 0.2, 0.14], SIGNAL);
+      const lamps = [SIG_RED, SIG_AMBER_DIM, SIG_GREEN_DIM];
+      for (const s2 of [1, -1]) lamps.forEach((col, k) => {
+        const o = (k - 1) * 0.45;
+        dot(out, [hx + ex * o + r0 * 0.14 * s2, base + 4.95, hz + ez * o + r1 * 0.14 * s2], [ex * 0.11, 0, ez * 0.11], [0, 0.11, 0], [r0 * s2, 0, r1 * s2], col);
+      });
       counts.signals++;
     }
   }
@@ -264,6 +302,26 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
     }
   }
 
+  // ---- street trees: a row on each footway of a big road (w >= 10), every 12 m, 1.5 m off the kerb, clear of the
+  // junctions, the crossings, the masts and the lamps (forest.js plants them, as the ginkgo-like yellow of the autumn) ----
+  const treeSpots = [];
+  for (const r of roads) {
+    if (r.w < 10) continue;
+    const line = makeLine(r.pts);
+    for (let s = 6; s < line.total; s += 12) {
+      const p = line.at(s);
+      for (const sg of [1, -1]) {
+        const t = r.w / 2 + 1.5;
+        const x = p.x - p.tz * sg * t, z = p.z + p.tx * sg * t;
+        if (!plainOk(x, z) || nearJunction(x, z)) continue;
+        if (crossings.some((c) => Math.hypot(c.C[0] - x, c.C[1] - z) < 7)) continue;
+        if (lampAt.some(([lx, lz]) => Math.hypot(lx - x, lz - z) < 3) || masts.some((m) => Math.hypot(m.x - x, m.z - z) < 3)) continue;
+        treeSpots.push({ x, z });
+      }
+    }
+  }
+  counts.trees = treeSpots.length;
+
   // ---- bus shelters on the bus stops (cover.pois, class bus), turned to the nearest road ----
   for (const poi of cover.pois ?? []) {
     if (poi.cls !== 'bus') continue;
@@ -297,5 +355,5 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
     ...counts, quads: out.length, colliders: boxes.length, dabs: painted.stats.dabs, step: painted.stats.step,
     msSolid: painted.stats.msSolid, msDabs: painted.stats.msDabs,
   };
-  return { group: painted.group, boxes, stats, crossings: crossings.map((c) => ({ x: c.C[0], z: c.C[1], d: c.d, w: c.w, kind: c.kind })) };
+  return { group: painted.group, boxes, masts, treeSpots, stats, crossings: crossings.map((c) => ({ x: c.C[0], z: c.C[1], d: c.d, w: c.w, kind: c.kind })) };
 }

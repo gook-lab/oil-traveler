@@ -145,7 +145,9 @@ Object.assign(CLEAR, {
   x: vantage.x, z: vantage.z, r: travel ? (place.cover ? 30 : 15) : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
-const forest = createForest(shared);
+// travel: the streets of the near square (T4) come first, their street trees are planted by the forest (src/travel/streets.js)
+const streets = travel && place.cover ? createStreets(shared, place.cover, heightAt) : null;
+const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [] });
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
@@ -171,7 +173,6 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 if (bld) scene.add(bld.group);
 // travel: the streets of the near square (T4): zebra crossings, lane lines, kerbs, lamps, signals, bus shelters (src/travel/streets.js)
-const streets = travel && place.cover ? createStreets(shared, place.cover, heightAt) : null;
 if (streets) scene.add(streets.group);
 // check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
 if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
@@ -363,7 +364,7 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
-  streets: streets?.stats ?? null, streetCrossings: streets?.crossings ?? [],
+  streets: streets?.stats ?? null, streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,

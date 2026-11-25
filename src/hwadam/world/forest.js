@@ -8,7 +8,7 @@ import { COMMON } from '../../oilpaint/common.js';
 import { dabMaterial, dabGeometry, dabMesh } from '../../oilpaint/dabs.js';
 import { heightAt, wayDist, clearingAt, pathT, way, noise, rng, CLEARING, START, CLEAR } from './land.js';
 import { segW } from './segments.js';
-import { hasCover, coverAt, coniferChance, NO_TREE } from './cover.js';
+import { hasCover, coverAt, coniferChance, NO_TREE, COVER } from './cover.js';
 
 const BEECH = 0, BIRCH = 1, OAK = 2, MAPLE = 3;
 // where the picture's views stand (the wanderer's place and the way he faces): src/hwadam/main.js teleports to these
@@ -79,13 +79,14 @@ const inFan = (x, z) => FANS.some(({ a, d }) => {
   return r > 0.01 && r < 30 && (dx * d[0] + dz * d[1]) / r > 0.9063;
 });
 
-function plant() {
+function plant(streetTrees) {
   const rand = rng(4471);
   const trees = [];
-  const add = (x, z, type, tier, scale = 1) => {
+  // `pave`: a street tree in its pit on the footway (paved), the one cover the other trees keep off
+  const add = (x, z, type, tier, scale = 1, pave = false) => {
     if (inFan(x, z)) return;
     // a place's land cover (T2): no tree on water, sand, rock or built-up ground
-    if (hasCover() && NO_TREE.has(coverAt(x, z))) return;
+    if (hasCover() && NO_TREE.has(coverAt(x, z)) && !(pave && coverAt(x, z) === COVER.PAVED)) return;
     const r = (type === BIRCH ? 0.1 + rand() * 0.06 : type === OAK ? 0.75 + rand() * 0.3 : 0.26 + rand() * rand() * 0.42) * scale;
     const h = type === BIRCH ? 15 + rand() * 6 : type === OAK ? 19 + rand() * 4 : 21 + rand() * 8 + r * 5;
     const family = type === BIRCH ? 5
@@ -124,6 +125,12 @@ function plant() {
       const tier = CLEAR.fan ? (dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2) : dd < 22 ? 0 : dd < 60 ? 1 : 2;
       add(x, z, type, tier);
     }
+  }
+  // the street trees of a big road (travel, src/travel/streets.js): one row on each footway, in the yellow of the family 2
+  for (const p of streetTrees) {
+    const before = trees.length, dd = Math.hypot(p.x - CLEAR.x, p.z - CLEAR.z);
+    add(p.x, p.z, BEECH, dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2, 1.15, true);
+    if (trees.length > before) { const tr = trees[trees.length - 1]; tr.conifer = false; tr.family = 2; tr.street = true; }
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
@@ -219,9 +226,9 @@ function plant() {
   return kept;
 }
 
-export function createForest(shared) {
+export function createForest(shared, { streetTrees = [] } = {}) {
   shared.uForestHaze = shared.uForestHaze ?? { value: CLEAR.fan ? 0.5 : 1.0 };
-  const trees = plant();
+  const trees = plant(streetTrees);
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
   const barkDabs = []; // pos 3, dir 3, nrm 3, data 4 (seed, across, kind, along)
