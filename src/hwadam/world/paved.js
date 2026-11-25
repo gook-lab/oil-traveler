@@ -47,7 +47,9 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
   }
   // the roads: each sample a metre along the centreline marks the nodes within half its width
   const road = new Uint8Array(N * N);
+  // a bridge's line is not paved on the ground: its deck (src/travel/bridges.js) is the asphalt over the water and the bank
   for (const r of roads) {
+    if (r.brunnel === 'bridge') continue;
     const half = r.w / 2, R = Math.ceil(half / STEP) + 1;
     for (let k = 0; k + 1 < r.pts.length; k++) {
       const a = r.pts[k], b = r.pts[k + 1];
