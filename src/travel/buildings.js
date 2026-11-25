@@ -8,7 +8,8 @@
 // The base sits on the lowest ground under the outline; heights are real metres and are not scaled (land.js VS).
 import * as THREE from 'three';
 import { dabMaterial, dabGeometry, dabMesh } from '../oilpaint/dabs.js';
-import { SUN } from '../oilpaint/common.js';
+import { SUN, COMMON } from '../oilpaint/common.js';
+import { BRUSH_COLS, BRUSH_ROWS } from '../oilpaint/brush.js';
 
 /** The most touches on the buildings of a place; the spacing of the dabs grows to keep under it. */
 export const DAB_CAP = 8000;
@@ -440,11 +441,10 @@ function surfacesOf(p, ground) {
         const boardOf = (x) => { const bi = Math.floor(x / 3.9); return BOARDS[Math.floor(rnd(bi * 0.71 + p.c[0] * 0.01, p.c[1] * 0.017 + 0.3) * BOARDS.length)]; };
         const inkOf = (c) => (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2] > 0.55 ? [0.12, 0.1, 0.1] : [0.97, 0.96, 0.92]);
         const marks = [];
-        if (Math.min(SHOP_H, H) >= SHOP_H - 0.05) for (let bi = Math.floor(s0 / 3.9); bi * 3.9 < s0 + Lk; bi++) for (const lx of [1.25, 1.95, 2.65]) {
-          const x = bi * 3.9 + lx, u = (x - s0) / Lk;
-          if (u < 0.03 || u > 0.97) continue;
-          const ink = inkOf(boardOf(x)), vy = 3.35 / SHOP_H, du = 0.09 / Lk;
-          marks.push({ u: u - du, v: vy, size: [0.07, 0.44], up: true, col: ink }, { u: u + du, v: vy + 0.05 / SHOP_H * (bi % 2 ? 1 : -1), size: [0.07, 0.28], col: ink });
+        if (Math.min(SHOP_H, H) >= SHOP_H - 0.05) for (let bi = Math.floor(s0 / 3.9); bi * 3.9 < s0 + Lk; bi++) {
+          const xa = Math.max(s0 + 0.2, bi * 3.9 + 0.35), xb = Math.min(s0 + Lk - 0.2, bi * 3.9 + 3.75);
+          if (xb - xa < 1) continue;
+          marks.push(...wordMarks(xa, xb, 3.35, 0.5, inkOf(boardOf(bi * 3.9 + 1)), bi * 0.9 + p.c[1] * 0.01, (x, y) => [(x - s0) / Lk, y / SHOP_H]));
         }
         const litPane = (x) => rnd(Math.floor(x / 1.3) * 0.37 + p.c[0] * 0.01, p.c[1] * 0.013) < 0.55;
         if (G > 0) out.push({
@@ -493,29 +493,35 @@ function surfacesOf(p, ground) {
             if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
             return facadeColour(look, wallC, fac, x, yb + fy - y0, r, !(slab && Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9), p.c, tv);
           },
-          // a tower's mullions take no touch (r71: a dark touch on a 0.08 m mullion read as a black blot on the glass)
-          dabCol: look === 'tower' ? (u, v, r) => {
-            const x = s0 + u * Lk, xm = ((x % fac.per) + fac.per) % fac.per;
-            return xm < 0.25 || xm > fac.per - 0.17 ? null : facadeColour(look, wallC, fac, x, yb + G + v * (H - G) - y0, r, true, p.c, tv);
-          } : null,
+          // a tower's glass and stone take no touches: the solid's own strokes paint it (r71: dark touches on the mullions
+          // read as black blots; T4 round 1: pale touches on the curtain wall read as stickers)
+          noDab: use === 'tower',
           jit: true,
         });
-        // the sign boards up a shop block (T4): on the storeys facadeColour gives a board, a face 5 cm out over the band
-        // with three letters a board (as the ground floor's), so the boards read as signs and not as coloured stripes
+        // the sign boards up a shop block (T4): on the second and third floors (signStorey), boards of one to three bays,
+        // each a face 5 cm out from the facade, 0.6 to 0.95 m high, with a gap of bare facade between some; a word of
+        // Hangul-like syllables on each (wordMarks). The facade under a board keeps its windows
         if (use === 'shop' && H - G > 0.3) {
-          for (let st = 1; st <= 6; st++) {
-            const ya = y0 + st * fac.fl + 2.55, yz = ya + 0.75;
-            if (ya < yb + G + 0.1 || yz > yt - 0.7 || !signStorey(st, p.c)) continue;
-            const O = [n[0] * 0.05, n[2] * 0.05], marks = [];
-            for (let bi = Math.floor(s0 / fac.per); bi * fac.per < s0 + Lk; bi++) for (const lx of [1.3, 1.95, 2.6]) {
-              const xx = bi * fac.per + lx, u = (xx - s0) / Lk;
-              if (u < 0.05 || u > 0.95) continue;
-              const ink = boardInk(shopBoard(bi, st, p.c)), du = 0.09 / Lk;
-              marks.push({ u: u - du, v: 0.5, size: [0.06, 0.4], up: true, col: ink }, { u: u + du, v: 0.5 + (bi % 2 ? 0.06 : -0.06), size: [0.06, 0.26], col: ink });
+          for (let st = 1; st <= 2; st++) {
+            if (!signStorey(st, p.c)) continue;
+            const O = [n[0] * 0.05, n[2] * 0.05];
+            let bi = Math.floor(s0 / fac.per);
+            while (bi * fac.per < s0 + Lk) {
+              const span = 1 + Math.floor(rnd(bi * 0.53 + st * 2.1, p.c[0] * 0.011 + 0.6) * 3);
+              const skip = rnd(bi * 1.21 + st, p.c[1] * 0.019 + 0.2) < 0.25;
+              const xa = Math.max(s0 + 0.3, bi * fac.per + 0.15), xb = Math.min(s0 + Lk - 0.3, (bi + span) * fac.per - 0.15);
+              const hb = 0.6 + 0.35 * rnd(bi * 0.37 + st * 0.9, p.c[0] * 0.007 + 1.3);
+              const ya = y0 + st * fac.fl + 2.6 + (0.75 - hb) / 2, yz = ya + hb;
+              if (!skip && xb - xa > 0.8 && ya >= yb + G + 0.1 && yz <= yt - 0.7) {
+                const ua = (xa - s0) / Lk, ub = (xb - s0) / Lk, board = shopBoard(bi, st, p.c);
+                const Pa = [A[0] + (B[0] - A[0]) * ua + O[0], A[1] + (B[1] - A[1]) * ua + O[1]], Pb = [A[0] + (B[0] - A[0]) * ub + O[0], A[1] + (B[1] - A[1]) * ub + O[1]];
+                const marks = wordMarks(0, xb - xa, hb / 2, 0.62 * hb, boardInk(board), bi * 0.7 + st * 3.1 + p.c[0] * 0.01, (x, y) => [x / (xb - xa), y / hb]);
+                out.push({ P00: [Pa[0], ya, Pa[1]], P10: [Pb[0], ya, Pb[1]], P01: [Pa[0], yz, Pa[1]], P11: [Pb[0], yz, Pb[1]], n,
+                  cell: [xb - xa, hb], breaks: { u: [0, 1], v: [0, 1] }, marks,
+                  col: (u, v, r) => board.map((c) => c * (0.96 + 0.08 * r)) });
+              }
+              bi += span;
             }
-            out.push({ P00: [A[0] + O[0], ya, A[1] + O[1]], P10: [B[0] + O[0], ya, B[1] + O[1]], P01: [A[0] + O[0], yz, A[1] + O[1]], P11: [B[0] + O[0], yz, B[1] + O[1]], n,
-              cell: [fac.per, 0.75], breaks: runBreaks({ s0, Lk, yb: ya, H: 0.75, fac: { ...fac, v: [] }, y0 }), marks,
-              col: (u, v, r) => { const xx = s0 + u * Lk, xm = ((xx % fac.per) + fac.per) % fac.per; return xm < fac.u[1] ? wallC.map((c) => c * (0.95 + 0.1 * r)) : shopBoard(Math.floor(xx / fac.per), st, p.c).map((c) => c * (0.96 + 0.08 * r)); } });
           }
         }
       }
@@ -824,8 +830,41 @@ function surfacesOf(p, ground) {
 
 /** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
  *  2.6 m, along the run) and at each window band's edges (1.0 and 2.3 m of every 3.5 m, in world height). */
-/** Whether storey st of a shop block carries a sign board (about half of them, by the block). */
-const signStorey = (st, c) => rnd(st * 1.37 + c[0] * 0.013, c[1] * 0.021 + 0.4) < 0.55;
+/** Whether storey st of a shop block carries sign boards: the second floor of most blocks, the third of about half, none
+ *  above (T4 round 1: a board on every storey up to the roof read as a test pattern). */
+const signStorey = (st, c) => st >= 1 && st <= 2 && rnd(st * 1.37 + c[0] * 0.013, c[1] * 0.021 + 0.4) < (st === 1 ? 0.85 : 0.5);
+// Hangul-like syllables for the boards (T4 round 1: an upright and a cross stroke read as symbols). Each is a few strokes
+// in a unit box (x right, y up): [x, y, length, upright]. A consonant and a vowel beside it (가 · 나), a consonant over a
+// vowel (고 · 누), a box and a vowel (미), and three with a final consonant under them (한 · 각 · 문)
+const SYLLABLES = [
+  [[0.3, 0.86, 0.42, 0], [0.5, 0.62, 0.48, 1], [0.8, 0.5, 0.92, 1], [0.93, 0.52, 0.2, 0]],
+  [[0.14, 0.62, 0.52, 1], [0.32, 0.36, 0.4, 0], [0.8, 0.5, 0.92, 1]],
+  [[0.46, 0.88, 0.5, 0], [0.7, 0.72, 0.32, 1], [0.5, 0.42, 0.2, 1], [0.5, 0.28, 0.9, 0]],
+  [[0.12, 0.8, 0.34, 1], [0.32, 0.62, 0.42, 0], [0.5, 0.45, 0.9, 0], [0.5, 0.25, 0.32, 1]],
+  [[0.12, 0.56, 0.5, 1], [0.52, 0.56, 0.5, 1], [0.32, 0.8, 0.42, 0], [0.32, 0.32, 0.42, 0], [0.82, 0.5, 0.92, 1]],
+  [[0.3, 0.94, 0.22, 0], [0.3, 0.8, 0.46, 0], [0.3, 0.64, 0.2, 0], [0.76, 0.68, 0.58, 1], [0.88, 0.7, 0.18, 0], [0.18, 0.24, 0.26, 1], [0.44, 0.12, 0.56, 0]],
+  [[0.3, 0.9, 0.42, 0], [0.5, 0.72, 0.34, 1], [0.76, 0.7, 0.5, 1], [0.3, 0.3, 0.5, 0], [0.54, 0.16, 0.26, 1]],
+  [[0.14, 0.78, 0.3, 1], [0.5, 0.78, 0.3, 1], [0.32, 0.92, 0.4, 0], [0.32, 0.64, 0.4, 0], [0.5, 0.48, 0.9, 0], [0.18, 0.22, 0.24, 1], [0.44, 0.1, 0.56, 0]],
+];
+/**
+ * The letters of a board as marks: a word of syllables centred on the board, from x0 to x1 (m along the face) at height y
+ * (m, the word's middle) and h (m, a syllable's height). toUV(x, y) turns a face's metres into its (u, v). The word takes
+ * 50 to 85% of the board, by seed.
+ */
+function wordMarks(x0, x1, y, h, ink, seed, toUV) {
+  const marks = [], w = 0.82 * h, gap = 0.12 * h, th = Math.max(0.05, 0.13 * h);
+  const room = (x1 - x0) * (0.5 + 0.35 * rnd(seed, 0.7));
+  const n = Math.max(1, Math.min(6, Math.floor((room + gap) / (w + gap))));
+  const start = (x0 + x1) / 2 - (n * w + (n - 1) * gap) / 2;
+  for (let k = 0; k < n; k++) {
+    const g = SYLLABLES[Math.floor(rnd(seed * 1.31 + k * 0.77, k * 0.29 + 0.1) * SYLLABLES.length)];
+    for (const [gx, gy, len, up] of g) {
+      const [u, v] = toUV(start + k * (w + gap) + gx * w, y - h / 2 + gy * h);
+      marks.push({ u, v, size: [th, len * (up ? h : w)], up: !!up, col: ink });
+    }
+  }
+  return marks;
+}
 /** The board of a shop block's bay bi on storey st: one of the sign colours. */
 const shopBoard = (bi, st, c) => BOARDS[Math.floor(rnd(bi * 0.71 + st * 1.9 + c[0] * 0.01, c[1] * 0.017 + 0.3) * BOARDS.length)];
 /** Letters that stand out from a board: dark on a light board, pale on a dark one. */
@@ -857,7 +896,6 @@ function facadeColour(use, wallC, fac, x, y, r, long, c, tv = 0) {
       return wall;
     case 'shop':
       if (row < 0.22) return slab;
-      if (row >= 2.55 && row < 3.3 && storey >= 1 && signStorey(storey, c)) return col < fac.u[1] ? wall : shopBoard(Math.floor(x / fac.per), storey, c).map((q) => q * t);
       if (row >= 0.9 && row < 2.4 && col >= fac.u[1]) return (rnd(Math.floor(x / fac.per) * 0.37 + storey, c[1] * 0.013) < 0.4 ? [0.86, 0.8, 0.64] : [0.3, 0.35, 0.4]).map((q) => q * t);
       return wall;
     case 'quiet':
@@ -915,6 +953,89 @@ function isNear(s, near, r = near.radius ?? NEAR_M) {
   return Math.hypot(c[0] - near.x, c[1] - near.z) < r;
 }
 
+
+/**
+ * The solid faces, painted with the dabs' own brush (T4 round 1: a flat face under sparse dabs read as CG). Each face
+ * is laid with rows of strokes of the brush atlas (tBrush), two layers half a row apart so no canvas shows, and the
+ * room's light rakes across their relief as it does across a dab (dabs.js). The cell's colour is the stroke's; each
+ * stroke varies its tone a little. The brush grows with the distance (SOLID_ROW_PX), so a far face is painted in broad
+ * strokes and not in a fine noise.
+ */
+/** The least height of a row of the solid's strokes, in pixels. */
+const SOLID_ROW_PX = 28;
+function solidMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: shared,
+    side: THREE.DoubleSide,
+    vertexShader: /* glsl */ `
+      ${COMMON}
+      in vec3 tint;
+      out vec3 vTint;
+      out vec3 vWorld;
+      void main() {
+        vTint = tint;
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: /* glsl */ `
+      ${COMMON}
+      in vec3 vTint;
+      in vec3 vWorld;
+      layout(location = 0) out vec4 outC;
+      float h12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+      // one layer of strokes: rows ROW m high, strokes about LEN m long, each row shifted. Returns the brush texel
+      // (r relief, g paint, b streak) with the stroke's own number in a, and its atlas uv in tuv
+      vec4 stroke(vec2 uv, float ROW, float LEN, float k, out vec2 tuv) {
+        float row = floor(uv.y / ROW);
+        float L = LEN * (0.8 + 0.5 * h12(vec2(row, 7.1 + k)));
+        float x = uv.x + h12(vec2(row, 3.3 + k)) * L;
+        float seg = floor(x / L);
+        float id = h12(vec2(row * 1.7 + k, seg + 0.5));
+        float cell = floor(id * ${BRUSH_COLS * BRUSH_ROWS}.0 * 0.999);
+        vec2 q = vec2(mix(0.06, 0.94, fract(uv.y / ROW)), mix(0.03, 0.97, fract(x / L)));
+        tuv = (vec2(mod(cell, ${BRUSH_COLS}.0), floor(cell / ${BRUSH_COLS}.0)) + q) / vec2(${BRUSH_COLS}.0, ${BRUSH_ROWS}.0);
+        vec4 t = texture(tBrush, tuv);
+        t.a = id;
+        return t;
+      }
+      // the strokes at scale S (a row 0.45 S m high, a stroke about 1.7 S m long), two layers half a row apart, so no canvas
+      // shows: the colour of the face under them, each stroke's tone, its streak and the light raking across its relief
+      vec3 paint(vec2 uv, float S, float k) {
+        vec2 ta, tb;
+        vec4 a = stroke(uv / S, 0.45, 1.7, k, ta), b = stroke(uv / S + vec2(0.8, 0.225), 0.45, 1.7, k + 5.0, tb);
+        bool top = a.g >= 0.3;
+        vec4 t = top ? a : b;
+        vec2 tuv = top ? ta : tb;
+        float paintCov = smoothstep(0.3, 0.62, t.g);
+        vec3 col = vTint * (1.0 + (t.a - 0.5) * 0.16);
+        col *= mix(0.95, 1.04, t.r);
+        col *= 0.97 + 0.06 * t.b;
+        // the relief: the change of the paint's height over a pixel, in atlas texels (as dabs.js reads it over 3 texels)
+        float h = t.r * paintCov;
+        float texPx = max(length(fwidth(tuv * 512.0)), 0.35);
+        vec2 g = clamp(vec2(dFdx(h), dFdy(h)) * 3.0 / texPx, -0.4, 0.4);
+        float rake = 0.5 * g.x - 0.7 * g.y;
+        col *= 1.0 + rake * 1.25 * uImpasto;
+        col += vec3(1.0, 0.97, 0.9) * pow(max(rake, 0.0), 2.0) * 1.2 * uImpasto;
+        return col;
+      }
+      void main() {
+        vec3 n = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+        vec2 uv;
+        if (abs(n.y) > 0.6) uv = vWorld.xz;
+        else { vec2 a = normalize(vec2(-n.z, n.x)); uv = vec2(dot(vWorld.xz, a), vWorld.y); }
+        // the brush grows with the distance, as a painter's does: a row of strokes is at least ROW_PX pixels high. Two
+        // scales an octave apart are blended, so the change of scale does not show as a seam
+        float px = length(vWorld - cameraPosition) * uPixel;
+        float level = log2(max(1.0, ${SOLID_ROW_PX}.0 * px / 0.45));
+        float l0 = floor(level), f = level - l0;
+        vec3 col = mix(paint(uv, exp2(l0), l0 * 3.1), paint(uv, exp2(l0 + 1.0), l0 * 3.1 + 3.1), smoothstep(0.0, 1.0, f));
+        outC = vec4(col, 1.0);
+      }`,
+  });
+}
 
 /**
  * Paints surfaces with the buildings' brush: each surface cut into cells of one colour (the solid mesh) and the dabs laid
@@ -987,8 +1108,8 @@ export function paintSurfaces(shared, groups, { cap = DAB_CAP, near = null } = {
   T.push(performance.now());
   const solidGeo = new THREE.BufferGeometry();
   solidGeo.setAttribute('position', new THREE.Float32BufferAttribute(spos, 3));
-  solidGeo.setAttribute('color', new THREE.Float32BufferAttribute(scol, 3));
-  const solid = new THREE.Mesh(solidGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  solidGeo.setAttribute('tint', new THREE.Float32BufferAttribute(scol, 3));
+  const solid = new THREE.Mesh(solidGeo, solidMaterial(shared));
 
   // ---- the dabs: laid over the faces, a little off them ----
   const pos = [], dir = [], size = [], nrm = [], c1 = [], c2 = [], hh = [], seed = [];
@@ -999,6 +1120,9 @@ export function paintSurfaces(shared, groups, { cap = DAB_CAP, near = null } = {
     b.out.forEach((s, si) => {
       const id = b.i * 97 + si;
       const st = dabStep(s, base, near);
+      // a modern facade beyond the dense zone takes no touches: the solid's own strokes paint it (T4 round 1: sparse
+      // touches over it read as stickers)
+      if (s.jit && !(near?.wallSt && st === near.wallSt)) return;
       if (s.poly) {
         // a flat roof: a grid of touches inside the outline
         const xs = s.poly.map((q) => q[0]), zs = s.poly.map((q) => q[1]);
