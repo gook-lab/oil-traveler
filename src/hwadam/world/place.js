@@ -4,7 +4,7 @@
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
 import { planBuildings, clearGrid, clearance } from '../../travel/buildings.js';
-import { fetchCover, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers, COVER } from './cover.js';
+import { fetchCover, fetchFarOutlines, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers, COVER } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
   let best = 1;
@@ -95,6 +95,8 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     // Jeju's coast is black lava (T2, the user's rule): only inside the island's box
     const basalt = lat >= 33.1 && lat <= 33.6 && lon >= 126.1 && lon <= 127.0;
     cover = await fetchCover({ lat, lon, near, basalt, onProgress: (f) => onProgress(0.05 + 0.2 * f, 'cover') });
+    // the far city: the outlines out to 1.3 km, for the masses beyond the square; a failure leaves the square alone
+    try { cover.far = await fetchFarOutlines({ lat, lon }); } catch { cover.far = []; }
   } catch (e) {
     coverError = e.message;
   }

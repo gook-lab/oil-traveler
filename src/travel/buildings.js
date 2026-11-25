@@ -163,7 +163,8 @@ export function planBuildings(list, heritage, kinds = null, ctx = null) {
     const A = Math.abs(area2(pts));
     if (A < 4) continue;
     const c = centroid(pts);
-    if (Math.abs(c[0]) > RULE.range || Math.abs(c[1]) > RULE.range) continue;
+    const range = ctx?.range ?? RULE.range; // the far city plans out to 1.3 km with the same rules
+    if (Math.abs(c[0]) > range || Math.abs(c[1]) > range) continue;
     const R = minRect(pts);
     const rect = A / R.area;
     const historic = heritage.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) <= RULE.heritageM);
