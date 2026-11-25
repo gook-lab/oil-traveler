@@ -211,6 +211,17 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
       if (score > bestScore) { bestScore = score; vantage = c; }
     }
   }
+  // a pin within 70 m of the town stream starts on its promenade, so the channel is what he sees (T4 비평 1)
+  if (cover?.stream?.promenade) {
+    let best = null;
+    for (let k = 0; k < N * N; k++) {
+      if (!cover.stream.promenade[k]) continue;
+      const x = ((k % N) - N / 2) * NEAR_STEP, z = -(Math.floor(k / N) - N / 2) * NEAR_STEP;
+      const dd = Math.hypot(x, z);
+      if (dd <= 70 && (!best || dd < best.dd)) best = { x, z, dd, h: near[k] };
+    }
+    if (best) vantage = { x: best.x, z: best.z, h: best.h, score: 0 };
+  }
   const view = viewAt === 'goal' ? { x: way.goal[0], z: way.goal[1] } : { x: vantage.x, z: vantage.z };
   await prefetchSkyline(terrain, lat, lon, view, zooms, bands);
   onProgress(0.7, 'skyline');
