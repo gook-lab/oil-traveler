@@ -266,12 +266,15 @@ function geometryOf(d, out, boxes) {
       mark(-rw + 0.25, -rw + 0.45, COLOR.white); mark(rw - 0.45, rw - 0.25, COLOR.white);
       if (rw >= 4.5 && i % 4 < 2) { mark(-rw / 2 - 0.08, -rw / 2 + 0.08, COLOR.white); mark(rw / 2 - 0.08, rw / 2 + 0.08, COLOR.white); }
     }
+    // the soffit: the deck's underside, one tone of concrete between the girders. Without it the top's bands showed
+    // through from under the bridge (the material is two-sided), as a patchwork of lanes (T4 round 3)
+    out.push({ P00: at(d, i, -hw, -d.depth), P10: at(d, i + 1, -hw, -d.depth), P01: at(d, i, hw, -d.depth), P11: at(d, i + 1, hw, -d.depth), n: up.map((v) => -v), cell: [4, 2 * hw], col: () => shade(COLOR.girder, 0.42), noDab: true });
     for (const side of [-1, 1]) {
       const off = side * hw;
       const nOut = [f0.nx * side, 0, f0.nz * side];
       // the girder takes no touches: the solid's own strokes paint it (T4 round 2: a row of round touches along it read as
-      // stickers cut out and stuck on)
-      out.push({ ...wallOf(at(d, i, off), at(d, i + 1, off), -d.depth, 0, nOut, [2, 0.7], (u, v, r) => shade(COLOR.girder, r)), noDab: true });
+      // stickers cut out and stuck on). One tone, as the carriageway's: the cells' own tones read as a patchwork from below
+      out.push({ ...wallOf(at(d, i, off), at(d, i + 1, off), -d.depth, 0, nOut, [2, 0.7], () => shade(COLOR.girder, 0.5)), noDab: true });
       if (i % DECK.railCols === 0) {
         const j = Math.min(d.n, i + DECK.railCols);
         const ro = off - side * 0.1;

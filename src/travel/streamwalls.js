@@ -13,7 +13,7 @@ export const WALL = {
   every: 2, minChain: 8, course: 0.45, block: 1.3, foot: 0.25, coping: 0.55,
   railBack: 0.15, railH: 1.1, railLow: 0.5, railPost: 0.07, railHalf: 0.06,
   stairW: 1.8, landing: 1.4, tread: 0.4, rise: 0.27, maxSteps: 17, stairEvery: 100, stairGap: 35, straight: 0.35,
-  kerbHalf: 0.95, kerbLift: 0.1, jointsM: 160,
+  kerbHalf: 0.95, kerbLift: 0.1, jointsM: 160, jointW: 0.07,
 };
 const COLOR = {
   granite: [[0.56, 0.54, 0.5], [0.72, 0.7, 0.65]], joint: [0.27, 0.26, 0.25], coping: [0.82, 0.8, 0.75],
@@ -76,7 +76,18 @@ export function createStreamWalls(shared, cover, ground, { keepOut = () => false
         if (near1) {
           face.rows = [{ v: 0.05, across: 0.05, every: 0.5, along: 0.85, col: () => COLOR.joint }];
           face.marks = u.slice(1, -1).map((t) => ({ u: t, v: 0.5, size: [0.06, WALL.course * 0.9], up: true, col: COLOR.joint }));
-        } else face.noDab = true;
+        } else {
+          // farther out the joints are cells of the solid, thin dark strips at each block's end and along the course's
+          // bed, not touches: blocks with no joint read as a stretched low-resolution texture (T4 round 3, under a bridge)
+          const jw = WALL.jointW / L, jv = Math.min(0.3, WALL.jointW / Math.max(0.05, yAt(0, v1) - yAt(0, v0)));
+          const uj = [0], strips = [];
+          for (const t of u.slice(1, -1)) { uj.push(t, t + jw); strips.push([t, t + jw]); }
+          uj.push(1);
+          const block = face.col;
+          face.breaks = { u: uj, v: [0, jv, 1] };
+          face.col = (uu, vv, r) => (vv < jv || strips.some(([a, b]) => uu > a && uu < b) ? COLOR.joint : block(uu, vv, r));
+          face.noDab = true;
+        }
         out.push(face);
       }
       // the top: a pale coping along the face, then the street's own ground (paving, or asphalt over a road) to the back

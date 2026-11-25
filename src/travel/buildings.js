@@ -1082,9 +1082,11 @@ function solidMaterial(shared) {
         if (abs(n.y) > 0.6) uv = vWorld.xz;
         else { vec2 a = normalize(vec2(-n.z, n.x)); uv = vec2(dot(vWorld.xz, a), vWorld.y); }
         // the brush grows with the distance, as a painter's does: a row of strokes is at least ROW_PX pixels high. Two
-        // scales an octave apart are blended, so the change of scale does not show as a seam
+        // scales an octave apart are blended, so the change of scale does not show as a seam. Within about 20 m it grows
+        // finer, two octaves at most (a row of 0.11 m): held at 0.45 m, a stroke on a stream wall or a bridge's underside
+        // 2 m off spanned hundreds of pixels, and the brush texel showed stretched (T4 round 3)
         float px = length(vWorld - cameraPosition) * uPixel;
-        float level = log2(max(1.0, ${SOLID_ROW_PX}.0 * px / 0.45));
+        float level = max(-2.0, log2(${SOLID_ROW_PX}.0 * px / 0.45));
         float l0 = floor(level), f = level - l0;
         vec3 col = mix(paint(uv, exp2(l0), l0 * 3.1), paint(uv, exp2(l0 + 1.0), l0 * 3.1 + 3.1), smoothstep(0.0, 1.0, f));
         outC = vec4(col, 1.0);

@@ -140,6 +140,16 @@ for (const p of PLACES) {
   const tgt = p.name === 'gyeongbokgung' ? [2.2, -80.9] : [0, 0];
   const spot = await page.evaluate((tg) => {
     const L = window.lab;
+    // a place of apartment complexes (Banpo): the view is from inside the entrance nearest the start, 8 m in, looking
+    // into the complex. Its pin stands in an office court, and 22 m off the pin saw two walls' corner (T4 round 3)
+    const gates = (L.complexes?.gates ?? []).filter((g) => g.w >= 4).map((g) => ({ ...g, ix: g.x + g.e[0] * 8, iz: g.z + g.e[1] * 8 }))
+      .filter((g) => { const c = L.clearance(g.ix, g.iz); return !c.inBuilding && c.d >= 3.5; })
+      .sort((a, b) => Math.hypot(a.x - L.feet().x, a.z - L.feet().z) - Math.hypot(b.x - L.feet().x, b.z - L.feet().z));
+    if (gates.length) {
+      const g = gates[0];
+      L.teleport(g.ix, g.iz, g.x + g.e[0] * 48, g.z + g.e[1] * 48);
+      return [+g.ix.toFixed(1), +g.iz.toFixed(1), 'complex'];
+    }
     let best = null;
     for (let a = 0; a < 360; a += 10) {
       const r = (a * Math.PI) / 180, x = tg[0] + Math.sin(r) * 22, z = tg[1] + Math.cos(r) * 22;

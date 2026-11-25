@@ -50,7 +50,11 @@ for (const p of PLACES) {
   // a crossing from 14 m off, facing it, on the road it crosses
   const shot = await page.evaluate(() => {
     const L = window.lab;
-    const c = L.streetCrossings.find((q) => q.kind === 'walk') ?? L.streetCrossings[0];
+    // the walk crossing nearest the start (the list's first lay anywhere in the square: Myeongdong's was 321 m out, in
+    // the offices of Euljiro, and read as no shopping street, T4 round 3)
+    const near = (q) => Math.hypot(q.x - L.feet().x, q.z - L.feet().z);
+    const walks = L.streetCrossings.filter((q) => q.kind === 'walk').sort((a, b) => near(a) - near(b));
+    const c = walks[0] ?? L.streetCrossings[0];
     if (!c) return null;
     const x = c.x - c.d[0] * 14, z = c.z - c.d[1] * 14;
     L.teleport(x, z, c.x, c.z);
