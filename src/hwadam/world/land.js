@@ -248,6 +248,14 @@ export function createLand(shared) {
           }
           float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
           c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
+          // a town stream (bridges-6): clear shallow water over its stone bed, grey-green and slate, the stones showing
+          // through in patches, and only a little of the sky on it (the walls stand close round it)
+          if (abs(coverStream(vWorld.xz) - 1.0) < 0.5) {
+            vec3 sc = mix(vec3(0.33, 0.4, 0.38), vec3(0.47, 0.54, 0.5), strokeH);
+            sc = mix(sc, vec3(0.54, 0.52, 0.47), 0.45 * smoothstep(0.55, 0.75, sqn));
+            sc = mix(sc, vec3(0.6, 0.68, 0.7), graze * 0.2);
+            c = sc * (0.85 + 0.25 * lit);
+          }
         } else if (abs(cls - 6.0) < 0.5 || (cls < 0.5 && wf > 0.0)) {
           // (untagged land by the water is beach too: it would otherwise keep the maple climb's rust underpainting)
           // sand: pale warm, in long flat strokes; where the sea reaches it, the water breaks in dabs over it
