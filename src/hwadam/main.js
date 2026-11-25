@@ -22,6 +22,7 @@ import { walkSong } from '../travel/walk-song.js';
 import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createBuildings, clearance } from '../travel/buildings.js';
+import { createStreets } from '../travel/streets.js';
 import { createForest } from './world/forest.js';
 import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
@@ -169,6 +170,9 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 // colliders below (src/travel/buildings.js)
 const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 if (bld) scene.add(bld.group);
+// travel: the streets of the near square (T4): zebra crossings, lane lines, kerbs, lamps, signals, bus shelters (src/travel/streets.js)
+const streets = travel && place.cover ? createStreets(shared, place.cover, heightAt) : null;
+if (streets) scene.add(streets.group);
 // check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
 if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
@@ -183,7 +187,7 @@ if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.mat
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, streets: streets?.group };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -199,6 +203,8 @@ const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
   // the walls of the buildings: a thin box on every edge of each outline (T3, src/travel/buildings.js)
   for (const w of bld?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
+  // the poles, lamps and shelter walls of the streets (T4, src/travel/streets.js)
+  for (const w of streets?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
 }
 lap('physics');
 
@@ -357,6 +363,7 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
+  streets: streets?.stats ?? null, streetCrossings: streets?.crossings ?? [],
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,
