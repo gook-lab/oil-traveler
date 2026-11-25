@@ -22,6 +22,7 @@ import { walkSong } from '../travel/walk-song.js';
 import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createBuildings, clearance } from '../travel/buildings.js';
+import { createBridges } from '../travel/bridges.js';
 import { createForest } from './world/forest.js';
 import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
@@ -169,6 +170,9 @@ scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mes
 // colliders below (src/travel/buildings.js)
 const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 if (bld) scene.add(bld.group);
+// travel with a land cover (T4): the bridges of the cover, as decks over the water and the banks (src/travel/bridges.js)
+const bridges = travel && place.cover ? createBridges(shared, place.cover, heightAt, { near: vantage }) : null;
+if (bridges) scene.add(bridges.group);
 // check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
 if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
@@ -199,6 +203,8 @@ const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   for (const t of forest.colliders) physics.createCollider(RAPIER.ColliderDesc.cylinder(5, t.r).setTranslation(t.x, t.y + 4.5, t.z));
   // the walls of the buildings: a thin box on every edge of each outline (T3, src/travel/buildings.js)
   for (const w of bld?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
+  // the decks, their rails and piers (T4)
+  for (const w of bridges?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
 }
 lap('physics');
 
@@ -209,7 +215,8 @@ scene.add(man.object, figure.dabs);
 const animator = new Animator(man);
 // the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
 const spawnX = travel ? vantage.x : START.x, spawnZ = travel ? vantage.z : START.z;
-const spawn = new THREE.Vector3(spawnX, heightAt(spawnX, spawnZ), spawnZ);
+// a start on a deck stands on the deck, not the ground under it (T4)
+const spawn = new THREE.Vector3(spawnX, Math.max(heightAt(spawnX, spawnZ), bridges?.deckAt(spawnX, spawnZ) ?? -Infinity), spawnZ);
 const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // travel: the skyline's view; else along the way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
@@ -357,6 +364,8 @@ window.lab = {
   coverView: () => viewShares(camera, THREE, heightAt),
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
+  /** T4: the bridges of the place (decks, wet, piers, boxes, tops) and deckAt(x, z) for the top of a deck. */
+  bridges: bridges?.stats ?? null, deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,
@@ -522,7 +531,7 @@ window.lab = {
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
   teleport(x, z, fx, fz) {
-    const y = heightAt(x, z), half = player.halfHeight();
+    const y = Math.max(heightAt(x, z), bridges?.deckAt(x, z) ?? -Infinity), half = player.halfHeight();
     player.body.setTranslation({ x, y: y + player.t.radius + half + 0.05, z }, true);
     physics.propagateModifiedBodyPositionsToColliders();
     player.feet.set(x, y, z); player.prevFeet.copy(player.feet); player.visualY = y;
