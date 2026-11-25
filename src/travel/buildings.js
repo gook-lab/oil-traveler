@@ -26,15 +26,17 @@ const NEAR_M = 120, NEAR_STEP = 3, NEAR_CAP = 16000;
 const EAVE = 1.8, FLOOR_H = 3.4, STONE_MAX = 0.8, STONE_PAD = 0.4;
 // a traditional hall: the walls are at most 5 m (or 0.4 of the height), the rest is roof; a hall with a short side of 15 m
 // or more stands on a stone base of 1.2 m
-const WALL_MAX = 5, WALL_FRAC = 0.4, BIG_SIDE = 15, BIG_STONE = 1.2;
+const WALL_MAX = 5, WALL_FRAC = 0.4, BIG_SIDE = 15;
 // the cells of the solid mesh, in metres: along a wall, and up it
 const WALL_CELL = [3.2, 1.7], TRAD_WALL_CELL = [0.5, 1.6], ROOF_CELL = [3, 3];
 /** The cells of a wall in the near zone: about 1.2 m along and 0.6 m up. */
 const FINE_CELL = [1.2, 0.6];
 /** The thickness of a palace wall (m). */
 const WALL_T = 0.9;
-/** The roof of a traditional hall: N by N quads, and the lift of its eave corners (m). */
-const ROOF_N = 18, CORNER_LIFT = 1.5;
+/** The tiles along a palace wall's top: dark blue-grey (the roofs' tile colour, darker). */
+const COPING = [0.24, 0.26, 0.3];
+/** The largest touch on a stone base or podium tier, [across, along] (m): thin strokes along the stone. */
+const STONE_MARK = [0.3, 1.0];
 
 // one touch per instance: the attributes below fill in its Dab
 const HEAD = /* glsl */ `
@@ -265,7 +267,7 @@ function surfacesOf(p, ground) {
     const ybAll = gMin + p.mh, ytAll = gMin + p.h;
     const base = hexRGB(p.colour);
     const bh = rnd(p.c[0], p.c[1]);
-    // a palace wall (a walled court's ring): ochre-grey, with a band of red tiles along its top (the coping)
+    // a palace wall (a walled court's ring): ochre-grey, with a ridge of dark tiles along its top (the coping)
     // a block's facade: its own colour when the data gives one, else one of the city's: pale stone, beige, blue-grey glass,
     // grey concrete, a brown brick
     const PAL = [[0.8, 0.78, 0.73], [0.6, 0.67, 0.72], [0.86, 0.83, 0.77], [0.5, 0.5, 0.49], [0.55, 0.42, 0.34]];
@@ -287,30 +289,54 @@ function surfacesOf(p, ground) {
         // slope is not buried, nor a stretch of 3.4 m left at the height of the eye)
         const yb = p.wall ? lowestAlong(A, B, ground) + p.mh : ybAll, yt = p.wall ? yb + p.h : ytAll, H = yt - yb;
         if (p.wall) {
-          // the wall has a thickness of 0.9 m: its inner face and a coping of red tiles on top (so it is not a sheet)
+          // the wall has a thickness of 0.9 m: its inner face, and the coping on top (so it is not a sheet)
           const T = WALL_T, Ai = [A[0] - n[0] * T, A[1] - n[2] * T], Bi = [B[0] - n[0] * T, B[1] - n[2] * T];
           out.push({ P00: [Ai[0], yb, Ai[1]], P10: [Bi[0], yb, Bi[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [-n[0], 0, -n[2]], cell: WALL_CELL, col: () => wallC.map((c) => c * (0.9 + 0.2 * 0.5)) });
-          out.push({ P00: [A[0], yt, A[1]], P10: [B[0], yt, B[1]], P01: [Ai[0], yt, Ai[1]], P11: [Bi[0], yt, Bi[1]], n: [0, 1, 0], cell: [3, 0.9], col: () => [0.6, 0.24, 0.16] });
+          // the coping (T3 round 4): a ridge of dark tiles over the wall, 0.25 m out past each face and 0.45 m high, so the
+          // wall's top reads as a line of roof tiles and not as a bale of straw
+          const CAP = 0.25, Ao = [A[0] + n[0] * CAP, A[1] + n[2] * CAP], Bo = [B[0] + n[0] * CAP, B[1] + n[2] * CAP];
+          const Aq = [Ai[0] - n[0] * CAP, Ai[1] - n[2] * CAP], Bq = [Bi[0] - n[0] * CAP, Bi[1] - n[2] * CAP];
+          const Am = [A[0] - n[0] * T * 0.5, A[1] - n[2] * T * 0.5], Bm = [B[0] - n[0] * T * 0.5, B[1] - n[2] * T * 0.5];
+          const yc = yt - 0.15, yr = yt + 0.3;
+          out.push({ P00: [Ao[0], yc, Ao[1]], P10: [Bo[0], yc, Bo[1]], P01: [Am[0], yr, Am[1]], P11: [Bm[0], yr, Bm[1]], cell: [3, 0.6], col: (u, v, r) => COPING.map((c) => c * (0.92 + 0.16 * r)) });
+          out.push({ P00: [Aq[0], yc, Aq[1]], P10: [Bq[0], yc, Bq[1]], P01: [Am[0], yr, Am[1]], P11: [Bm[0], yr, Bm[1]], cell: [3, 0.6], col: (u, v, r) => COPING.map((c) => c * (0.92 + 0.16 * r)) });
         }
-        out.push({
-          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb, H },
+        // the ground floor of a block (T3 round 4): a shopfront of its own, 3.5 m high. A dark base (0.4 m), glass to 2.8 m
+        // in panes of 1.3 m (frames 0.12 m; some panes lit warm from inside, the rest grey-blue), a dark rail, and the sign
+        // band (2.9 to 3.5 m) in the building's colour. Its cells break at every frame and band edge near the start; the only
+        // touches are one row of long strokes along the sign, so the glass stays clear (r62: a navy mass with dotted signs)
+        const G = p.wall || (p.mh ?? 0) > 0.5 ? 0 : Math.min(FLOOR_H + 0.1, H);
+        const sign = SIGN_C[Math.floor(rnd(p.c[0] * 0.13, p.c[1] * 0.17) * SIGN_C.length)];
+        if (G > 0) out.push({
+          P00: [A[0], yb, A[1]], P10: [B[0], yb, B[1]], P01: [A[0], yb + G, A[1]], P11: [B[0], yb + G, B[1]], n, cell: [2.6, 0.7], shop: { s0, Lk, G },
+          rows: G >= 3.4 ? [{ v: 3.2 / G, across: 0.45 }] : [],
           col: (u, v, r) => {
-            const fy = v * H, x = s0 + u * Lk;
-            // the bands are set by the world height (yb + fy) and the facade's run, not by the cell: every building's
-            // windows fall on the same storeys, and a column strip (2.6 m rhythm, 0.4 m wide) stays wall
+            const fy = v * G, x = s0 + u * Lk;
+            if (fy < 0.4) return [0.26, 0.26, 0.27];
+            if (fy < 2.8) {
+              if (((x % 1.3) + 1.3) % 1.3 < 0.12) return [0.14, 0.15, 0.17];
+              const lit = rnd(Math.floor(x / 1.3) * 0.37 + p.c[0] * 0.01, p.c[1] * 0.013) < 0.4;
+              return (lit ? [0.86, 0.74, 0.52] : [0.5, 0.58, 0.62]).map((c) => c * (0.96 + 0.08 * r));
+            }
+            if (fy < 2.9) return [0.18, 0.18, 0.2];
+            return sign.map((c) => c * (0.95 + 0.1 * r));
+          },
+        });
+        // the storeys above (or a wall, or a part standing on another): the bands are set by the world height and the
+        // facade's run, not by the cell: every building's windows fall on the same storeys, and a column strip (2.6 m
+        // rhythm, 0.4 m wide) stays wall. The base pattern decides the colour; the dabs read it where they sit
+        if (H - G > 0.3) out.push({
+          P00: [A[0], yb + G, A[1]], P10: [B[0], yb + G, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb: yb + G, H: H - G },
+          col: (u, v, r) => {
+            const fy = G + v * (H - G), x = s0 + u * Lk;
             const yAbs = yb + fy, row = ((yAbs % 3.5) + 3.5) % 3.5;
             const win = !p.wall && row >= 1.0 && row <= 2.3 && !(((x % 2.6) + 2.6) % 2.6 < 0.4);
-            if (p.wall && fy > H - 0.5) return [0.6, 0.24, 0.16]; // the coping of red tiles
-            if (!p.wall) {
-              if (fy < FLOOR_H && fy > 0.8 && fy < 2.8) return [0.18, 0.24, 0.28]; // the shopfront: a dark glass band
-              // the sign: one thin band above the glass, in one colour a building carries (yellow, red or white)
-              if (fy >= 2.9 && fy <= 3.5) return SIGN_C[Math.floor(rnd(p.c[0] * 0.13, p.c[1] * 0.17) * SIGN_C.length)];
-              if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
-            }
+            if (p.wall && fy > H - 0.5) return COPING; // the band of dark tiles under the coping
+            if (p.wall && fy < 1.1) return [0.56, 0.55, 0.52].map((c) => c * (0.92 + 0.16 * r)); // a course of granite blocks at its foot
+            if (!p.wall && fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
             // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
             return win ? [0.2 + 0.08 * r, 0.27 + 0.06 * r, 0.34 + 0.06 * r] : wallC.map((c) => c * (0.95 + 0.1 * r));
           },
-          // the base pattern (windows as glass bands) decides the colour; the dabs read the base colour where they sit
           jit: true,
         });
       }
@@ -318,143 +344,216 @@ function surfacesOf(p, ground) {
     if (!p.wall) out.push({ poly: p.pts, y: ytAll, n: [0, 1, 0], col: () => roofC });
     return { out, yb: ybAll, yt: ytAll, kind: p.wall ? 'wall' : 'modern' };
   }
-  // traditional: the wall box, the stone base, the eaves, and the hip roof of tiles
+  // traditional: the stone base (a two-tier podium under a big hall), one storey or two (중층), the eaves, the hip roof
   const R = p.R;
   const yb = gMin;
   const big = 2 * Math.min(R.hu, R.hv) >= BIG_SIDE;
-  const stone = big ? BIG_STONE : Math.min(STONE_MAX, 0.25 * p.h);
-  const yEave = yb + stone + Math.min(WALL_MAX, WALL_FRAC * p.h); // the top of the walls; the roof is the rest
-  const yTop = yb + p.h;
-  const wallPts = (pad) => [rectPt(R, -R.hu - pad, -R.hv - pad), rectPt(R, R.hu + pad, -R.hv - pad), rectPt(R, R.hu + pad, R.hv + pad), rectPt(R, -R.hu - pad, R.hv + pad)];
+  const stone = Math.min(STONE_MAX, 0.25 * p.h);
+  // a hall 12 m or more tall on a podium stands two storeys (T3 round 4, 중층 as Geunjeongjeon): a lower storey of 5.5 m
+  // posts with a lower roof round it, and an upper storey drawn in by 15% of the short side, 3.5 m to its eave
+  const two = big && p.h >= 12;
+  const TIER = 1.2;
+  const floor = big ? yb + 2 * TIER : yb + stone; // the hall's floor: the podium's top (two tiers) or the base's
+  const ptsOf = (RR, pad) => [rectPt(RR, -RR.hu - pad, -RR.hv - pad), rectPt(RR, RR.hu + pad, -RR.hv - pad), rectPt(RR, RR.hu + pad, RR.hv + pad), rectPt(RR, -RR.hu - pad, RR.hv + pad)];
+  const wallPts = (pad) => ptsOf(R, pad);
   // four faces of a box with the given corners, from y0 to y1, each coloured by col(u, v, r, L, k)
-  // dabCol (optional): the colour of the touches on the face, when it differs from the solid cells (posts stay in the body)
-  const face = (ptsA, y0, y1, col, cell, dabCol = null, vertical = false) => {
+  // dabCol: the colour of the touches, when it differs from the solid cells; mark: the largest touch, [across, along] (m),
+  // or mark(k) for each side;
+  // brk(L, k): the cell breaks of a face (fractions of its length and height), so its cells end where its pattern does
+  const face = (ptsA, y0, y1, col, cell, { dabCol = null, vertical = false, mark = null, brk = null } = {}) => {
     for (let k = 0; k < 4; k++) {
       const a = ptsA[k], b = ptsA[(k + 1) % 4];
       const ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
       const n = [ez / L, 0, -ex / L];
-      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k), dabCol: dabCol ? (u, v, r) => dabCol(u, v, r, L, k) : null, vertical });
+      out.push({ P00: [a[0], y0, a[1]], P10: [b[0], y0, b[1]], P01: [a[0], y1, a[1]], P11: [b[0], y1, b[1]], n, cell, col: (u, v, r) => col(u, v, r, L, k), dabCol: dabCol ? (u, v, r) => dabCol(u, v, r, L, k) : null, vertical, mark: typeof mark === 'function' ? mark(k) : mark, breaks: brk ? brk(L, k) : null });
     }
   };
-  // the stone base, a little out from the posts
-  // a big hall (short side 15 m or more) stands on a two-tier podium (월대) of dark grey-brown stone, each tier 0.9 m, with a
-  // straight edge along each tier's top; a small hall keeps the pale stone base
+  // the top of a box: one flat quad over its corners (a podium tier's top, a base's top), so the court does not look into
+  // the hollow of the base (T3 round 3: the open top read as a grey mass with a ragged edge)
+  const lid = (ptsA, y, col) => out.push({ P00: [ptsA[0][0], y, ptsA[0][1]], P10: [ptsA[1][0], y, ptsA[1][1]], P01: [ptsA[3][0], y, ptsA[3][1]], P11: [ptsA[2][0], y, ptsA[2][1]], n: [0, 1, 0], cell: [3.2, 3.2], col });
+  const podC = (u, v, r) => mixc([0.36, 0.34, 0.31], [0.44, 0.41, 0.37], 0.5 * r), podTopC = (u, v, r) => mixc([0.56, 0.53, 0.48], [0.62, 0.59, 0.54], 0.5 * r);
+  const stoneC = (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r);
+  // the side toward the court (the larger z, toward the start): the stairs climb it and the front doors face it
+  const sides = [[R.ux, R.uz, R.hu], [-R.ux, -R.uz, R.hu], [R.vx, R.vz, R.hv], [-R.vx, -R.vz, R.hv]];
+  const [o0, o1, hd] = sides.reduce((best, c) => (c[1] > best[1] ? c : best));
+  const STAIR_W = 2;
   if (big) {
-    face(wallPts(2.6), yb - 0.2, yb + stone + 0.9, (u, v, r) => mixc([0.36, 0.34, 0.31], [0.44, 0.41, 0.37], 0.5 * r), [3.2, 0.8]);
-    face(wallPts(1.4), yb + stone + 0.9 - 0.01, yb + stone + 1.8, (u, v, r) => mixc([0.42, 0.4, 0.37], [0.5, 0.47, 0.43], 0.5 * r), [3.2, 0.8]);
-  } else {
-    face(wallPts(STONE_PAD), yb - 0.2, yb + stone, (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r), [3.2, 0.8]);
-  }
-  // a big hall has a stair of three steps up its south side (the side the walker sees from the courtyard): 4 m wide, 0.6 m
-  // deep each, 0.4 m high each, down to the base's top; the top step is the nearest the wall
-  if (big) {
-    const sides = [[R.ux, R.uz, R.hu], [-R.ux, -R.uz, R.hu], [R.vx, R.vz, R.hv], [-R.vx, -R.vz, R.hv]];
-    const [o0, o1, hd] = sides.reduce((best, c) => (c[1] > best[1] ? c : best));
+    // the podium (월대): two tiers of 1.2 m, 5 m and 2.5 m out from the posts, of dark grey-brown stone in thin strokes along
+    // it (so a tier keeps its straight edge), each with its top and a pale stone balustrade (0.7 m) round its edge, open
+    // where the stairs come up
+    const PADS = [5, 2.5];
+    PADS.forEach((pad, i) => {
+      const y0 = i === 0 ? yb - 0.2 : yb + TIER - 0.01, y1 = yb + TIER * (i + 1);
+      face(wallPts(pad), y0, y1, podC, [3.2, TIER], { mark: STONE_MARK });
+      lid(wallPts(pad), y1, podTopC);
+      const P = wallPts(pad - 0.15);
+      for (let k = 0; k < 4; k++) {
+        const a = P[k], b = P[(k + 1) % 4], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L, n = [uz, 0, -ux];
+        // the front edge is cut where the stairs climb (the edge whose outward normal is the court side)
+        const front = Math.abs(n[0] - o0) < 1e-6 && Math.abs(n[2] - o1) < 1e-6;
+        const runs = front ? [[0, L / 2 - STAIR_W - 0.3], [L / 2 + STAIR_W + 0.3, L]] : [[0, L]];
+        for (const [s0, s1] of runs) {
+          const A = [a[0] + ux * s0, a[1] + uz * s0], B = [a[0] + ux * s1, a[1] + uz * s1], Lr = s1 - s0;
+          out.push({ P00: [A[0], y1, A[1]], P10: [B[0], y1, B[1]], P01: [A[0], y1 + 0.7, A[1]], P11: [B[0], y1 + 0.7, B[1]], n, cell: [2, 0.7], mark: [0.2, 0.8],
+            // a post every 2 m (0.25 m wide, brighter), the rail between them a shade darker
+            breaks: { u: [0, ...Array.from({ length: Math.floor(Lr / 2) }, (_, m) => [((m + 1) * 2 - 0.125) / Lr, ((m + 1) * 2 + 0.125) / Lr]).flat().filter((x) => x > 0 && x < 1), 1], v: [0, 1] },
+            col: (u, v, r) => ((u * Lr) % 2 > 1.875 || (u * Lr) % 2 < 0.125 ? [0.9, 0.88, 0.83] : [0.78, 0.76, 0.71]).map((c) => c * (0.95 + 0.1 * r)) });
+        }
+      }
+    });
+    // the stairs up the court side, 4 m wide and 0.3 m a step: four from the court to the lower tier's top, four more to the floor
     const cx = R.cu * R.ux + R.cv * R.vx, cz = R.cu * R.uz + R.cv * R.vz;
-    const tg = [-o1, o0], W = 2;
+    const tg = [-o1, o0];
     const wp = (d, t, y) => [cx + o0 * (hd + d) + tg[0] * t, y, cz + o1 * (hd + d) + tg[1] * t];
-    const stoneC = (u, v, r) => mixc([0.86, 0.83, 0.76], [0.7, 0.67, 0.6], 0.5 * r);
-    for (let j = 0; j < 3; j++) {
-      const d0 = 2.0 + 0.6 * j, d1 = d0 + 0.6, top = yb + stone - 0.4 * j, low = yb - 0.2;
-      out.push({ P00: wp(d0, -W, top), P10: wp(d0, W, top), P01: wp(d1, -W, top), P11: wp(d1, W, top), n: [0, 1, 0], cell: [1.6, 0.6], col: stoneC });
-      out.push({ P00: wp(d1, -W, low), P10: wp(d1, W, low), P01: wp(d1, -W, top), P11: wp(d1, W, top), n: [o0, 0, o1], cell: [1.6, 0.4], col: stoneC });
-    }
+    const flight = (dEdge, yTop) => {
+      for (let j = 0; j < 4; j++) {
+        const d0 = dEdge + 0.5 * j, d1 = d0 + 0.5, top = yTop - 0.3 * (j + 1), low = yb - 0.2;
+        out.push({ P00: wp(d0, -STAIR_W, top), P10: wp(d0, STAIR_W, top), P01: wp(d1, -STAIR_W, top), P11: wp(d1, STAIR_W, top), n: [0, 1, 0], cell: [1.6, 0.5], mark: STONE_MARK, col: stoneC });
+        out.push({ P00: wp(d1, -STAIR_W, low), P10: wp(d1, STAIR_W, low), P01: wp(d1, -STAIR_W, top), P11: wp(d1, STAIR_W, top), n: [o0, 0, o1], cell: [1.6, 0.4], mark: STONE_MARK, col: stoneC });
+      }
+    };
+    flight(PADS[1], yb + 2 * TIER);
+    flight(PADS[0], yb + TIER);
+  } else {
+    face(wallPts(STONE_PAD), yb - 0.2, floor, stoneC, [3.2, 0.8], { mark: STONE_MARK });
+    lid(wallPts(STONE_PAD), floor, stoneC);
   }
-  // the white walls, with a red post every 3.2 m (a column half a metre wide)
-  // the white walls: the touches vary by 3% and lie upright (long strokes), so they do not read as a row of windows
-  // the front (the long side, toward the court) has its bays as dark timber doors with bright lattice (문살); the other
-  // sides stay white (the back and the ends are plain walls)
+  // the long side toward the court: the long sides are 0 and 2 or 1 and 3
   const frontPts = wallPts(0);
   const edgeLen = (k) => Math.hypot(frontPts[(k + 1) % 4][0] - frontPts[k][0], frontPts[(k + 1) % 4][1] - frontPts[k][1]);
-  // the long side that faces the court to the south (the larger z, toward the start): the long sides are 0 and 2 or 1 and 3
   const midZ = (k) => (frontPts[k][1] + frontPts[(k + 1) % 4][1]) / 2;
   const longK = [0, 1, 2, 3].filter((k) => Math.abs(edgeLen(k) - Math.max(...[0, 1, 2, 3].map(edgeLen))) < 1e-6);
   const frontK = longK.reduce((m, k) => (midZ(k) > midZ(m) ? k : m), longK[0]);
-  const wallH = yEave - (yb + stone);
-  // the dancheong: three bands on the top 1.2 m of the wall (green, red, blue), each 0.4 m, on every side
-  const DANCHEONG = [[0.13, 0.4, 0.3], [0.62, 0.16, 0.1], [0.15, 0.27, 0.5]];
-  // the gongpo band (T3 round 4): the top 1.2 m under the eave is green-blue with red and white dots every 0.3 m, so a
-  // distant hall reads as a palace; the shade does not darken it
-  const band = (v, r, x = 0) => {
-    const hgt = v * wallH;
-    if (hgt <= wallH - 1.2) return null;
-    const yy = hgt - (wallH - 1.2);
-    if (x % 0.3 < 0.1 && yy % 0.3 < 0.1) return (Math.floor(x / 0.3) % 2 ? [0.9, 0.2, 0.15] : [0.95, 0.94, 0.9]).map((c) => c * (0.95 + 0.1 * r));
-    return [0.16, 0.42, 0.38].map((c) => c * (0.95 + 0.1 * r));
-  };
-  const bayCol = (u, v, r, L, k) => {
-    const x = u * L;
-    const bd = band(v, r, x); if (bd) return bd;
-    const sp = L / Math.max(1, Math.round(L / 6)), inCol = ((x % sp) + sp) % sp; // the bays (about 6 m): a post at each bay line
-    if (inCol < 0.35 || inCol > sp - 0.35) return [0.5, 0.17, 0.12]; // the column (0.7 m across)
-    // the front bay: a red-brown frame (the lower quarter a solid panel) with fine ochre lattice every 0.5 m (0.08 m wide)
-    if (k === frontK) {
-      const hgt = v * wallH;
-      if (hgt < 0.9) return [0.3, 0.18, 0.12].map((c) => c * (0.9 + 0.2 * r));
-      return x % 0.5 < 0.08 || (hgt % 0.5) < 0.08 ? [0.9, 0.75, 0.45].map((c) => c * 0.6 * (0.95 + 0.05 * r)) : [0.42, 0.16, 0.1].map((c) => c * 0.6 * (0.9 + 0.2 * r));
+  const RED = [0.5, 0.17, 0.12], PAPER = [0.86, 0.82, 0.7];
+  // a storey: its bays from y0 to y1 on the rectangle RR, the gongpo band over them, and the posts.
+  // The bays (about 6 m, round(length / 6)) have a post at each bay line. On the front each bay is four doors (분합문):
+  // red-brown stiles (0.12 m) round each leaf, the lower 0.8 m a solid panel, the rest pale lattice paper; the other sides
+  // are white walls. The cells break at every post, stile and panel edge, so the doors stay sharp at any distance
+  const storey = (RR, y0, y1) => {
+    const yBand = y1 - 1.2, wallH = yBand - y0;
+    const layout = (L) => { const bays = Math.max(1, Math.round(L / 6)); return { bays, sp: L / bays }; };
+    const bayCol = (u, v, r, L, k) => {
+      const { sp } = layout(L), x = u * L, m = ((x % sp) + sp) % sp;
+      if (m < 0.35 || m > sp - 0.35) return RED;
+      if (k !== frontK) return [0.88, 0.86, 0.8].map((c) => c * (0.94 + 0.12 * r));
+      const hgt = v * wallH, lw = (sp - 0.7) / 4, mm = (m - 0.35) % lw;
+      if (hgt < 0.8 || hgt > wallH - 0.15 || mm < 0.06 || mm > lw - 0.06) return RED.map((c) => c * 0.85 * (0.95 + 0.1 * r));
+      return PAPER.map((c) => c * (0.9 + 0.16 * r));
+    };
+    const bayBreaks = (L, k) => {
+      const { bays, sp } = layout(L), u = [0, 1];
+      for (let b = 0; b <= bays; b++) for (const e of [-0.35, 0.35]) u.push((b * sp + e) / L);
+      if (k === frontK) {
+        const lw = (sp - 0.7) / 4;
+        for (let b = 0; b < bays; b++) for (let i = 0; i <= 4; i++) for (const e of [-0.06, 0.06]) u.push((b * sp + 0.35 + i * lw + e) / L);
+      }
+      const v = k === frontK ? [0, 0.8 / wallH, (wallH - 0.15) / wallH, 1] : [0, 1];
+      const ok = (a) => [...new Set(a.filter((x) => x >= 0 && x <= 1).map((x) => +x.toFixed(5)))].sort((x, y) => x - y);
+      return { u: ok(u), v: ok(v) };
+    };
+    const P0 = ptsOf(RR, 0);
+    // the touches are upright strokes that take the colour under them: short on the doors (0.3 by 0.9 m), so the doors' lines
+    // show between them, and longer on the white walls (0.6 by 1.5 m), so a wall is not a bare box
+    face(P0, y0, yBand, bayCol, TRAD_WALL_CELL, { vertical: true, mark: (k) => (k === frontK ? [0.3, 0.9] : [0.6, 1.5]), brk: bayBreaks });
+    // the gongpo band: cells of 0.3 m, the middle row a red or white dot every third cell; the touches are strokes of the
+    // band's green-blue along it (a 1.5 m upright stroke on a dot read as a white cloth hanging from the eave)
+    const BAND = [0.16, 0.42, 0.38];
+    const bandCol = (u, v, r, L) => {
+      const i = Math.floor((u * L) / 0.3), row = Math.floor(v * 3);
+      if (row === 1 && i % 3 === 0) return ((i / 3) % 2 ? [0.9, 0.2, 0.15] : [0.95, 0.94, 0.9]).map((c) => c * (0.95 + 0.1 * r));
+      return BAND.map((c) => c * (0.95 + 0.1 * r));
+    };
+    face(P0, yBand, y1, bandCol, [0.3, 0.4], { dabCol: (u, v, r) => BAND.map((c) => c * (0.9 + 0.2 * r)), mark: [0.4, 1.2] });
+    // the posts: red, 0.7 m across, 0.6 m out from the bays' face, with long upright strokes narrower than the post (so it
+    // stays a straight column, not a stack of lumps)
+    for (let k = 0; k < 4; k++) {
+      const A0 = P0[k], B0 = P0[(k + 1) % 4];
+      const Lf = Math.hypot(B0[0] - A0[0], B0[1] - A0[1]);
+      const dx = (B0[0] - A0[0]) / Lf, dz = (B0[1] - A0[1]) / Lf;
+      const nx = dz, nz = -dx; // the face's outward normal, as face() takes it
+      const { bays, sp } = layout(Lf), POST_OUT = 0.6, POST_D = 0.7;
+      const at = (t, y) => [A0[0] + dx * t + nx * POST_OUT, y, A0[1] + dz * t + nz * POST_OUT];
+      for (let b = 0; b <= bays; b++) {
+        const t0 = Math.max(0, b * sp - POST_D / 2), t1 = Math.min(Lf, b * sp + POST_D / 2);
+        if (t1 - t0 < 0.2) continue;
+        out.push({ P00: at(t0, y0), P10: at(t1, y0), P01: at(t0, y1), P11: at(t1, y1), n: [nx, 0, nz], cell: [0.7, 1.6], vertical: true, mark: [0.45, 2.0], col: (u, v, r) => RED.map((c) => c * (0.95 + 0.1 * r)) });
+      }
     }
-    return [0.88, 0.86, 0.8].map((c) => c * (0.97 + 0.06 * r));
   };
-  // the touches: on the front bays the frame's red-brown, the lattice's ochre (the bands keep their colour)
-  // the touches on the front bays take the bay's shade (0.6 of the frame colour), so they do not brighten to red
-  const postAt = (x, L) => { const sp = L / Math.max(1, Math.round(L / 6)), m = ((x % sp) + sp) % sp; return m < 0.35 || m > sp - 0.35; };
-  const bayDab = (u, v, r, L, k) => band(v, r, u * L) ?? (k === frontK && !postAt(u * L, L) ? [0.42, 0.16, 0.1].map((c) => c * 0.6 * (0.9 + 0.2 * r)) : bayCol(u, v, r, L, k));
-  face(frontPts, yb + stone, yEave, bayCol, TRAD_WALL_CELL, bayDab, true);
-  // the columns: red posts 0.7 m across, one at each bay line, every side. Bays are round(length / 6 m), so a 30 m front
-  // has 5 bays of 6 m (as Geunjeongjeon). The posts stand 0.6 m out from the bays' face (the bays are 0.6 m inside them)
-  for (let k = 0; k < 4; k++) {
-    const A0 = wallPts(0)[k], B0 = wallPts(0)[(k + 1) % 4];
-    const Lf = Math.hypot(B0[0] - A0[0], B0[1] - A0[1]);
-    const dx = (B0[0] - A0[0]) / Lf, dz = (B0[1] - A0[1]) / Lf;
-    const nx = dz, nz = -dx; // the face's outward normal, as face() takes it
-    const bays = Math.max(1, Math.round(Lf / 6)), sp = Lf / bays, POST_OUT = 0.6, POST_D = 0.7;
-    const at = (t, y) => [A0[0] + dx * t + nx * POST_OUT, y, A0[1] + dz * t + nz * POST_OUT];
-    for (let b = 0; b <= bays; b++) {
-      const t0 = Math.max(0, b * sp - POST_D / 2), t1 = Math.min(Lf, b * sp + POST_D / 2);
-      if (t1 - t0 < 0.2) continue;
-      const cc = [0.5, 0.17, 0.12];
-      out.push({ P00: at(t0, yb + stone), P10: at(t1, yb + stone), P01: at(t0, yEave), P11: at(t1, yEave), n: [nx, 0, nz], cell: [0.7, 1.6], col: () => cc });
+  // a hip roof (T3 round 2, r50; round 4): one height function h(p, q) over the rectangle grown by the eave eo, on one grid,
+  // so no piece can part from its neighbour. d is the distance to the eave edge, t = d / rb (0 at the eave, 1 at the
+  // ridge), h = yE - drop + H g(t) with g(t) = t - 0.06 sin(pi t) (the dish of 6% of the slope). The eave line rises from
+  // the middle of each side to its corners (the square of the distance along it, up to 8% of the half length, at most 2 m),
+  // and the rise fades up the slope.
+  // - the tiles: rows of 0.5 m along the eave, dark and light by turns, with strokes down the slope (not along it: rows
+  //   along the eave read as a thatched plate); the ridge and the hips' top darker
+  // - the eave's underside: 0.45 m under the roof, dark, everywhere outside the posts (a flat soffit sat above the drooping
+  //   eave, so the walker saw the tiles' back from below: grey plates, r62)
+  // - the eave's edge: 0.45 m of dark tile ends with a white end tile (막새) every other 0.5 m on a fine roof
+  // hole: a rectangle {hu, hv} whose cells are left out (the lower roof of a 중층 hall stops at the upper storey)
+  const TILE = [[0.36, 0.4, 0.46], [0.27, 0.3, 0.35]], RIDGE = [0.17, 0.18, 0.21], UNDER = [0.14, 0.12, 0.11];
+  const hipRoof = (RR, yE, eo, roofH, fine, hole = null, drop = DROP) => {
+    const ra = RR.hu + eo, rb = RR.hv + eo, LIFT = Math.min(2, Math.max(0.6, 0.08 * ra));
+    const hAt = (p, q) => {
+      const dp = ra - Math.abs(p), dq = rb - Math.abs(q), d = Math.min(dp, dq);
+      const t = Math.min(1, Math.max(0, d / rb)), g = t - DISH * Math.sin(Math.PI * t);
+      const a = dq <= dp ? Math.abs(p) / ra : Math.abs(q) / rb;
+      return yE - drop + roofH * g + LIFT * a * a * (1 - t) ** 1.5;
+    };
+    const step = fine ? 0.5 : ROOF_GRID;
+    const NX = Math.max(4, Math.ceil((2 * ra) / step)), NZ = Math.max(4, Math.ceil((2 * rb) / step));
+    const pt = (p, q, dy = 0) => { const [x, z] = rectPt(RR, p, q); return [x, hAt(p, q) + dy, z]; };
+    const P = (i) => -ra + (2 * ra * i) / NX, Q = (j) => -rb + (2 * rb * j) / NZ;
+    for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
+      const p0 = P(i), p1 = P(i + 1), q0 = Q(j), q1 = Q(j + 1), pc = (p0 + p1) / 2, qc = (q0 + q1) / 2;
+      if (hole && Math.abs(pc) < hole.hu && Math.abs(qc) < hole.hv) continue;
+      const dp = ra - Math.abs(pc), dq = rb - Math.abs(qc), d = Math.min(dp, dq), longSide = dq <= dp;
+      const along = longSide ? pc : qc, row = ((Math.floor(along / 0.5) % 2) + 2) % 2;
+      const colour = d > rb - 0.6 ? RIDGE : TILE[row];
+      // the strokes vary by 20% either way (the cell's own tone varies by 6%), so the tile rows show as paint
+      out.push({ P00: pt(p0, q0), P10: pt(p1, q0), P01: pt(p0, q1), P11: pt(p1, q1), cell: [9, 9], alongV: longSide, mark: [0.5, 1.6], col: (u, v, r) => colour.map((c) => c * (0.94 + 0.12 * r)), dabCol: (u, v, r) => colour.map((c) => c * (0.8 + 0.4 * r)) });
+      if (Math.abs(pc) > RR.hu || Math.abs(qc) > RR.hv) out.push({ P00: pt(p0, q0, -0.45), P10: pt(p1, q0, -0.45), P01: pt(p0, q1, -0.45), P11: pt(p1, q1, -0.45), n: [0, -1, 0], cell: [9, 9], noDab: true, col: () => UNDER });
     }
-  }
-  // the underside of the eaves: green and red bands on the soffit, each a stroke along the eave
-  // the eave reaches out 0.6 of the column height, 2.4 to 3.5 m (T3 round 4: deep eaves that cast a shade)
-  const eaveOut = Math.min(3.5, Math.max(2.4, 0.6 * wallH));
-  const posts = wallPts(0), eaveW = wallPts(eaveOut);
-  for (let k = 0; k < 4; k++) {
-    const a = posts[k], b = posts[(k + 1) % 4], ea = eaveW[k], eb = eaveW[(k + 1) % 4];
-    const P00 = [a[0], yEave - 0.05, a[1]], P10 = [b[0], yEave - 0.05, b[1]], P01 = [ea[0], yEave - 0.05, ea[1]], P11 = [eb[0], yEave - 0.05, eb[1]];
-    // the underside of the eave (the rafters' face) is dark brown-grey, with a row of pale rafter ends every 0.4 m on its outer edge
-    const Lsoff = Math.hypot(eb[0] - ea[0], eb[1] - ea[1]);
-    out.push({ P00, P10, P01, P11, n: [0, -1, 0], cell: [3.2, 0.5], col: (u, v, r) => (v > 0.9 && (u * Lsoff) % 0.4 < 0.12 ? [0.82, 0.78, 0.7].map((c) => c * (0.95 + 0.05 * r)) : [0.15, 0.13, 0.12].map((c) => c * (0.9 + 0.2 * r))) });
-  }
-  // the roof (T3 round 2, r50): one height function h(p, q) over the walls' rectangle grown by the eaves, on one grid, so
-  // no piece can part from its neighbour. d is the distance to the eave edge, t = d / rb (0 at the eave, 1 at the ridge),
-  // h = wall top - drop + H g(t) with g(t) = t - 0.06 sin(pi t) (the dish of 6% of the slope), and the eave corners lift
-  // by up to EAVE_LIFT, at the eave only (1 - t). Ridge and hips are where d is largest and the sides meet.
-  // the eaves reach out 10% of the short side, at most 3.5 m (r52: a 5.5 m flat eave read as a metal sheet)
-  const ra = R.hu + eaveOut, rb = R.hv + eaveOut;
-  const roofH = Math.max(1.5, 0.4 * 2 * R.hv);
-  const EAVE_LIFT = 1.2, DROP = 1.0, DISH = 0.06, ROOF_GRID = 1.5;
-  const hAt = (p, q) => {
-    const d = Math.min(ra - Math.abs(p), rb - Math.abs(q));
-    const t = Math.min(1, Math.max(0, d / rb));
-    const g = t - DISH * Math.sin(Math.PI * t);
-    const cx = Math.max(0, (Math.abs(p) - 0.6 * ra) / (0.4 * ra)), cz = Math.max(0, (Math.abs(q) - 0.6 * rb) / (0.4 * rb));
-    const lift = EAVE_LIFT * Math.max(cx, cz) ** 2 * (1 - t);
-    return yEave - DROP + roofH * g + lift;
+    // the eave's edge, segment by segment along the four sides (the same grid, so it follows the curve)
+    const edge = (A, B, n, idx) => out.push({ P00: [A[0], A[1] - 0.45, A[2]], P10: [B[0], B[1] - 0.45, B[2]], P01: A, P11: B, n, cell: [9, 0.225], noDab: true,
+      col: (u, v) => (v > 0.5 && fine && idx % 2 === 0 ? [0.86, 0.84, 0.79] : v > 0.5 ? [0.42, 0.44, 0.48] : [0.16, 0.17, 0.2]) });
+    const nOf = (a, b) => { const x = rectPt(RR, a, b), o = rectPt(RR, 0, 0), L = Math.hypot(x[0] - o[0], x[1] - o[1]); return [(x[0] - o[0]) / L, 0, (x[1] - o[1]) / L]; };
+    for (let i = 0; i < NX; i++) {
+      edge(pt(P(i), -rb), pt(P(i + 1), -rb), nOf(0, -1), i);
+      edge(pt(P(i), rb), pt(P(i + 1), rb), nOf(0, 1), i);
+    }
+    for (let j = 0; j < NZ; j++) {
+      edge(pt(-ra, Q(j)), pt(-ra, Q(j + 1)), nOf(-1, 0), j);
+      edge(pt(ra, Q(j)), pt(ra, Q(j + 1)), nOf(1, 0), j);
+    }
+    return hAt;
   };
-  const NX = Math.max(4, Math.ceil((2 * ra) / ROOF_GRID)), NZ = Math.max(4, Math.ceil((2 * rb) / ROOF_GRID));
-  const pt = (p, q) => { const [x, z] = rectPt(R, p, q); return [x, hAt(p, q), z]; };
-  for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) {
-    const p0 = -ra + (2 * ra * i) / NX, p1 = -ra + (2 * ra * (i + 1)) / NX;
-    const q0 = -rb + (2 * rb * j) / NZ, q1 = -rb + (2 * rb * (j + 1)) / NZ;
-    const d = Math.min(ra - Math.abs((p0 + p1) / 2), rb - Math.abs((q0 + q1) / 2));
-    const ridgeCell = d > rb - 0.6; // the ridge and the hips' top: darker and thicker
-    const groove = Math.sin((d * 2 * Math.PI) / 0.7) > 0.3; // the tile grooves, every 0.7 m down the slope
-    const colour = mixc([0.3, 0.34, 0.4], [0.37, 0.41, 0.47], 0.5).map((c) => c * (groove ? 0.82 : 1) * (ridgeCell ? 0.5 : 1));
-    out.push({ P00: pt(p0, q0), P10: pt(p1, q0), P01: pt(p0, q1), P11: pt(p1, q1), cell: [9, 9], col: () => colour });
+  const DROP = 1.0, DISH = 0.06, ROOF_GRID = 1.5;
+  // the eaves reach out 0.6 of the post height, 2.4 to 3.5 m (T3 round 4: deep eaves that cast a shade)
+  const eaveOf = (h) => Math.min(3.5, Math.max(2.4, 0.6 * h));
+  // one storey: the posts are 3.2 m or more, and the eave droops 20% of them (at most 1 m) under their top, so a low
+  // hall's eave does not come down to the walker's eye (r64: a 2.4 m eave read as a plate across the view)
+  if (!two) {
+    const yEave = floor + Math.max(3.2, Math.min(WALL_MAX, WALL_FRAC * p.h));
+    storey(R, floor, yEave);
+    hipRoof(R, yEave, eaveOf(yEave - floor), Math.max(1.5, 0.4 * 2 * R.hv), big, null, Math.min(DROP, 0.2 * (yEave - floor)));
+    return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
   }
-  return { out, yb, yt: yEave, kind: 'traditional', hullTop: yEave, hullRect: wallPts(0) };
+  // 중층: the lower storey (5.5 m) and the lower roof: the same hip function over the lower eave, its height chosen so that
+  // it meets the upper storey's foot 1.2 m over the lower posts' top, and left out inside the upper storey
+  const y1 = floor + 5.5, eo1 = eaveOf(5.5);
+  storey(R, floor, y1);
+  const ins = 0.15 * 2 * Math.min(R.hu, R.hv), R2 = { ...R, hu: R.hu - ins, hv: R.hv - ins };
+  const yFoot = y1 + 1.2, tIn = Math.min(1, (eo1 + ins) / (R.hv + eo1)), gIn = tIn - DISH * Math.sin(Math.PI * tIn);
+  hipRoof(R, y1, eo1, (yFoot - (y1 - DROP)) / gIn, true, { hu: R2.hu, hv: R2.hv });
+  // the upper storey: 3.5 m of bays with the gongpo band, its eave and the hip roof (the roof's rise is 0.5 of the upper
+  // storey's depth; a height from the data, when there is one, caps it)
+  const y2 = yFoot + 3.5, eo2 = eaveOf(3.5);
+  storey(R2, yFoot, y2);
+  const rise = 0.5 * 2 * R2.hv;
+  hipRoof(R2, y2, eo2, Math.max(1.5, p.filled ? rise : Math.min(rise, yb + p.h - (y2 - DROP))), true);
+  return { out, yb, yt: y2, kind: 'traditional', hullTop: y1, hullRect: wallPts(0) };
 }
 
 /** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
@@ -482,6 +581,13 @@ const quadNormal = (s) => { const n = norm3(cross3(sub3(s.P10, s.P00), sub3(s.P0
 const polyCentre = (pts) => centroid(pts.map((q) => [q[0], q[1]]));
 
 /** The spacing of the dabs for a surface: the near spacing within NEAR_M of the start, else the base spacing. */
+/** The cell breaks of a shopfront (fractions of its run and height): its bands, and near the start each pane's frame. */
+function shopBreaks({ s0, Lk, G }, fine) {
+  const u = [0, 1], v = [0, 1, 0.4 / G, 2.8 / G, 2.9 / G].filter((x) => x < 1);
+  if (fine) for (let m = Math.floor(s0 / 1.3) * 1.3; m <= s0 + Lk; m += 1.3) for (const off of [0, 0.12]) { const q = (m + off - s0) / Lk; if (q > 0.002 && q < 0.998) u.push(q); }
+  const uniq = (a) => [...new Set(a.map((x) => +x.toFixed(5)))].sort((x, y) => x - y);
+  return { u: uniq(u), v: uniq(v) };
+}
 function dabStep(s, base, near) {
   if (!near) return base;
   // a wall within WALL_DENSE_M of the start takes the dense spacing (overlapping touches cover the face, as floor.js does)
@@ -551,7 +657,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     // a wall within the near zone is cut finer (FINE_CELL), so its tone can vary across the face like a brush's
     let [cu, cv] = s.cell;
     if (near && s.cell === WALL_CELL && isNear(s, near)) [cu, cv] = FINE_CELL;
-    const BR = s.jitRun ? runBreaks(s.jitRun) : null;
+    const BR = s.breaks ?? (s.shop ? shopBreaks(s.shop, !!near && isNear(s, near)) : s.jitRun ? runBreaks(s.jitRun) : null);
     const nu = BR ? BR.u.length - 1 : Math.max(1, Math.round(len3(sub3(s.P10, s.P00)) / cu)), nv = BR ? BR.v.length - 1 : Math.max(1, Math.round(len3(sub3(s.P01, s.P00)) / cv));
     const N0 = s.n ?? quadNormal(s);
     for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
@@ -596,10 +702,24 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         }
         return;
       }
+      if (s.noDab) return;
       const L1 = len3(sub3(s.P10, s.P00)), L2 = len3(sub3(s.P01, s.P00));
+      // a face with rows of its own (a shopfront's sign): one row of long strokes along each, at its height, inside the face
+      if (s.rows) {
+        const Dr = norm3(sub3(s.P10, s.P00)), Nr = s.n ?? quadNormal(s), n = Math.max(1, Math.round(L1 / 1.6));
+        for (const row of s.rows) for (let i = 0; i < n; i++) {
+          const u = (i + 0.5) / n, r = rnd(id + i * 0.31, row.v * 7.1);
+          const col = s.col(u, row.v, r).map((c) => c * lightOf(Nr));
+          push(bil(s, u, row.v).map((x, k) => x + Nr[k] * 0.04), Dr, [row.across, Math.min(1.9, (L1 / n) * 1.15)], Nr, [col, col.map((c) => c * 0.92)], 0.04, id + u * 3.1);
+        }
+        return;
+      }
       const nu = Math.max(1, Math.round(L1 / st)), nv = Math.max(1, Math.round(L2 / st));
       // a vertical face's touches run up it (the long side is the height); the rest run along the face
-      const D = s.vertical && !s.jit ? [0, 1, 0] : norm3(sub3(s.P10, s.P00)), N0 = s.n ?? quadNormal(s);
+      // a roof's touches run down its slope (alongV: along P01 - P00), so the tile rows show
+      const D = s.alongV ? norm3(sub3(s.P01, s.P00)) : s.vertical && !s.jit ? [0, 1, 0] : norm3(sub3(s.P10, s.P00)), N0 = s.n ?? quadNormal(s);
+      // the slot of the touch's size that runs along u (the face's length): along on a facade, across on an upright stroke
+      const alongU = !s.alongV && !(s.vertical && !s.jit);
       for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
         const u = (i + 0.5) / nu, v = (j + 0.5) / nv;
         const r = rnd(id + i * 0.31, j * 0.77 + 1.3);
@@ -633,7 +753,14 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
         // a dense touch is at least 1.8 m across (the size varies in height only, the width stays a long stroke)
         // the shader's size is [across, along] and the stroke runs along its direction (horizontal on a modern facade), so the
         // long width goes in the along slot and the height in the across slot
-        const S2 = s.jit ? (dense ? [S[1] * sz, Math.max(1.8, S[0] * (0.9 + 0.2 * rnd(id * 0.37, i + j * 0.5)))] : [S[1] * sz, S[0] * sz]) : S;
+        const S1 = s.jit ? (dense ? [S[1] * sz, Math.max(1.8, S[0] * (0.9 + 0.2 * rnd(id * 0.37, i + j * 0.5)))] : [S[1] * sz, S[0] * sz]) : S;
+        const S2 = s.mark ? [Math.min(S1[0], s.mark[0]), Math.min(S1[1], s.mark[1])] : S1;
+        // a touch on a facade or a wall stays inside its face: no longer than twice its distance to the nearest edge (r62:
+        // strokes past a block's corner read as feathers round its outline)
+        if (s.jit || s.vertical) {
+          const eu = Math.max(0.2, 2 * Math.min(uu, 1 - uu) * L1), ev = Math.max(0.2, 2 * Math.min(vv, 1 - vv) * L2);
+          if (alongU) { S2[1] = Math.min(S2[1], eu); S2[0] = Math.min(S2[0], ev); } else { S2[0] = Math.min(S2[0], eu); S2[1] = Math.min(S2[1], ev); }
+        }
         push(P.map((x, k) => x + N0[k] * 0.04), Dk, S2, N0, [col, c2], 0.04, id + u * 3.1 + v * 7.3);
       }
     });

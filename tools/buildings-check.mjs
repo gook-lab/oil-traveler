@@ -152,13 +152,20 @@ for (const p of PLACES) {
   if (p.name === 'gyeongbokgung') {
     const sideSpot = await page.evaluate((tg) => {
       const L = window.lab;
-      // the first spot east of the gable (22 to 60 m out, so the eave does not fill the frame) that is 3.5 m clear
-      for (let d = 22; d <= 60; d += 1) {
-        const x = tg[0] + 33.6 + d, z = tg[1];
+      // a spot off either gable end (18 to 50 m past it, up to 12 m to either side of the ridge line), 3.5 m clear, that sees
+      // the gable: the line to a point 6 m off the gable crosses no wall or outline (a palace wall filled the frame, r60).
+      // The hall's outline is 33.6 by 18.4 m (half 16.8 along x)
+      const sees = (x, z, gx, gz) => {
+        const L0 = Math.hypot(gx - x, gz - z), ux = (gx - x) / L0, uz = (gz - z) / L0;
+        for (let t = 2; t < L0; t += 1) { const c = L.clearance(x + ux * t, z + uz * t); if (c.inBuilding || c.d < 0.6) return false; }
+        return true;
+      };
+      for (const d of [22, 26, 30, 18, 34, 40, 46, 50]) for (const dz of [0, 6, -6, 12, -12]) for (const side of [1, -1]) {
+        const x = tg[0] + side * (16.8 + d), z = tg[1] + dz;
         const c = L.clearance(x, z);
-        if (c.inBuilding || c.d < 3.5) continue;
+        if (c.inBuilding || c.d < 3.5 || !sees(x, z, tg[0] + side * 22.8, tg[1])) continue;
         L.teleport(x, z, tg[0], tg[1]);
-        return [+x.toFixed(1), +z.toFixed(1), d];
+        return [+x.toFixed(1), +z.toFixed(1), d, dz, side];
       }
       return null;
     }, [2.2, -80.9]);
