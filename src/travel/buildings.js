@@ -53,7 +53,7 @@ const STONE_MARK = [0.3, 1.0];
  *   apartment balconies along its long sides (parapet, glass, lintel), a blank gable
  *   house     빌라: brick or tile, small windows
  */
-const FACADE = {
+export const FACADE = {
   office: { fl: 3.5, per: 2.6, u: [0, 0.4], v: [0, 0.22, 1.0, 2.3] },
   quiet: { fl: 3.5, per: 3.2, u: [0, 1.1], v: [0, 0.22, 1.1, 2.1] },
   shop: { fl: 3.5, per: 3.9, u: [0, 0.3], v: [0, 0.22, 0.9, 2.4, 2.55, 3.3] },
@@ -68,7 +68,7 @@ const USE_WALLS = {
   quiet: [[0.82, 0.8, 0.75], [0.76, 0.74, 0.7], [0.86, 0.83, 0.77]],
 };
 /** A glass tower's tints, low and high (it takes more of the sky up its face): blue, green-grey, bronze, silver. */
-const GLASS = [[[0.4, 0.5, 0.58], [0.66, 0.74, 0.8]], [[0.4, 0.5, 0.48], [0.64, 0.72, 0.7]], [[0.46, 0.41, 0.35], [0.7, 0.65, 0.57]], [[0.54, 0.57, 0.6], [0.78, 0.8, 0.82]]];
+export const GLASS = [[[0.4, 0.5, 0.58], [0.66, 0.74, 0.8]], [[0.4, 0.5, 0.48], [0.64, 0.72, 0.7]], [[0.46, 0.41, 0.35], [0.7, 0.65, 0.57]], [[0.54, 0.57, 0.6], [0.78, 0.8, 0.82]]];
 /** The poi classes of a shop on a street's ground floor (상가). */
 const SHOP_POI = new Set(['restaurant', 'cafe', 'shop', 'fast_food', 'bar', 'beer', 'pub', 'bakery', 'hairdresser', 'beauty', 'clothing_store', 'bank', 'pharmacy', 'chemist', 'grocery', 'supermarket', 'convenience', 'ice_cream', 'alcohol_shop', 'butcher', 'deli', 'confectionery', 'laundry', 'dentist', 'doctors', 'optician', 'mobile_phone', 'cosmetics', 'perfumery', 'jewelry', 'books', 'stationery', 'gift', 'shoes', 'bag', 'florist', 'toys', 'music', 'furniture', 'hardware', 'electronics', 'sports', 'variety_store', 'department_store', 'mall', 'karaoke', 'nightclub', 'tobacco']);
 /** A modern block within this distance (m) of a palace point is quiet: no shopfront behind a throne hall (r70). */
