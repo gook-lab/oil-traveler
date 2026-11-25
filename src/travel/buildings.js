@@ -41,6 +41,37 @@ const WALL_T = 0.9;
 const COPING = [0.24, 0.26, 0.3];
 /** The largest touch on a stone base or podium tier, [across, along] (m): thin strokes along the stone. */
 const STONE_MARK = [0.3, 1.0];
+/**
+ * The facade of a modern block by its use (T4). fl: the storey (m); per: the rhythm along the facade (m) and u: the cuts
+ * in each period (m from its start); v: the cuts in each storey (m from its slab). The colour (facadeColour) and the cell
+ * breaks (runBreaks) both read these, so a cell never straddles a window's edge.
+ *   office    stone or concrete, a column strip and a window row a storey (the blocks of T3)
+ *   quiet     near a palace: small windows in a plain wall, no shop and no sign
+ *   shop      근린상가: big windows, and on some storeys a sign board under the next slab
+ *   tower     glass by the storey: a spandrel band and thin mullions
+ *   apartment balconies along its long sides (parapet, glass, lintel), a blank gable
+ *   house     빌라: brick or tile, small windows
+ */
+const FACADE = {
+  office: { fl: 3.5, per: 2.6, u: [0, 0.4], v: [0, 0.22, 1.0, 2.3] },
+  quiet: { fl: 3.5, per: 3.2, u: [0, 1.1], v: [0, 0.22, 1.1, 2.1] },
+  shop: { fl: 3.5, per: 3.9, u: [0, 0.3], v: [0, 0.22, 0.9, 2.4, 2.55, 3.3] },
+  tower: { fl: 3.8, per: 1.5, u: [0, 0.08], v: [0, 0.9] },
+  apartment: { fl: 2.8, per: 1.2, u: [0, 0.08], v: [0, 0.2, 1.1, 2.6] },
+  house: { fl: 2.8, per: 3.2, u: [0, 0.9, 2.3], v: [0, 0.2, 1.0, 2.2] },
+};
+/** The walls of a block by its use (the data's colour wins for an office, a shop or a quiet block). */
+const USE_WALLS = {
+  apartment: [[0.9, 0.88, 0.82], [0.86, 0.86, 0.84], [0.9, 0.85, 0.79]],
+  house: [[0.56, 0.34, 0.27], [0.62, 0.42, 0.32], [0.82, 0.74, 0.62], [0.86, 0.85, 0.82]],
+  quiet: [[0.82, 0.8, 0.75], [0.76, 0.74, 0.7], [0.86, 0.83, 0.77]],
+};
+/** A glass tower's tints, low and high (it takes more of the sky up its face): blue, green-grey, bronze, silver. */
+const GLASS = [[[0.4, 0.5, 0.58], [0.66, 0.74, 0.8]], [[0.4, 0.5, 0.48], [0.64, 0.72, 0.7]], [[0.46, 0.41, 0.35], [0.7, 0.65, 0.57]], [[0.54, 0.57, 0.6], [0.78, 0.8, 0.82]]];
+/** The poi classes of a shop on a street's ground floor (상가). */
+const SHOP_POI = new Set(['restaurant', 'cafe', 'shop', 'fast_food', 'bar', 'beer', 'pub', 'bakery', 'hairdresser', 'beauty', 'clothing_store', 'bank', 'pharmacy', 'chemist', 'grocery', 'supermarket', 'convenience', 'ice_cream', 'alcohol_shop', 'butcher', 'deli', 'confectionery', 'laundry', 'dentist', 'doctors', 'optician', 'mobile_phone', 'cosmetics', 'perfumery', 'jewelry', 'books', 'stationery', 'gift', 'shoes', 'bag', 'florist', 'toys', 'music', 'furniture', 'hardware', 'electronics', 'sports', 'variety_store', 'department_store', 'mall', 'karaoke', 'nightclub', 'tobacco']);
+/** A modern block within this distance (m) of a palace point is quiet: no shopfront behind a throne hall (r70). */
+const QUIET_M = 150;
 
 // one touch per instance: the attributes below fill in its Dab
 const HEAD = /* glsl */ `
@@ -122,7 +153,7 @@ const lightOf = (n) => 0.66 + 0.34 * Math.max(0, n[0] * SUN.x + n[1] * SUN.y + n
  * RULE.heritageM of a historic point, 0.9 rectangular) gets 0.8 of its short side, clamped to 6 to 24 m; any other gets
  * the median of the known heights within 100 m, or 12 m when none is known.
  */
-export function planBuildings(list, heritage, kinds = null) {
+export function planBuildings(list, heritage, kinds = null, ctx = null) {
   const UNKNOWN = 5, plans = [];
   for (const b of list) {
     if (b.hide3d) continue; // the outer outline of a building with parts: its parts stand, not this
@@ -160,10 +191,7 @@ export function planBuildings(list, heritage, kinds = null) {
   for (const p of plans) {
     if (p.unknown) {
       if (p.historic && p.rect >= RULE.rect) p.h = Math.min(24, Math.max(6, 0.8 * 2 * p.R.hv));
-      else {
-        const near = known.filter((q) => Math.hypot(q.c[0] - p.c[0], q.c[1] - p.c[1]) <= 100).map((q) => q.h0).sort((x, y) => x - y);
-        p.h = near.length ? near[Math.floor(near.length / 2)] : 12;
-      }
+      else p.h = fillHeight(p, known, ctx?.landuseAt?.(p.c[0], p.c[1]) ?? 0);
       p.filled = true;
     } else p.h = p.h0;
     // a height from the data above 20 m is a tall block (not a hall), even near a palace; a filled height is not judged
@@ -177,7 +205,79 @@ export function planBuildings(list, heritage, kinds = null) {
   // the ring is cut where a traditional outline stands on it (a gate or a hall on the wall): see wallCuts
   const trads = plans.filter((p) => p.trad);
   for (const w of plans) if (w.wall) w.cuts = wallCuts(w, trads);
+  assignUses(plans, { ...(ctx ?? {}), palaces: heritage.filter((h, i) => (kinds ? kinds[i] === 'palace' : false)) });
   return plans;
+}
+
+/**
+ * The height of a modern block the data leaves unknown (T4). The known heights round it are mostly the tall ones (a
+ * tower is tagged, a 4-storey house is not: at Hongdae 5,621 of 6,829 outlines had no height and the known median within
+ * 100 m was 44 m, so the old fill stood 121 houses up as towers). So: the storeys a footprint of its size usually has
+ * in Seoul (3 under 150 m2, 4 under 400, 6 under 1000, else 8), two more on commercial land, one more or less by the
+ * block; never over the known median round it. A residential slab (2.5 times as long as deep, 10 to 20 m deep, 30 m or
+ * longer) is an apartment of 15 storeys.
+ */
+function fillHeight(p, known, lu) {
+  const deep = 2 * Math.min(p.R.hu, p.R.hv), long = 2 * Math.max(p.R.hu, p.R.hv);
+  const vary = Math.floor(rnd(p.c[0] * 0.37 + 1.3, p.c[1] * 0.41 - 0.7) * 3) - 1;
+  if (lu === 1 && p.rect >= 0.8 && deep >= 10 && deep <= 20 && long >= 30 && long / deep >= 2.5) return (15 + vary) * 2.8 + 1;
+  const A = p.area, storeys = (A < 150 ? 3 : A < 400 ? 4 : A < 1000 ? 6 : 8) + (lu === 2 ? 2 : 0) + vary;
+  const typical = Math.max(2, storeys) * 3.4 + 1;
+  const near = known.filter((q) => Math.hypot(q.c[0] - p.c[0], q.c[1] - p.c[1]) <= 100).map((q) => q.h0).sort((x, y) => x - y);
+  return near.length ? Math.min(typical, Math.max(6, near[Math.floor(near.length / 2)])) : typical;
+}
+
+/**
+ * The use of each modern block (T4, see FACADE) and the edges of its ground floor that are shopfronts. From the data
+ * a tile carries: the height, the landuse kind under the block (1 residential, 2 commercial, 3 industrial), the shop
+ * points on or within 6 m of its outline, and the roads and walks it faces. An edge faces a street when its middle lies
+ * within half the road's width and 10 m of a road (7 m of a footway) on its outer side. With no context (a check that
+ * plans outlines alone) a block is an office with no shopfront.
+ */
+function assignUses(plans, { pois = [], roads = [], paths = [], landuseAt = () => 0, palaces = [] }) {
+  const shops = pois.filter((q) => SHOP_POI.has(q.cls));
+  const lines = [
+    ...roads.filter((r) => r.brunnel !== 'bridge' && r.w >= 6).map((r) => ({ pts: r.pts, reach: r.w / 2 + 10 })),
+    ...paths.filter((q) => q.brunnel !== 'bridge' && (q.sub === 'pedestrian' || q.sub === 'footway')).map((q) => ({ pts: q.pts, reach: 7 })),
+  ];
+  for (const l of lines) {
+    const xs = l.pts.map((q) => q[0]), zs = l.pts.map((q) => q[1]);
+    l.box = [Math.min(...xs) - l.reach, Math.max(...xs) + l.reach, Math.min(...zs) - l.reach, Math.max(...zs) + l.reach];
+  }
+  // the nearest point of a line to (x, z) within its reach, and its distance
+  const nearest = (l, x, z) => {
+    let best = null;
+    for (let i = 0; i + 1 < l.pts.length; i++) {
+      const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2)), qx = ax + dx * t, qz = az + dz * t, d = Math.hypot(qx - x, qz - z);
+      if (d <= l.reach && (!best || d < best.d)) best = { d, qx, qz };
+    }
+    return best;
+  };
+  for (const p of plans) {
+    if (p.trad || p.wall) continue;
+    const lu = landuseAt(p.c[0], p.c[1]);
+    p.shops = shops.filter((q) => Math.abs(q.x - p.c[0]) < 150 && Math.abs(q.z - p.c[1]) < 150 && nearOutline(p.pts, q.x, q.z, 6)).length;
+    const quiet = palaces.some((h) => Math.hypot(h[0] - p.c[0], h[1] - p.c[1]) <= QUIET_M);
+    p.use = quiet ? 'quiet' : lu === 1 && p.h >= 18 && p.shops === 0 ? 'apartment' : p.h >= 40 ? 'tower' : p.shops > 0 || lu === 2 ? 'shop' : lu === 1 ? 'house' : 'office';
+    // the ground floor's shopfronts: a shop block on the edges that face a street (its longest edge when none does);
+    // a tower only with two shops or more on it
+    p.shopEdges = new Set();
+    if (!(p.use === 'shop' || (p.use === 'tower' && p.shops >= 2)) || (p.mh ?? 0) > 0.5) continue;
+    let longest = -1, longL = 0;
+    for (let k = 0; k < p.pts.length; k++) {
+      const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length], ex = b[0] - a[0], ez = b[1] - a[1], L = Math.hypot(ex, ez);
+      if (L < 2) continue;
+      if (L > longL) { longL = L; longest = k; }
+      const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2, nx = p.ccw ? ez / L : -ez / L, nz = p.ccw ? -ex / L : ex / L;
+      for (const l of lines) {
+        if (mx < l.box[0] || mx > l.box[1] || mz < l.box[2] || mz > l.box[3]) continue;
+        const q = nearest(l, mx, mz);
+        if (q && (q.d < 1 || ((q.qx - mx) * nx + (q.qz - mz) * nz) / q.d > 0.3)) { p.shopEdges.add(k); break; }
+      }
+    }
+    if (!p.shopEdges.size && p.use === 'shop' && longest >= 0) p.shopEdges.add(longest);
+  }
 }
 
 /** The lowest ground along the segment A to B (sampled every 0.5 m). */
@@ -276,7 +376,20 @@ function surfacesOf(p, ground) {
     // grey concrete, a brown brick
     const PAL = [[0.8, 0.78, 0.73], [0.6, 0.67, 0.72], [0.86, 0.83, 0.77], [0.5, 0.5, 0.49], [0.55, 0.42, 0.34]];
     const pick = PAL[Math.floor(rnd(p.c[0] + 3.1, p.c[1] - 1.7) * PAL.length)];
-    const wallC = p.wall ? [0.74, 0.62, 0.46] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : pick;
+    // the use (T4, FACADE): its storey and rhythm, and its walls (an apartment's or a house's own; the data's colour for
+    // the rest). The storeys count from the block's own foot, so the pieces of one facade on a slope keep one set of floors
+    // a tower's variant (r71: every tower the same blue glass read as one wall): glass of four tints with its mullions
+    // 1.2, 1.5 or 1.8 m apart, or (a third of them) a stone tower with windows, as an office
+    const use = p.use ?? 'office', y0 = ybAll;
+    const tv = use === 'tower' ? Math.floor(rnd(p.c[0] * 0.21 + 4.1, p.c[1] * 0.19 - 3.3) * 6) : 0, stoneTower = use === 'tower' && tv >= 4;
+    const look = stoneTower ? 'office' : use;
+    const fac = look === 'tower' ? { ...FACADE.tower, per: [1.2, 1.5, 1.8][tv % 3] } : FACADE[look];
+    // an apartment's gables: the two short sides of a slab (r71: the edges of a tower block's bent outline were all
+    // shorter than its long side and stood blank); every other edge of an apartment has balconies
+    const deepAxis = p.R.hu < p.R.hv ? [p.R.ux, p.R.uz] : [p.R.vx, p.R.vz];
+    const slab = p.rect >= 0.75 && Math.max(p.R.hu, p.R.hv) >= 1.8 * Math.min(p.R.hu, p.R.hv);
+    const pal = USE_WALLS[use];
+    const wallC = p.wall ? [0.74, 0.62, 0.46] : pal && !(base && use === 'quiet') ? pal[Math.floor(rnd(p.c[0] + 5.3, p.c[1] - 2.9) * pal.length)] : base ? mixc(base.map((x) => x * 0.78), [0.5, 0.5, 0.5], 0.12) : pick;
     const roofC = [0.3, 0.3, 0.31];
     for (let k = 0; k < p.pts.length; k++) {
       const a = p.pts[k], b = p.pts[(k + 1) % p.pts.length];
@@ -319,7 +432,8 @@ function surfacesOf(p, ground) {
         // shelf line, in 55% of the panes; dark in the rest). A dark rail, and the sign band (2.9 to 3.8 m) in the building's
         // colour. Touches: a pale streak of reflection up each pane, the sign's colour along the band, and letters on it in
         // groups. Its cells break at every frame and band edge near the start (r65: opaque panels read as shutters)
-        const G = p.wall || (p.mh ?? 0) > 0.5 ? 0 : Math.min(SHOP_H, H);
+        // only the edges that face a street (assignUses) have a shopfront; the rest of the ground floor is the facade's own
+        const G = p.wall || (p.mh ?? 0) > 0.5 || !p.shopEdges?.has(k) ? 0 : Math.min(SHOP_H, H);
         // the signs (T3 round 7): a board for each shop (3.9 m, three panes), each in its own colour, with 0.15 m of wall
         // between boards, and three letters on it (an upright and a cross stroke each) in ink that stands out from the board
         // (one colour along the whole block, with dots on it, read as warning tape, r68)
@@ -356,7 +470,7 @@ function surfacesOf(p, ground) {
         });
         // a projecting sign (돌출 간판) on half the blocks of 10 m or more with a run of 8 m: a board 0.9 m out from the facade,
         // 0.9 m from the run's start, from 4 m up to 11 m, in a bright colour with a stack of letters
-        if (G > 0 && runL >= 8 && H >= 10 && rnd(p.c[0] * 0.07 + k, p.c[1] * 0.09) < 0.5) {
+        if (G > 0 && use === 'shop' && runL >= 8 && H >= 10 && rnd(p.c[0] * 0.07 + k, p.c[1] * 0.09) < 0.5) {
           const SC = [[0.78, 0.16, 0.12], [0.16, 0.32, 0.62], [0.95, 0.78, 0.2], [0.2, 0.52, 0.34]][Math.floor(rnd(k + 0.3, p.c[0] * 0.03) * 4)];
           const lt = SC[0] + SC[1] > 1.4 ? [0.14, 0.12, 0.12] : [0.96, 0.95, 0.92];
           const sx = A[0] + (ex * 0.9) / L, sz = A[1] + (ez * 0.9) / L, y0 = yb + 4, y1 = yb + Math.min(11, H - 1), Hs = y1 - y0;
@@ -366,23 +480,44 @@ function surfacesOf(p, ground) {
             breaks: { u: [0, 0.2, 0.8, 1], v: vb.filter((x) => x >= 0 && x <= 1) },
             col: (u, v) => (u > 0.2 && u < 0.8 && ((v * Hs - 0.3) % 0.6) < 0.42 && v * Hs > 0.3 && v * Hs < Hs - 0.3 ? lt : SC) });
         }
-        // the storeys above (or a wall, or a part standing on another): the bands are set by the world height and the
-        // facade's run, not by the cell: every building's windows fall on the same storeys, and a column strip (2.6 m
-        // rhythm, 0.4 m wide) stays wall. The base pattern decides the colour; the dabs read it where they sit
+        // the storeys above (or a wall, or a part standing on another): the facade of the block's use (FACADE), its storeys
+        // counted from the block's foot and its rhythm along the edge. The base pattern decides the colour; the dabs read
+        // it where they sit
         if (H - G > 0.3) out.push({
-          P00: [A[0], yb + G, A[1]], P10: [B[0], yb + G, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb: yb + G, H: H - G },
+          P00: [A[0], yb + G, A[1]], P10: [B[0], yb + G, B[1]], P01: [A[0], yt, A[1]], P11: [B[0], yt, B[1]], n, cell: [2.6, 0.7], jitRun: { s0, Lk, yb: yb + G, H: H - G, fac, y0 },
           col: (u, v, r) => {
             const fy = G + v * (H - G), x = s0 + u * Lk;
-            const yAbs = yb + fy, row = ((yAbs % 3.5) + 3.5) % 3.5;
-            const win = !p.wall && row >= 1.0 && row <= 2.3 && !(((x % 2.6) + 2.6) % 2.6 < 0.4);
             if (p.wall && fy > H - 0.5) return COPING; // the band of dark tiles under the coping
             if (p.wall && fy < 1.1) return [0.56, 0.55, 0.52].map((c) => c * (0.92 + 0.16 * r)); // a course of granite blocks at its foot
-            if (!p.wall && fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
-            // the touches vary by 10% either way, so the brush shows on a wall of one colour (the solid cell takes r = 0.5)
-            return win ? [0.2 + 0.08 * r, 0.27 + 0.06 * r, 0.34 + 0.06 * r] : wallC.map((c) => c * (0.95 + 0.1 * r));
+            if (p.wall) return wallC.map((c) => c * (0.95 + 0.1 * r));
+            if (fy > H - 0.6) return [0.86, 0.84, 0.8]; // the railing along the roof's edge
+            return facadeColour(look, wallC, fac, x, yb + fy - y0, r, !(slab && Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9), p.c, tv);
           },
+          // a tower's mullions take no touch (r71: a dark touch on a 0.08 m mullion read as a black blot on the glass)
+          dabCol: look === 'tower' ? (u, v, r) => {
+            const x = s0 + u * Lk, xm = ((x % fac.per) + fac.per) % fac.per;
+            return xm < 0.25 || xm > fac.per - 0.17 ? null : facadeColour(look, wallC, fac, x, yb + G + v * (H - G) - y0, r, true, p.c, tv);
+          } : null,
           jit: true,
         });
+        // the sign boards up a shop block (T4): on the storeys facadeColour gives a board, a face 5 cm out over the band
+        // with three letters a board (as the ground floor's), so the boards read as signs and not as coloured stripes
+        if (use === 'shop' && H - G > 0.3) {
+          for (let st = 1; st <= 6; st++) {
+            const ya = y0 + st * fac.fl + 2.55, yz = ya + 0.75;
+            if (ya < yb + G + 0.1 || yz > yt - 0.7 || !signStorey(st, p.c)) continue;
+            const O = [n[0] * 0.05, n[2] * 0.05], marks = [];
+            for (let bi = Math.floor(s0 / fac.per); bi * fac.per < s0 + Lk; bi++) for (const lx of [1.3, 1.95, 2.6]) {
+              const xx = bi * fac.per + lx, u = (xx - s0) / Lk;
+              if (u < 0.05 || u > 0.95) continue;
+              const ink = boardInk(shopBoard(bi, st, p.c)), du = 0.09 / Lk;
+              marks.push({ u: u - du, v: 0.5, size: [0.06, 0.4], up: true, col: ink }, { u: u + du, v: 0.5 + (bi % 2 ? 0.06 : -0.06), size: [0.06, 0.26], col: ink });
+            }
+            out.push({ P00: [A[0] + O[0], ya, A[1] + O[1]], P10: [B[0] + O[0], ya, B[1] + O[1]], P01: [A[0] + O[0], yz, A[1] + O[1]], P11: [B[0] + O[0], yz, B[1] + O[1]], n,
+              cell: [fac.per, 0.75], breaks: runBreaks({ s0, Lk, yb: ya, H: 0.75, fac: { ...fac, v: [] }, y0 }), marks,
+              col: (u, v, r) => { const xx = s0 + u * Lk, xm = ((xx % fac.per) + fac.per) % fac.per; return xm < fac.u[1] ? wallC.map((c) => c * (0.95 + 0.1 * r)) : shopBoard(Math.floor(xx / fac.per), st, p.c).map((c) => c * (0.96 + 0.08 * r)); } });
+          }
+        }
       }
     }
     if (!p.wall) out.push({ poly: p.pts, y: ytAll, n: [0, 1, 0], col: () => roofC });
@@ -687,14 +822,59 @@ function surfacesOf(p, ground) {
 
 /** The cell breaks of a modern facade (fractions of its run and its height): at each column's edges (0 and 0.4 m of every
  *  2.6 m, along the run) and at each window band's edges (1.0 and 2.3 m of every 3.5 m, in world height). */
-function runBreaks({ s0, Lk, yb, H }) {
+/** Whether storey st of a shop block carries a sign board (about half of them, by the block). */
+const signStorey = (st, c) => rnd(st * 1.37 + c[0] * 0.013, c[1] * 0.021 + 0.4) < 0.55;
+/** The board of a shop block's bay bi on storey st: one of the sign colours. */
+const shopBoard = (bi, st, c) => BOARDS[Math.floor(rnd(bi * 0.71 + st * 1.9 + c[0] * 0.01, c[1] * 0.017 + 0.3) * BOARDS.length)];
+/** Letters that stand out from a board: dark on a light board, pale on a dark one. */
+const boardInk = (c) => (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2] > 0.55 ? [0.12, 0.1, 0.1] : [0.97, 0.96, 0.92]);
+
+/**
+ * The colour of a modern block's facade at x (m along the edge) and y (m over the block's foot), by its use (FACADE).
+ * r is the touch's own variation (0.5 for the solid cell). long: the edge is one of the block's long sides (an
+ * apartment's balconies run along those, its gables are blank).
+ */
+function facadeColour(use, wallC, fac, x, y, r, long, c, tv = 0) {
+  const row = ((y % fac.fl) + fac.fl) % fac.fl, col = ((x % fac.per) + fac.per) % fac.per, storey = Math.floor(y / fac.fl);
+  const t = 0.95 + 0.1 * r, wall = wallC.map((q) => q * t), slab = wallC.map((q) => q * 0.82 * t);
+  switch (use) {
+    case 'tower': {
+      if (col < fac.u[1]) return [0.2, 0.22, 0.25];
+      if (row < 0.9) return [0.27, 0.32, 0.37].map((q) => q * t);
+      // the glass takes more of the sky the higher it is; its tint by the tower (blue, green-grey, bronze, silver)
+      const [g0, g1] = GLASS[tv % GLASS.length];
+      return mixc(g0, g1, Math.min(1, Math.max(0, (y - 4) / 60))).map((q) => q * t);
+    }
+    case 'apartment':
+      if (row < 0.2) return slab;
+      if (!long || row < 1.1 || row >= 2.6) return wall;
+      return col < fac.u[1] ? [0.84, 0.84, 0.82] : [0.6, 0.68, 0.74].map((q) => q * t);
+    case 'house':
+      if (row < 0.2) return [0.76, 0.75, 0.72].map((q) => q * t);
+      if (row >= 1.0 && row < 2.2 && col >= 0.9 && col < 2.3) return col < 0.98 || col > 2.22 ? [0.88, 0.87, 0.84] : [0.24, 0.28, 0.32].map((q) => q * t);
+      return wall;
+    case 'shop':
+      if (row < 0.22) return slab;
+      if (row >= 2.55 && row < 3.3 && storey >= 1 && signStorey(storey, c)) return col < fac.u[1] ? wall : shopBoard(Math.floor(x / fac.per), storey, c).map((q) => q * t);
+      if (row >= 0.9 && row < 2.4 && col >= fac.u[1]) return (rnd(Math.floor(x / fac.per) * 0.37 + storey, c[1] * 0.013) < 0.4 ? [0.86, 0.8, 0.64] : [0.3, 0.35, 0.4]).map((q) => q * t);
+      return wall;
+    case 'quiet':
+      if (row < 0.22) return slab;
+      return row >= 1.1 && row < 2.1 && col >= fac.u[1] ? [0.3, 0.34, 0.38].map((q) => q * t) : wall;
+    default:
+      if (row < 0.22) return slab;
+      return row >= 1.0 && row <= 2.3 && col >= fac.u[1] ? [0.2 + 0.08 * r, 0.27 + 0.06 * r, 0.34 + 0.06 * r] : wall;
+  }
+}
+
+function runBreaks({ s0, Lk, yb, H, fac = FACADE.office, y0 = 0 }) {
   const u = [0, 1], v = [0, 1];
-  for (let m = Math.floor(s0 / 2.6) * 2.6 - 2.6; m <= s0 + Lk + 2.6; m += 2.6) for (const off of [0, 0.4]) {
+  for (let m = Math.floor(s0 / fac.per) * fac.per - fac.per; m <= s0 + Lk + fac.per; m += fac.per) for (const off of fac.u) {
     const p = m + off - s0;
     if (p > 0.02 && p < Lk - 0.02) u.push(p / Lk);
   }
-  for (let k = Math.floor(yb / 3.5) - 1; k <= Math.ceil((yb + H) / 3.5) + 1; k++) for (const c of [1.0, 2.3]) {
-    const y = k * 3.5 + c, vv = (y - yb) / H;
+  for (let k = Math.floor((yb - y0) / fac.fl) - 1; k <= Math.ceil((yb + H - y0) / fac.fl) + 1; k++) for (const c of fac.v) {
+    const y = y0 + k * fac.fl + c, vv = (y - yb) / H;
     if (vv > 0.02 && vv < 0.98) v.push(vv);
   }
   const uniq = (a) => [...new Set(a.map((x) => +x.toFixed(4)))].sort((x, y) => x - y);
@@ -939,7 +1119,10 @@ export function paintSurfaces(shared, groups, { cap = DAB_CAP, near = null } = {
  */
 export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
   const T = [performance.now()];
-  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null);
+  // the landuse kind under a point (cover.landuse, a square grid of 2 m nodes over the near square, north up)
+  const lu = cover.landuse, LN = lu ? Math.round(Math.sqrt(lu.length)) : 0, LS = 512 / (LN || 1);
+  const landuseAt = (x, z) => (lu ? lu[Math.min(LN - 1, Math.max(0, Math.round(LN / 2 - z / LS))) * LN + Math.min(LN - 1, Math.max(0, Math.round(x / LS + LN / 2)))] : 0);
+  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null, { pois: cover.pois, roads: cover.roads, paths: cover.paths, landuseAt });
   const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
   T.push(performance.now());
   const painted = paintSurfaces(shared, built, { cap, near });
@@ -965,6 +1148,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   }
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
+    uses: plans.reduce((m, p) => (p.use ? { ...m, [p.use]: (m[p.use] ?? 0) + 1 } : m), {}), shopEdges: plans.reduce((n, p) => n + (p.shopEdges?.size ?? 0), 0),
     piles: plans.piles ?? 0, floating: plans.filter((p) => (p.mh ?? 0) > 0.5 && !plans.some((q) => q !== p && q.h >= p.mh - 0.5 && overlapShare(p, q) >= 0.5)).length, mhReset: plans.mhReset ?? 0, overlapDropped: plans.overlapDropped ?? 0, wallCutRuns: plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.length, 0) : 0), 0), wallCutM: +plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.reduce((q, [s, e]) => q + (e - s), 0), 0) : 0), 0).toFixed(1), walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
     colliders: boxes.length, ...painted.stats, msPlan: Math.round(T[1] - T[0]),
   };

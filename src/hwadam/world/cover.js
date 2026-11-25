@@ -15,6 +15,8 @@ export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 
 /** Higher wins where two features overlap (water over everything, buildings over the land under them). */
 const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
 const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
+/** The landuse kinds a block's use reads (buildings.js): residential 1, commercial · retail 2, industrial 3. */
+const LANDUSE_KIND = { residential: 1, commercial: 2, retail: 2, industrial: 3 };
 const WATER_CLASSES = new Set(['ocean', 'lake', 'pond', 'river', 'reservoir', 'water']);
 const TILE_JSON = 'https://tiles.openfreemap.org/planet';
 const N = NEAR_M / NEAR_STEP;
@@ -132,6 +134,8 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const buildings = [], heritage = [], heritageKinds = [], heritageNames = [], roads = [];
   // T4 (streets · bridges): the walkable lines (footways, pedestrian streets, steps) and every poi point of the square
   const paths = [], pois = [];
+  // T4: the kind of the landuse under each node (1 residential, 2 commercial or retail, 3 industrial), for the use of a block
+  const landuse = new Uint8Array(N * N);
   const m0 = mPerDegLon(lat);
   const radius = NEAR_M / 2 + 50;
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
@@ -161,6 +165,13 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
       }
     };
     paint('landuse', (p) => LANDUSE[p.class] ?? 0);
+    {
+      const L = vt.layers.landuse;
+      for (let f = 0; L && f < L.length; f++) {
+        const feat = L.feature(f), v = feat.type === 3 ? LANDUSE_KIND[feat.properties.class] : 0;
+        if (v) fill(landuse, feat.loadGeometry().map((ring) => ring.map((q) => toNode(x, y, n, L.extent, q.x, q.y, lat, lon, m0))), v);
+      }
+    }
     paint('landcover', (p) => LANDCOVER[p.class] ?? COVER.GRASS);
     paint('building', () => COVER.BUILT);
     paint('water', (p) => (WATER_CLASSES.has(p.class) || !p.class ? COVER.WATER : 0));
@@ -289,7 +300,7 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
   // natural: the near square before the town step lowered it (place-check compares the terrain port on it)
-  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, town, natural };
+  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, landuse, town, natural };
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
