@@ -735,22 +735,20 @@ function isNear(s, near, r = near.radius ?? NEAR_M) {
 
 
 /**
- * The buildings of the cover as a group: the solid mesh and the dabs laid over it; plus the collision boxes, one on
- * every edge of each outline. Returns null when there is nothing to show. `ground(x, z)` is the scene's ground
- * (land.js heightAt); `cover` is the object fetchCover returned; `near` is the start ({ x, z }) for the denser dabs.
+ * Paints surfaces with the buildings' brush: each surface cut into cells of one colour (the solid mesh) and the dabs laid
+ * over it, at most `cap` of them (denser within `near`). `groups` is [{ i, out }]: `i` seeds the touches of a group,
+ * `out` its surfaces ({ P00, P10, P01, P11, n, cell, col, ... } quads or { poly, y, n, col } flat polygons, as surfacesOf
+ * makes them). Shared by the buildings, the streets and the bridges (T4), so all of them are painted by one hand.
  */
-export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
+export function paintSurfaces(shared, groups, { cap = DAB_CAP, near = null } = {}) {
   const T = [performance.now()];
-  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null);
-  const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
-  T.push(performance.now());
   // the spacing: the touches cover the area of the walls and roofs, at most `cap` of them
   let area = 0;
-  for (const b of built) for (const s of b.out) area += s.poly ? Math.abs(area2(s.poly)) : len3(sub3(s.P10, s.P00)) * len3(sub3(s.P01, s.P00));
+  for (const b of groups) for (const s of b.out) area += s.poly ? Math.abs(area2(s.poly)) : len3(sub3(s.P10, s.P00)) * len3(sub3(s.P01, s.P00));
   // the exact count of touches at a spacing, for the surfaces near the start (which) or the rest
   const countAt = (st, which) => {
     let n = 0;
-    for (const b of built) for (const s of b.out) {
+    for (const b of groups) for (const s of b.out) {
       if (near && isNear(s, near) !== (which === 'near')) continue;
       const d = which === 'near' ? st : st;
       if (s.poly) {
@@ -778,7 +776,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   // ---- the solid mesh: each surface cut into cells of one colour, the roofs as triangles ----
   const spos = [], scol = [];
   const vert = (p, c) => { spos.push(p[0], p[1], p[2]); scol.push(c[0], c[1], c[2]); };
-  for (const b of built) for (const s of b.out) {
+  for (const b of groups) for (const s of b.out) {
     if (s.poly) {
       const c = s.col(0, 0, 0.5).map((x) => x * lightOf(s.n));
       const tris = THREE.ShapeUtils.triangulateShape(s.poly.map((q) => new THREE.Vector2(q[0], q[1])), []);
@@ -815,7 +813,7 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   const push = (P, D, S, N, C, lift, id) => {
     pos.push(...P); dir.push(...D); size.push(...S); nrm.push(...N); c1.push(...C[0]); c2.push(...C[1]); hh.push(lift); seed.push(id);
   };
-  for (const b of built) {
+  for (const b of groups) {
     b.out.forEach((s, si) => {
       const id = b.i * 97 + si;
       const st = dabStep(s, base, near);
@@ -921,6 +919,32 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
     return dabMesh(geo, mat, 0);
   })();
 
+  const group = new THREE.Group();
+  group.add(solid);
+  if (dabMeshObj) group.add(dabMeshObj);
+  return {
+    group,
+    stats: {
+      dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
+      nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
+      msSolid: Math.round(T[1] - T[0]), msDabs: Math.round(T[2] - T[1]),
+    },
+  };
+}
+
+/**
+ * The buildings of the cover as a group: the solid mesh and the dabs laid over it; plus the collision boxes, one on
+ * every edge of each outline. Returns null when there is nothing to show. `ground(x, z)` is the scene's ground
+ * (land.js heightAt); `cover` is the object fetchCover returned; `near` is the start ({ x, z }) for the denser dabs.
+ */
+export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = null } = {}) {
+  const T = [performance.now()];
+  const plans = planBuildings(cover.buildings ?? [], cover.heritage ?? [], cover.heritageKinds ?? null);
+  const built = plans.map((p, i) => ({ p, i, ...surfacesOf(p, ground) }));
+  T.push(performance.now());
+  const painted = paintSurfaces(shared, built, { cap, near });
+  T.push(performance.now());
+
   // ---- collision: a thin wall (0.4 m thick, from the floor to the top) on every edge of each outline. Bent outlines keep
   // their courtyards open, and nothing inside is reachable. The wall reaches under the lowest ground and 2.5 m above the
   // highest, so that the walker cannot step onto an eave on a slope ----
@@ -942,14 +966,9 @@ export function createBuildings(shared, cover, ground, { cap = DAB_CAP, near = n
   const stats = {
     buildings: plans.length, traditional: plans.filter((p) => p.trad).length, modern: plans.filter((p) => !p.trad).length,
     piles: plans.piles ?? 0, floating: plans.filter((p) => (p.mh ?? 0) > 0.5 && !plans.some((q) => q !== p && q.h >= p.mh - 0.5 && overlapShare(p, q) >= 0.5)).length, mhReset: plans.mhReset ?? 0, overlapDropped: plans.overlapDropped ?? 0, wallCutRuns: plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.length, 0) : 0), 0), wallCutM: +plans.reduce((n, p) => n + (p.cuts ? p.cuts.reduce((m, c) => m + c.runs.reduce((q, [s, e]) => q + (e - s), 0), 0) : 0), 0).toFixed(1), walls: plans.filter((p) => p.wall).length, historic: plans.filter((p) => p.historic).length, filledHeights: plans.filter((p) => p.filled).length, hide3d: (cover.buildings ?? []).filter((b) => b.hide3d).length,
-    colliders: boxes.length, dabs: count, solidTriangles: spos.length / 9, step: +base.toFixed(2),
-    nearStep: near ? +near.st.toFixed(2) : null, nearTouches: near ? countAt(near.st, 'near') : 0, paintedArea: Math.round(area),
-    msPlan: Math.round(T[1] - T[0]), msSolid: Math.round(T[2] - T[1]), msDabs: Math.round(T[3] - T[2]),
+    colliders: boxes.length, ...painted.stats, msPlan: Math.round(T[1] - T[0]),
   };
-  const group = new THREE.Group();
-  group.add(solid);
-  if (dabMeshObj) group.add(dabMeshObj);
-  return { group, boxes, stats, plans };
+  return { group: painted.group, boxes, stats, plans };
 }
 
 /** The lowest and the highest ground on rings of 2 m round each point of an outline. */
