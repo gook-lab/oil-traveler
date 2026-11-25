@@ -147,11 +147,18 @@ function plant(streetTrees, keepOut = null, town = false) {
       add(x, z, type, tier);
     }
   }
-  // the street trees of a big road (travel, src/travel/streets.js): one row on each footway, in the yellow of the family 2
+  // the street trees of a big road (travel, src/travel/streets.js): one row on each footway, in the yellow of the family 2.
+  // A complex's spots (src/travel/complex.js, `complex: 'edge' | 'lawn'`) are its landscaped trees: city park trees (PARK),
+  // in the greens and yellows of the wood, not street trees
   for (const p of streetTrees) {
     const before = trees.length, dd = Math.hypot(p.x - CLEAR.x, p.z - CLEAR.z);
-    add(p.x, p.z, BEECH, dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2, 1.15, true);
-    if (trees.length > before) { const tr = trees[trees.length - 1]; tr.conifer = false; tr.family = 2; tr.street = true; }
+    add(p.x, p.z, BEECH, dd < TIER_TRAVEL[0] ? 0 : dd < TIER_TRAVEL[1] ? 1 : 2, p.complex ? 1 : 1.15, !p.complex);
+    if (trees.length === before) continue;
+    const tr = trees[trees.length - 1];
+    tr.conifer = false;
+    if (!p.complex) { tr.family = 2; tr.street = true; continue; }
+    const h = PARK.h[0] + (PARK.h[1] - PARK.h[0]) * (tr.seed / 1000);
+    tr.r *= h / tr.h; tr.h = h; tr.park = true; tr.complex = p.complex;
   }
   // the walk's own trees, close along the way: a row each side, closed over the maple climb (its crowns meet over
   // the path, and it is kept lower there) and set close among the birches
@@ -248,7 +255,10 @@ function plant(streetTrees, keepOut = null, town = false) {
     const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
     return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
   };
-  const kept = trees.filter((t) => !blocks(t) && !(keepOut && keepOut(t.x, t.z)) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
+  // a town's street and complex trees stand in rows along the roads and under the buildings' line: the lane keeps them
+  // (cleared, the start road's rows stopped where they came within its 20 degrees, about 85 m out)
+  const laned = (t) => !(town && (t.street || t.complex)) && inSight(t, CLEAR.laneCos);
+  const kept = trees.filter((t) => !blocks(t) && !(keepOut && keepOut(t.x, t.z)) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !laned(t))));
   // a town's park trees are city trees (PARK): their height and trunk come down together, and they are not lowered again
   // for the first view's sight band (they stand under the buildings' line already)
   const near = town && hasCover() ? townNear() : null;
@@ -257,7 +267,7 @@ function plant(streetTrees, keepOut = null, town = false) {
     const h = PARK.h[0] + (PARK.h[1] - PARK.h[0]) * (t.seed / 1000);
     t.r *= h / t.h; t.h = h; t.park = true;
   }
-  for (const t of kept) if (!t.nearPine && !t.park && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
+  for (const t of kept) if (!t.nearPine && !t.park && !(town && t.street) && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
   return kept;
 }
 
@@ -376,7 +386,7 @@ export function createForest(shared, { streetTrees = [], keepOut = null, town = 
     for (const [lx, ly, lz, lr] of treeLobes) {
       // a street tree's crown casts no shade (T4 round 1): the town's shade holds the trees and not the buildings, so a
       // crown out of the frame dropped a dark blot on the road with nothing to cast it, read as a stain
-      if (!t.street) lobes.push(lx, ly, lz, lr);
+      if (!t.street && t.complex !== 'edge') lobes.push(lx, ly, lz, lr);
       const away = v.set(lx - crown.x, ly - crown.y, lz - crown.z).normalize().clone();
       for (let k = 0; k < perLobe; k++) {
         const d = new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).normalize().addScaledVector(away, 0.5).add(new THREE.Vector3(0, 0.15, 0)).normalize();

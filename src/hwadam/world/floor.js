@@ -179,20 +179,25 @@ void makeDab(inout Dab d) {
   if (d.alive <= 0.0) return;
   float cls = coverClass(xz);
   bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, paved = abs(cls - 10.0) < 0.5, basalt = abs(cls - 11.0) < 0.5, road = abs(cls - 12.0) < 0.5;
-  if (!(sand || rock || built || water || paved || basalt || road)) { d.alive = 0.0; return; }
+  // an apartment complex's lawn and shrub beds (src/travel/complex.js)
+  bool lawn = abs(cls - 13.0) < 0.5, bed = abs(cls - 14.0) < 0.5;
+  if (!(sand || rock || built || water || paved || basalt || road || lawn || bed)) { d.alive = 0.0; return; }
   // the top of a town stream's wall: its stone and paving are drawn (streamwalls.js); a dab on the ground's ramp under it
   // stood up through the top and the face
   if (abs(coverStream(xz) - 2.0) < 0.5) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
-  if (q.w < 0.33 && !(paved || road)) { d.alive = 0.0; return; }
+  if (q.w < 0.33 && !(paved || road || lawn || bed)) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
   // basalt: the cells gather into rounded blocks on a 1.8 m grid (each with its own offset). The dabs rise in the middle
   // of a block and die toward its edge, so a block is a rounded mound and not a square stack
+  // a shrub bed: the same mounds on a 1.1 m grid, clipped boxwood and azalea
   float dome = 1.0;
-  if (basalt) {
-    vec2 g = floor(xz / 1.8);
-    vec2 bc = (g + 0.5) * 1.8 + (fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * vec2(0.8, 0.8);
-    float dd = distance(xz, bc) / 0.95;
+  vec2 bc = xz;
+  if (basalt || bed) {
+    float gs = bed ? 1.1 : 1.8;
+    vec2 g = floor(xz / gs);
+    bc = (g + 0.5) * gs + (fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * vec2(0.8, 0.8) * (gs / 1.8);
+    float dd = distance(xz, bc) / (0.95 * gs / 1.8);
     dome = sqrt(max(0.0, 1.0 - dd * dd));
     if (dome < 0.05) { d.alive = 0.0; return; }
   }
@@ -227,6 +232,12 @@ void makeDab(inout Dab d) {
     if (r.x > 0.85) c = mix(c, vec3(0.3, 0.29, 0.29), 0.4);
     if (q.z < 0.12) c *= 0.8;
   }
+  // a complex's lawn: short autumn grass, green going to straw
+  else if (lawn) c = r.x > 0.62 ? paint3(vec3(0.82, 0.76, 0.46), vec3(0.64, 0.58, 0.34), vec3(0.4, 0.37, 0.24), lit, q.y)
+                                : paint3(vec3(0.6, 0.7, 0.36), vec3(0.42, 0.52, 0.26), vec3(0.24, 0.33, 0.18), lit, q.y);
+  // its shrub beds: dark clipped boxwood, and a mound in four of azalea in its autumn red
+  else if (bed) c = fract(sin(dot(floor(xz / 1.1), vec2(7.13, 31.7))) * 1731.7) > 0.75 ? paint3(vec3(0.78, 0.36, 0.2), vec3(0.6, 0.22, 0.14), vec3(0.34, 0.12, 0.1), lit, q.y)
+                                                                                     : paint3(vec3(0.42, 0.56, 0.28), vec3(0.24, 0.36, 0.18), vec3(0.12, 0.2, 0.12), lit, q.y);
   // paved ground (T4, paved.js): grey stone and gravel, with no tree or litter on it
   else if (paved) c = paint3(vec3(0.66, 0.64, 0.6), vec3(0.52, 0.5, 0.47), vec3(0.36, 0.34, 0.32), lit, q.y);
   // a town's road (T3 round 7): dark asphalt grey, so the street reads apart from the pale pavement and the palace stone
@@ -243,15 +254,17 @@ void makeDab(inout Dab d) {
   d.pos = P;
   // basalt stands: a mound of blocks, the dabs stacked from the foot (q.y low) to the top (q.y high), facing the eye
   if (basalt) { d.pos = P + vec3(0.0, (0.3 + 0.3 * q.w) * dome * q.y, 0.0); d.dir = vec3(0.0, 1.0, 0.0); }
-  // paved ground is covered: the stones are larger and no cell is left bare
-  float grow = paved || road ? 1.6 : 1.0;
+  // a shrub's dabs lie on its rounded top (seen from afar, dabs standing up read as painted boards)
+  if (bed) { d.pos = P + vec3(0.0, (0.3 + 0.2 * q.w) * dome, 0.0); d.nrm = normalize(vec3(xz.x - bc.x, 0.7, xz.y - bc.y)); }
+  // paved ground is covered: the stones are larger and no cell is left bare (a lawn's blades are short)
+  float grow = paved || road ? 1.6 : lawn ? 1.2 : bed ? 1.4 : 1.0;
   d.size = uCell0 * (water ? vec2(0.7 + 0.5 * r.z, 1.5 + 0.9 * r.w) : basalt ? vec2(1.6 + 1.0 * r.z, 0.9 + 0.6 * r.w) : vec2(0.8 + 0.9 * r.z, 1.2 + 1.6 * r.w)) * grow * lod;
   d.c1 = hazed(c, P);
   d.c2 = hazed(jitter(c, q.wzy, 0.5), P);
   d.seed = dot(cell, vec2(1.0, 57.0)) + sub * 0.37 + 2.0;
   d.turnabout = 1.0;
   d.lie = basalt ? 0.0 : 1.0;
-  d.nrm = Nn;
+  if (!bed) d.nrm = Nn;
   d.height = 0.02 + 0.03 * q.z;
   d.glaze = 1.0;
 }

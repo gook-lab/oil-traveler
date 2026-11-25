@@ -144,7 +144,7 @@ function markLine(out, ground, line, off, hw, col, ok, { dash = Infinity, gap = 
 }
 
 /** A box of half sizes h (local X, Y, Z) turned by yaw about Y, centred on c: its six faces as quads. */
-function boxFaces(out, c, yaw, h, col) {
+export function boxFaces(out, c, yaw, h, col) {
   const axes = [[Math.cos(yaw), 0, -Math.sin(yaw)], [0, 1, 0], [Math.sin(yaw), 0, Math.cos(yaw)]];
   for (let k = 0; k < 3; k++) for (const sg of [-1, 1]) {
     const nrm = axes[k].map((v) => v * sg);

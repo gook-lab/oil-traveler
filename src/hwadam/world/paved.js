@@ -125,3 +125,15 @@ function densityAt(S, N, k, h) {
   const n = S[d * (N + 1) + c] - S[b * (N + 1) + c] - S[d * (N + 1) + a] + S[b * (N + 1) + a];
   return n / ((c - a) * (d - b));
 }
+
+/**
+ * A town's built-up ground left between the buildings once the complexes have laid theirs out (T4 round 2): a school's
+ * yard, an office's forecourt, the land round a block outside a complex. The floor has no paint of its own for it and laid
+ * bare earth there (Banpo: a tan field beside the slabs). In a town it is paved; under a footprint the building hides it.
+ * Changes `grid` in place and returns how many nodes it paved.
+ */
+export function paveTownBuilt(grid) {
+  let n = 0;
+  for (let k = 0; k < grid.length; k++) if (grid[k] === 8) { grid[k] = PAVED; n++; }
+  return n;
+}
