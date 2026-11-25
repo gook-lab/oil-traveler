@@ -3,11 +3,12 @@
 // each a fixed number: a node is dense when the buildings cover at least 0.1 of the 61 m square about it; a road is
 // its width (cover.js ROAD_WIDTH) about its centreline; a courtyard is within 120 m of a castle or Buddhist temple point
 // point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
+// In a town, bare ground and grass within 8 m of a road are paved too (its pavements and medians).
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
 /** A road's own ground in a town (asphalt), so the street and the pavement differ (T3 round 7). */
 export const ROAD = 12;
-export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.02 };
+export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.02, verge: 8, town: 0.5 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
 const inside = (pts, x, z) => {
@@ -36,8 +37,7 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
     }
   }
   // the share of the building nodes in the square about each node: a summed-area table
-  const S = new Float64Array((N + 1) * (N + 1));
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) S[(j + 1) * (N + 1) + i + 1] = bld[j * N + i] + S[j * (N + 1) + i + 1] + S[(j + 1) * (N + 1) + i] - S[j * (N + 1) + i];
+  const S = summed(bld, N);
   const h = PAVING.half;
   const dense = new Uint8Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -93,11 +93,32 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
     if (byNone) counts.none++;
     if (byDense || byRoad || byCourt || byNone) { out[k] = PAVED; counts.paved++; }
   }
+  // a town's verges (skyline-3): where built, paved and road nodes are PAVING.town of the square (as cover.js isUrban
+  // judges a town), bare ground or grass within PAVING.verge m of a road is its pavement or its median. Between the two
+  // carriageways of a wide road no rule above reached it (Gangnam: 6 m between one-way lines 19 m apart, no building
+  // within 30 m), and the floor laid a bed of red leaves there
+  let town = 0;
+  for (let k = 0; k < N * N; k++) if (out[k] === 8 || out[k] === PAVED || out[k] === ROAD) town++;
+  counts.verge = 0;
+  if (town / (N * N) >= PAVING.town) {
+    const SR = summed(road, N), v = Math.round(PAVING.verge / STEP);
+    for (let k = 0; k < N * N; k++) {
+      if ((out[k] !== 0 && out[k] !== 1) || bld[k] || densityAt(SR, N, k, v) === 0) continue;
+      out[k] = PAVED; counts.verge++; counts.paved++;
+    }
+  }
   counts.histDeciles = hist;
   return counts;
 }
 
-/** The building share of the square about node k (the same square as the dense rule). */
+/** The summed-area table of a node mask (N + 1 square), for the share of a square about a node (densityAt). */
+function summed(mask, N) {
+  const S = new Float64Array((N + 1) * (N + 1));
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) S[(j + 1) * (N + 1) + i + 1] = mask[j * N + i] + S[j * (N + 1) + i + 1] + S[(j + 1) * (N + 1) + i] - S[j * (N + 1) + i];
+  return S;
+}
+
+/** The share of the mask in the square of half side h nodes about node k (the dense rule's square for the buildings). */
 function densityAt(S, N, k, h) {
   const i = k % N, j = Math.floor(k / N);
   const a = Math.max(0, i - h), b = Math.max(0, j - h), c = Math.min(N, i + h + 1), d = Math.min(N, j + h + 1);
