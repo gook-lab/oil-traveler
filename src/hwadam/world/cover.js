@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
 import { applyPaving } from './paved.js';
 import { lowerTown } from './townground.js';
-import { carveTownStream, cutBridgeApproaches } from './stream.js';
+import { carveTownStream, clearUnderBridges, cutBridgeApproaches } from './stream.js';
 
 // PAVED (10): a town's paved ground, ROAD (12): its roads, asphalt (paved.js). BASALT (11): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
 export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10, BASALT: 11, ROAD: 12 };
@@ -28,8 +28,9 @@ const Z = 14;
 export const ROCK_SLOPE = Math.tan((30 * Math.PI) / 180);
 
 // the grid of the place in use (node order as near.bin). Null for the baked walk.
-let grid = null, depth = null, conifer = 0;
-export function setCover(g, coniferShare = 0, d = null) { grid = g; depth = d; conifer = coniferShare; }
+// stream: the town stream's part at each node (stream.js STREAM_PART: its water, its wall's top), or null
+let grid = null, depth = null, conifer = 0, stream = null;
+export function setCover(g, coniferShare = 0, d = null, s = null) { grid = g; depth = d; conifer = coniferShare; stream = s; }
 export function hasCover() { return grid !== null; }
 /** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
 export function coniferChance() { return conifer; }
@@ -37,14 +38,14 @@ export function coniferChance() { return conifer; }
 export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED, COVER.BASALT, COVER.ROAD]);
 /** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
 export function coverTexture() {
-  // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
+  // four bytes a node: the class (r), the depth under the sea, 0 to 12 m (g), and the town stream's part (b)
   let tex;
   if (grid && depth) {
-    const data = new Uint8Array(N * N * 2);
-    for (let k = 0; k < N * N; k++) { data[2 * k] = grid[k]; data[2 * k + 1] = depth[k]; }
-    tex = new THREE.DataTexture(data, N, N, THREE.RGFormat, THREE.UnsignedByteType);
+    const data = new Uint8Array(N * N * 4);
+    for (let k = 0; k < N * N; k++) { data[4 * k] = grid[k]; data[4 * k + 1] = depth[k]; data[4 * k + 2] = stream ? stream[k] : 0; }
+    tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
   } else {
-    tex = new THREE.DataTexture(new Uint8Array(2), 1, 1, THREE.RGFormat, THREE.UnsignedByteType);
+    tex = new THREE.DataTexture(new Uint8Array(4), 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
   }
   tex.minFilter = tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
@@ -60,6 +61,11 @@ float coverClass(vec2 xz) {
 float coverDepth(vec2 xz) {
   vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
   return texture(tCover, (f + 0.5) / ${N}.0).g * 12.0;
+}
+/** The town stream's part at the node (stream.js STREAM_PART): 0 none, 1 its water, 2 its wall's top. */
+float coverStream(vec2 xz) {
+  vec2 f = vec2(xz.x / 2.0 + ${N / 2}.0, ${N / 2}.0 - xz.y / 2.0);
+  return floor(texture(tCover, (f + 0.5) / ${N}.0).b * 255.0 + 0.5);
 }
 /** True when water lies within 4 m (eight points on a ring): the shore carries no leaves, even on untagged land. */
 bool wetCover(vec2 xz) {
@@ -267,9 +273,11 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
     }
   }
   const town = lowerTown(near, out, N, NEAR_STEP, { force });
-  // the town stream becomes a channel under its banks, and each bridge's approach is cut to its ramp (T4 비평 1, 다리 4차)
+  // the town stream becomes a channel under its banks, the ground under each bridge comes down to the ground beside it,
+  // and each bridge's approach is cut to its ramp (T4 비평 1, 다리 4차, bridges-6)
   const stream = carveTownStream(near, out, N, NEAR_STEP, town.mask);
-  const approach = cutBridgeApproaches(near, out, N, NEAR_STEP, roads, paths);
+  const under = clearUnderBridges(near, out, N, NEAR_STEP, roads, paths, stream.field);
+  const approach = cutBridgeApproaches(near, out, N, NEAR_STEP, roads, paths, stream.field);
   // rock: steep ground with no tree, field or building on it
   for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
     const k = j * N + i;
@@ -289,7 +297,7 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
   // natural: the near square before the town step lowered it (place-check compares the terrain port on it)
-  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, landuse, town, natural, stream, approach };
+  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, landuse, town, natural, stream, approach, under };
 }
 
 /** The building outlines of one tile (outer rings; a piece belongs to the tile it lies in), in metres from the centre. */

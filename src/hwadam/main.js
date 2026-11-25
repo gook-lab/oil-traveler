@@ -25,6 +25,7 @@ import { createFloor } from './world/floor.js';
 import { createBuildings, clearance } from '../travel/buildings.js';
 import { createStreets } from '../travel/streets.js';
 import { createBridges, deckKeepOut } from '../travel/bridges.js';
+import { createStreamWalls } from '../travel/streamwalls.js';
 import { createForest } from './world/forest.js';
 import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
@@ -148,9 +149,14 @@ Object.assign(CLEAR, {
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
 // travel: the streets of the near square (T4) come first, their street trees are planted by the forest (src/travel/streets.js)
-const streets = travel && place.cover ? createStreets(shared, place.cover, heightAt) : null;
-// travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4)
-const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [], keepOut: travel && place.cover ? deckKeepOut(place.cover) : null });
+// travel: the stone walls of a town stream (bridges-6, src/travel/streamwalls.js). What stands on a wall's top (a lamp, a
+// deck's end) stands on the street there, not on the ground under the wall's box
+const deckOut = travel && place.cover ? deckKeepOut(place.cover) : null;
+const walls = travel && place.cover ? createStreamWalls(shared, place.cover, heightAt, { keepOut: deckOut ?? undefined, near: vantage }) : null;
+const streetAt = walls ? (x, z) => Math.max(heightAt(x, z), walls.topAt(x, z) ?? -Infinity) : heightAt;
+const streets = travel && place.cover ? createStreets(shared, place.cover, streetAt, walls ? { keep: (x, z) => !walls.sunk(x, z) } : {}) : null;
+// travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4) or on a stream's wall
+const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [], keepOut: deckOut ? (walls ? (x, z) => deckOut(x, z) || walls.topAt(x, z) != null : deckOut) : null });
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
@@ -187,8 +193,9 @@ if (farCity) scene.add(farCity.group);
 // travel: the streets of the near square (T4): zebra crossings, lane lines, kerbs, lamps, signals, bus shelters (src/travel/streets.js)
 if (streets) scene.add(streets.group);
 // travel with a land cover (T4): the bridges of the cover, as decks over the water and the banks (src/travel/bridges.js)
-const bridges = travel && place.cover ? createBridges(shared, place.cover, heightAt, { near: vantage }) : null;
+const bridges = travel && place.cover ? createBridges(shared, place.cover, streetAt, { near: vantage }) : null;
 if (bridges) scene.add(bridges.group);
+if (walls) scene.add(walls.group);
 // check only (?keysky): the sky dome in pure magenta, its strokes off, so that the picture counts what the sky shows
 if (q.has('keysky')) { sky.group.children[0].material = new THREE.MeshBasicMaterial({ color: 0xff00ff, side: THREE.BackSide, depthTest: false, depthWrite: false }); sky.group.children[1].visible = false; }
 // travel: the real ground out to 2 km, painted, in place of the far wall of the first view (src/travel/midground.js)
@@ -203,7 +210,7 @@ if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.mat
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, bdabs: bld?.group.children[1], streets: streets?.group, far: farCity?.group };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, bdabs: bld?.group.children[1], streets: streets?.group, walls: walls?.group, far: farCity?.group };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -223,6 +230,8 @@ const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   for (const w of streets?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
   // the decks, their rails and piers (T4)
   for (const w of bridges?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
+  // the stream's walls, their railings and stairs (bridges-6)
+  for (const w of walls?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
 }
 lap('physics');
 
@@ -234,7 +243,7 @@ const animator = new Animator(man);
 // the walk starts at the pin (the centre of the baked square) in travel, at the way's entrance otherwise
 const spawnX = travel ? vantage.x : START.x, spawnZ = travel ? vantage.z : START.z;
 // a start on a deck stands on the deck, not the ground under it (T4)
-const spawn = new THREE.Vector3(spawnX, Math.max(heightAt(spawnX, spawnZ), bridges?.deckAt(spawnX, spawnZ) ?? -Infinity), spawnZ);
+const spawn = new THREE.Vector3(spawnX, Math.max(streetAt(spawnX, spawnZ), bridges?.deckAt(spawnX, spawnZ) ?? -Infinity), spawnZ);
 const faceYaw = travel ? Math.PI - gazeRad : Math.atan2(way[3][0] - START.x, way[3][1] - START.z); // travel: the skyline's view; else along the way
 const player = new Player({ RAPIER, world: physics, man, animator, spawn, yaw: faceYaw });
 const follow = new Follow(camera);
@@ -385,6 +394,8 @@ window.lab = {
   streets: streets?.stats ?? null, far: farCity?.stats ?? null, farPlans: farCity?.plans ?? [], streetCrossings: streets?.crossings ?? [], streetMasts: streets?.masts ?? [],
   /** T4: the bridges of the place (decks, wet, piers, boxes, tops) and deckAt(x, z) for the top of a deck. */
   bridges: bridges?.stats ?? null, bridgeDecks: bridges?.decks ?? [], deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
+  /** bridges-6: the stream's walls (stats, stairs, face lines) and the street on top of a wall (null off the walls). */
+  streamWalls: walls ? { stats: walls.stats, stairs: walls.stairs, faces: walls.faces } : null, wallTopAt: (x, z) => walls?.topAt(x, z) ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,
@@ -550,7 +561,7 @@ window.lab = {
   setInput(fn) { input.override = fn; },
   /** Puts him at (x, z) on the ground, facing (fx, fz), with the eye behind him. */
   teleport(x, z, fx, fz) {
-    const y = Math.max(heightAt(x, z), bridges?.deckAt(x, z) ?? -Infinity), half = player.halfHeight();
+    const y = Math.max(streetAt(x, z), bridges?.deckAt(x, z) ?? -Infinity), half = player.halfHeight();
     player.body.setTranslation({ x, y: y + player.t.radius + half + 0.05, z }, true);
     physics.propagateModifiedBodyPositionsToColliders();
     player.feet.set(x, y, z); player.prevFeet.copy(player.feet); player.visualY = y;

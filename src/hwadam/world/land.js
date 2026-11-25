@@ -8,6 +8,7 @@ import { COMMON, EXTENT, LAND_RES } from '../../oilpaint/common.js';
 import { noise, rng } from '../../world/noise.js';
 import { segW, SEG_GLSL } from './segments.js';
 import { setCover, hasCover, coverTexture, coniferShare, COVER_GLSL, TRAVEL_VS } from './cover.js';
+import { streamGround } from './stream.js';
 export { noise, rng, segW };
 
 /** Vertical scale on the real ground (1 would be true). Chosen because the true slopes are steep; see PLAN.md. */
@@ -29,6 +30,8 @@ export const CLEAR = { x: 0, z: 0, r: 0, fan: false, fx: 0, fz: -1, fanR: 40, fa
 /** The walk as dense samples (world metres, x east, z south), a Catmull-Rom curve through the control points. */
 export const way = [];
 let NEAR_N = 0, NEAR_STEP = 1, near = null, H0 = 0;
+// the town stream's finer ground (stream.js): its walls stand where the 2 m nodes cannot hold them
+let fine = null;
 /** Metres from (x, z) to the middle of the way. */
 export function wayDist(x, z) {
   let best = Infinity;
@@ -63,10 +66,11 @@ export function setPlace(place) {
   NEAR_N = place.meta.nearN;
   NEAR_STEP = place.meta.nearStep;
   near = place.near;
+  fine = place.cover?.stream?.field ? streamGround(place.cover.stream.field) : null;
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
   vs = place.source === 'runtime' ? TRAVEL_VS : VS;
   // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
-  setCover(place.cover?.grid ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0, place.cover?.depth ?? null);
+  setCover(place.cover?.grid ?? null, place.cover ? coniferShare(place.meta.center.lat, H0) : 0, place.cover?.depth ?? null, place.cover?.stream?.part ?? null);
   START.x = place.way.start[0]; START.z = place.way.start[1];
   CLEARING.x = place.way.goal[0]; CLEARING.z = place.way.goal[1];
   const WAY = place.way.points;
@@ -134,7 +138,7 @@ export async function prepareLand(pause) {
       const x = -EXTENT + (i / (N - 1)) * 2 * EXTENT, z = -EXTENT + (j / (N - 1)) * 2 * EXTENT;
       const idx = j * N + i;
       const wd = dist[idx] * TEXEL_M;
-      const ground = (groundAt(x, z) - H0) * vs;
+      const ground = ((fine?.(x, z) ?? groundAt(x, z)) - H0) * vs;
       // the same small noise the autumn wood has, and the way worn a little into the ground
       heights[idx] = ground + 0.3 * noise(x / 8.3, z / 8.3) - 0.28 * Math.exp(-(wd * wd) / 3.2);
       const k = idx * 4;
@@ -244,6 +248,14 @@ export function createLand(shared) {
           }
           float foam = land3 * smoothstep(0.5, 0.75, texture(tNoise, vec2(vWorld.x / 4.0, vWorld.z / 0.6)).g);
           c = mix(wc * (0.85 + 0.25 * lit), vec3(0.94, 0.97, 0.94), foam);
+          // a town stream (bridges-6): clear shallow water over its stone bed, grey-green and slate, the stones showing
+          // through in patches, and only a little of the sky on it (the walls stand close round it)
+          if (abs(coverStream(vWorld.xz) - 1.0) < 0.5) {
+            vec3 sc = mix(vec3(0.33, 0.4, 0.38), vec3(0.47, 0.54, 0.5), strokeH);
+            sc = mix(sc, vec3(0.54, 0.52, 0.47), 0.45 * smoothstep(0.55, 0.75, sqn));
+            sc = mix(sc, vec3(0.6, 0.68, 0.7), graze * 0.2);
+            c = sc * (0.85 + 0.25 * lit);
+          }
         } else if (abs(cls - 6.0) < 0.5 || (cls < 0.5 && wf > 0.0)) {
           // (untagged land by the water is beach too: it would otherwise keep the maple climb's rust underpainting)
           // sand: pale warm, in long flat strokes; where the sea reaches it, the water breaks in dabs over it

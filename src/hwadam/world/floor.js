@@ -176,6 +176,9 @@ void makeDab(inout Dab d) {
   float cls = coverClass(xz);
   bool sand = abs(cls - 6.0) < 0.5, rock = abs(cls - 5.0) < 0.5, built = abs(cls - 8.0) < 0.5, water = abs(cls - 9.0) < 0.5, paved = abs(cls - 10.0) < 0.5, basalt = abs(cls - 11.0) < 0.5, road = abs(cls - 12.0) < 0.5;
   if (!(sand || rock || built || water || paved || basalt || road)) { d.alive = 0.0; return; }
+  // the top of a town stream's wall: its stone and paving are drawn (streamwalls.js); a dab on the ground's ramp under it
+  // stood up through the top and the face
+  if (abs(coverStream(xz) - 2.0) < 0.5) { d.alive = 0.0; return; }
   // a third of the cells lay no dab, so the cell grid does not show as a tile pattern
   if (q.w < 0.33 && !(paved || road)) { d.alive = 0.0; return; }
   vec3 P = vec3(xz.x, heightAt(xz), xz.y);
@@ -207,6 +210,10 @@ void makeDab(inout Dab d) {
                    : paint3(vec3(0.16, 0.15, 0.16), vec3(0.1, 0.095, 0.1), vec3(0.06, 0.06, 0.07), lit, q.x);
     if (wet > 0.5) c *= 0.7;
   }
+  // a town stream (bridges-6): grey-green and slate over its stones, a pebble's warm grey here and there; the sea and
+  // the rivers keep their teal
+  else if (water && abs(coverStream(xz) - 1.0) < 0.5) c = r.x > 0.78 ? paint3(vec3(0.58, 0.56, 0.5), vec3(0.46, 0.44, 0.4), vec3(0.32, 0.31, 0.29), lit, q.y)
+                                                                   : paint3(vec3(0.5, 0.58, 0.55), vec3(0.37, 0.45, 0.43), vec3(0.25, 0.31, 0.31), lit, q.y);
   else if (water) c = paint3(vec3(0.36, 0.6, 0.62), vec3(0.24, 0.46, 0.52), vec3(0.16, 0.34, 0.4), lit, q.y);
   else if (sand) c = paint3(vec3(0.94, 0.85, 0.64), vec3(0.78, 0.68, 0.48), vec3(0.6, 0.5, 0.36), lit, q.y);
   else if (rock && wet > 0.5) c = paint3(vec3(0.3, 0.3, 0.32), vec3(0.2, 0.2, 0.22), vec3(0.12, 0.12, 0.14), lit, q.y);
