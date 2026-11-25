@@ -13,7 +13,7 @@ import { createBrushSheet } from '../oilpaint/brush.js';
 import { prepareLand, setPlace, createLand, heightAt, wayDist, noise, way, START, CLEARING, CLEAR, verticalScale } from './world/land.js';
 import { bakedPlace, bakePlace, placeFromUrl } from './world/place.js';
 import { gazeBearing } from './world/bake.js';
-import { viewShares, coverWithin, COVER_GLSL, coverAt, isUrban } from './world/cover.js';
+import { viewShares, coverWithin, COVER_GLSL, coverAt, isUrban, coverTexture } from './world/cover.js';
 import { createFar } from '../travel/far.js';
 import { mountPlacePanel } from './start-panel.js';
 import { startMap, openMap, mapOpen, goToPlace } from '../travel/map.js';
@@ -24,6 +24,7 @@ import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createBuildings, clearance } from '../travel/buildings.js';
 import { createStreets } from '../travel/streets.js';
+import { createComplexes } from '../travel/complex.js';
 import { createBridges, deckKeepOut } from '../travel/bridges.js';
 import { createStreamWalls } from '../travel/streamwalls.js';
 import { createForest } from './world/forest.js';
@@ -148,15 +149,25 @@ Object.assign(CLEAR, {
   x: vantage.x, z: vantage.z, r: travel ? (place.cover ? 30 : 15) : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
+// travel with a land cover (T3): the buildings of the near square, stood up at their heights and painted; their walls are
+// colliders below (src/travel/buildings.js). Made before the streets: the complexes read their uses
+const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 // travel: the streets of the near square (T4) come first, their street trees are planted by the forest (src/travel/streets.js)
 // travel: the stone walls of a town stream (bridges-6, src/travel/streamwalls.js). What stands on a wall's top (a lamp, a
 // deck's end) stands on the street there, not on the ground under the wall's box
 const deckOut = travel && place.cover ? deckKeepOut(place.cover) : null;
 const walls = travel && place.cover ? createStreamWalls(shared, place.cover, heightAt, { keepOut: deckOut ?? undefined, near: vantage }) : null;
+// travel: the apartment complexes' ground (lawn, shrub beds, walks), their walls on the public roads and their trees
+// (T4 apartments-1, src/travel/complex.js). It lays the pavement the streets' kerbs, lamps and street trees stand on, so
+// it comes before them, and the cover texture is made again from the grid it changed
+const complexes = bld ? createComplexes(shared, place.cover, bld.plans, heightAt, { keep: (x, z) => !deckOut?.(x, z) && !walls?.sunk(x, z) }) : null;
+if (complexes) { shared.tCover.value.dispose(); shared.tCover.value = coverTexture(); }
 const streetAt = walls ? (x, z) => Math.max(heightAt(x, z), walls.topAt(x, z) ?? -Infinity) : heightAt;
 const streets = travel && place.cover ? createStreets(shared, place.cover, streetAt, walls ? { keep: (x, z) => !walls.sunk(x, z) } : {}) : null;
-// travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4) or on a stream's wall
-const forest = createForest(shared, { streetTrees: streets?.treeSpots ?? [], keepOut: deckOut ? (walls ? (x, z) => deckOut(x, z) || walls.topAt(x, z) != null : deckOut) : null });
+// travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4), on a stream's wall, or on a
+// complex's green but its own spots
+const treeOut = [deckOut, walls && ((x, z) => walls.topAt(x, z) != null), complexes?.noTree].filter(Boolean);
+const forest = createForest(shared, { streetTrees: [...(streets?.treeSpots ?? []), ...(complexes?.treeSpots ?? [])], keepOut: treeOut.length ? (x, z) => treeOut.some((f) => f(x, z)) : null });
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
@@ -183,10 +194,8 @@ const rangesMesh = travel
   : createRanges(shared, horizon, [2000, 5000, 15000], CLEARING.x, heightAt(CLEARING.x, CLEARING.z) + 1.6, CLEARING.z, verticalScale());
 if (rangesMesh) scene.add(rangesMesh);
 scene.add(sky.group, land.mesh, forest.group, floor.group, leaves.mesh, kick.mesh, scenery.group);
-// travel with a land cover (T3): the buildings of the near square, stood up at their heights and painted; their walls are
-// colliders below (src/travel/buildings.js)
-const bld = travel && place.cover ? createBuildings(shared, place.cover, heightAt, { near: vantage }) : null;
 if (bld) scene.add(bld.group);
+if (complexes?.group) scene.add(complexes.group);
 // travel: the far buildings stand out to 1.3 km beyond the square (src/travel/far.js)
 const farCity = travel && place.mid && place.cover?.far?.length ? createFar(shared, place.cover.far, place.mid, place.way.startHeight) : null;
 if (farCity) scene.add(farCity.group);
@@ -210,7 +219,7 @@ if (q.has('keyranges') && rangesMesh) rangesMesh.children.forEach((m) => { m.mat
 if (travel) scenery.group.visible = false;
 // check only (?hide=scenery,floor,forest,sky,land,leaves): switches a part of the picture off, to see what paints a patch
 {
-  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, bdabs: bld?.group.children[1], streets: streets?.group, walls: walls?.group, far: farCity?.group };
+  const parts = { scenery: scenery.group, floor: floor.group, forest: forest.group, sky: sky.group, land: land.mesh, leaves: leaves.mesh, mid: midMesh, ranges: rangesMesh, kick: kick.mesh, buildings: bld?.group, bdabs: bld?.group.children[1], streets: streets?.group, walls: walls?.group, far: farCity?.group, complex: complexes?.group };
   for (const name of (q.get('hide') ?? '').split(',')) if (parts[name]) parts[name].visible = false;
 }
 
@@ -232,6 +241,8 @@ const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   for (const w of bridges?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
   // the stream's walls, their railings and stairs (bridges-6)
   for (const w of walls?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
+  // the walls of the apartment complexes (apartments-1)
+  for (const w of complexes?.boxes ?? []) physics.createCollider(RAPIER.ColliderDesc.cuboid(...w.h).setTranslation(...w.c).setRotation({ x: w.q[0], y: w.q[1], z: w.q[2], w: w.q[3] }));
 }
 lap('physics');
 
@@ -396,6 +407,8 @@ window.lab = {
   bridges: bridges?.stats ?? null, bridgeDecks: bridges?.decks ?? [], deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
   /** bridges-6: the stream's walls (stats, stairs, face lines) and the street on top of a wall (null off the walls). */
   streamWalls: walls ? { stats: walls.stats, stairs: walls.stairs, faces: walls.faces } : null, wallTopAt: (x, z) => walls?.topAt(x, z) ?? null,
+  /** apartments-1: the complexes' ground counts, wall runs and entrances (src/travel/complex.js). */
+  complexes: complexes ? { stats: complexes.stats, runs: complexes.runs, gates: complexes.gates, trees: complexes.treeSpots } : null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,

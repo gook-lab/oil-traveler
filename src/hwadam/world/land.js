@@ -281,6 +281,11 @@ export function createLand(shared) {
         } else if (abs(cls - 12.0) < 0.5) {
           // a town's road: asphalt under the dabs
           c = mix(vec3(0.28, 0.28, 0.29), vec3(0.38, 0.38, 0.39), strokeV) * (0.9 + 0.15 * sqn);
+        } else if (abs(cls - 13.0) < 0.5) {
+          // an apartment complex's lawn and shrub beds (src/travel/complex.js): grass green under the blades, dark under the shrubs
+          c = mix(vec3(0.34, 0.4, 0.2), vec3(0.5, 0.56, 0.3), strokeH) * (0.9 + 0.15 * sqn);
+        } else if (abs(cls - 14.0) < 0.5) {
+          c = mix(vec3(0.14, 0.2, 0.12), vec3(0.24, 0.3, 0.16), strokeV) * (0.9 + 0.15 * sqn);
         }
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,
