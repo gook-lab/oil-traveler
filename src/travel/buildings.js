@@ -623,7 +623,9 @@ function surfacesOf(p, ground) {
   // are white walls. The cells break at every post, stile and panel edge, so the doors stay sharp at any distance
   const storey = (RR, y0, y1) => {
     const yBand = y1 - 1.2, wallH = yBand - y0;
-    const layout = (L) => { const bays = Math.max(1, Math.round(L / 6)); return { bays, sp: L / bays }; };
+    // the bays are odd (5 or 7 across, 3 or 5 deep, as a hall's 칸): the middle of a side is a bay, so the stairs climb to
+    // the middle doors and not to a post (r70: six bays put a post on the stairs' axis)
+    const layout = (L) => { let bays = Math.max(1, Math.round(L / 6)); if (bays % 2 === 0) bays += L / 6 >= bays ? 1 : -1; return { bays, sp: L / bays }; };
     // a plain wall (the back, the ends) is framed (T3 round 7): a sill beam (0.3 m), a middle beam (0.2 m at 55%), a head
     // beam (0.2 m) and a stud at mid-bay (0.16 m), red-brown, with white plaster between (a bare white face read as a shed)
     const frameAt = (m, sp, hgt) => hgt < 0.3 || Math.abs(hgt - wallH * 0.55) < 0.1 || hgt > wallH - 0.2 || Math.abs(m - sp / 2) < 0.08;
