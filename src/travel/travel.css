@@ -152,13 +152,12 @@
 .tm-sub { margin: 0; font-size: 12px; color: #6b5a4b; }
 .tm-go { background: #8a3a1c; padding: 10px 16px; font-size: 14px; }
 /* the recommended place: an outline, text only */
-.tm-recommend { background: none; box-shadow: none; }
 .tm-recommend button { background: none; color: #5b4636; border: 1px solid rgba(91, 70, 54, 0.45); }
 /* paper grain over the map (a noise sheet made in the page, no file) */
 .tm-canvas { position: absolute; }
 .tm-canvas::after {
   content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply; opacity: 0.3;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.07' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0.8 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n' filterUnits='userSpaceOnUse' x='0' y='0' width='240' height='240'><feTurbulence type='fractalNoise' baseFrequency='0.0125 0.0708333' numOctaves='3' seed='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.33  0 0 0 0 0.22  0 0 0 0.8 -0.2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 @media (max-width: 600px) {
   .tm-head { flex-wrap: wrap; }
@@ -171,3 +170,75 @@
   background: rgba(28, 20, 18, 0.55); border: 0; border-radius: 3px; padding: 8px 12px;
 }
 .walk-view:hover { background: rgba(28, 20, 18, 0.72); }
+
+/* the first screen and the guide (src/travel/intro.js): the painting full bleed, the title on the calm sky at the top left,
+   the cards as paper. The short landscape phone (height 390) puts the card's picture beside its text. */
+.intro { position: fixed; inset: 0; z-index: 30; overflow: hidden; background: #2a211b; color: #fdf8ec; font: 15px/1.6 Georgia, serif; word-break: keep-all; }
+.intro[hidden] { display: none; }
+.intro-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 55%; }
+.intro-first::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  /* the title stands on a warm shade that the painting itself fades into (r2: a grey box over the picture read as a web
+     template), not on a panel: a soft dark-umber pool behind the words, and the top and bottom darkened as before */
+  background:
+    radial-gradient(ellipse 58% 62% at 20% 30%, rgba(46, 31, 22, 0.8) 0%, rgba(46, 31, 22, 0.62) 42%, rgba(46, 31, 22, 0) 100%),
+    linear-gradient(180deg, rgba(42, 33, 27, 0.5) 0%, rgba(42, 33, 27, 0) 42%, rgba(42, 33, 27, 0) 62%, rgba(42, 33, 27, 0.55) 100%);
+}
+.intro-head {
+  position: absolute; left: clamp(20px, 5vw, 64px); top: clamp(56px, 16vh, 150px); z-index: 1; box-sizing: border-box;
+  max-width: min(clamp(520px, 40vw, 1100px), calc(100vw - 40px)); padding: clamp(14px, 1.4vw, 32px) clamp(18px, 1.8vw, 40px);
+  text-shadow: 0 1px 2px rgba(30, 20, 14, 0.6), 0 0 18px rgba(30, 20, 14, 0.5);
+}
+.intro-head h1 { margin: 0 0 clamp(8px, 0.8vw, 18px); font: normal clamp(34px, 4.4vw, 124px)/1.1 Georgia, serif; letter-spacing: 0.04em; }
+.intro-head p { margin: 0 0 clamp(16px, 1.6vw, 36px); font-size: clamp(15px, 1.3vw, 32px); line-height: 1.6; }
+.intro-go, .intro-next {
+  font: clamp(16px, 1.2vw, 30px)/1 Georgia, serif; letter-spacing: 0.04em; cursor: pointer; color: #fdf8ec; background: #8a3a1c; border: 0; border-radius: 3px;
+  padding: clamp(13px, 0.9vw, 24px) clamp(22px, 1.6vw, 40px); box-shadow: 0 2px 8px rgba(28, 20, 18, 0.35);
+}
+.intro-go:hover, .intro-next:hover { background: #9e4522; }
+.intro-go:focus-visible, .intro-next:focus-visible, .intro-skip:focus-visible { outline: 2px solid #fdf8ec; outline-offset: 2px; }
+
+.intro-guide { display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(42, 33, 27, 0.86); }
+.intro-card {
+  margin: 0; width: min(clamp(640px, 36vw, 1200px), 100%); box-sizing: border-box; display: flex; flex-direction: column; color: #2a211b;
+  background: #efe7d2; border-radius: 4px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background-image: repeating-linear-gradient(97deg, rgba(70, 52, 40, 0.035) 0 2px, transparent 2px 7px);
+}
+.intro-card figure { margin: 0; }
+.intro-card img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.intro-side { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.intro-text { padding: clamp(16px, 1.4vw, 36px) clamp(20px, 1.6vw, 40px) 0; }
+.intro-text h2 { margin: 0 0 6px; font: normal clamp(20px, 1.6vw, 40px)/1.4 Georgia, serif; color: #2a211b; }
+.intro-text p { margin: 0; font-size: clamp(15px, 1.2vw, 30px); color: #4a3d33; }
+.intro-foot { display: flex; align-items: center; gap: 10px; padding: clamp(14px, 1.2vw, 30px) clamp(20px, 1.6vw, 40px) clamp(18px, 1.4vw, 34px); margin-top: auto; flex-wrap: wrap; }
+.intro-dots { display: flex; gap: 6px; margin: 0 auto 0 0; padding: 0; list-style: none; }
+.intro-dots li { width: 8px; height: 8px; border-radius: 50%; background: rgba(70, 52, 40, 0.25); }
+.intro-dots li[aria-current='step'] { background: #8a3a1c; }
+.intro-skip { font: clamp(14px, 1.05vw, 26px)/1 Georgia, serif; cursor: pointer; color: #5b4636; background: none; border: 0; padding: 10px 6px; }
+.intro-next { font-size: clamp(14px, 1.05vw, 26px); padding: clamp(11px, 0.8vw, 20px) clamp(16px, 1.2vw, 30px); }
+
+@media (max-width: 600px) {
+  /* the phone's picture is the maples: the text gets a dark paper to stand on */
+  .intro-head { left: 16px; right: 16px; max-width: none; padding: 14px 16px; }
+  .intro-first::after { background: linear-gradient(180deg, rgba(46, 31, 22, 0.82) 0%, rgba(46, 31, 22, 0.72) 30%, rgba(46, 31, 22, 0) 52%, rgba(46, 31, 22, 0) 70%, rgba(42, 33, 27, 0.5) 100%); }
+  .intro-card { width: 100%; }
+}
+/* a short landscape screen (a phone on its side): the picture beside the text, the whole card in the height */
+@media (max-height: 520px) and (orientation: landscape) {
+  .intro-guide { padding: 12px; }
+  .intro-card { flex-direction: row; width: min(760px, 100%); max-height: 100%; }
+  .intro-card figure { position: relative; width: 46%; flex: none; }
+  .intro-card img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
+  .intro-text { padding-top: 12px; }
+  .intro-text h2 { font-size: 17px; }
+  .intro-text p { font-size: 14px; }
+  .intro-foot { padding-bottom: 12px; }
+  .intro-head { top: 28px; }
+  .intro-head h1 { font-size: 32px; margin-bottom: 6px; }
+  .intro-head p { font-size: 14px; margin-bottom: 14px; }
+  .intro-go { padding: 10px 18px; font-size: 15px; }
+}
+/* the old key hint of the first page stays under the cards and the first screen */
+body:has(.intro) #hint { display: none; }
+/* the guide button on the map head */
+.tm-head .tm-guide { margin-left: auto; padding: 5px 10px; font-size: 12px; background: #5b4636; }

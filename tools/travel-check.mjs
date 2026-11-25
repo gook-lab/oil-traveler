@@ -33,7 +33,7 @@ page.on('requestfailed', (r) => problems.push(`requestfailed: ${r.url().slice(0,
 const failures = [];
 const report = {};
 
-await page.goto(`${base}?scene=travel`);
+await page.goto(`${base}?scene=travel&intro=skip`); // the first screen and the guide: tools/intro-check.mjs
 await page.waitForSelector('.tm-head', { timeout: 60000 });
 await page.waitForFunction(() => document.querySelector('.maplibregl-canvas'), null, { timeout: 60000 });
 await page.waitForTimeout(4000); // tiles and glyphs
