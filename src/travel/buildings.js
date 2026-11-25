@@ -58,7 +58,7 @@ export const FACADE = {
   quiet: { fl: 3.5, per: 3.2, u: [0, 1.1], v: [0, 0.22, 1.1, 2.1] },
   shop: { fl: 3.5, per: 3.9, u: [0, 0.3], v: [0, 0.22, 0.9, 2.4, 2.55, 3.3] },
   tower: { fl: 3.8, per: 1.5, u: [0, 0.08], v: [0, 0.9] },
-  apartment: { fl: 2.8, per: 3.6, u: [0, 0.35, 1.95, 2.03], v: [0, 0.2, 1.05, 1.15, 2.45] },
+  apartment: { fl: 2.8, per: 7.2, u: [0, 0.3, 3.55, 3.65], v: [0, 0.2, 1.05, 1.15, 2.45] },
   house: { fl: 2.8, per: 3.2, u: [0, 0.9, 2.3], v: [0, 0.2, 1.0, 2.2] },
 };
 /** The walls of a block by its use (the data's colour wins for an office, a shop or a quiet block). */
@@ -512,8 +512,10 @@ function surfacesOf(p, ground) {
             return facadeColour(look, wallC, fac, x, yb + fy - y0, r, !(slab && Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9), p.c, tv);
           },
           // a tower's glass and stone take no touches: the solid's own strokes paint it (r71: dark touches on the mullions
-          // read as black blots; T4 round 1: pale touches on the curtain wall read as stickers)
-          noDab: use === 'tower',
+          // read as black blots; T4 round 1: pale touches on the curtain wall read as stickers), nor do an apartment's
+          // balconies or an office's window rows (T4 round 4: the dense touches near the start smeared their bands into
+          // grey and black blots)
+          noDab: use === 'tower' || use === 'apartment' || use === 'office',
           jit: true,
         });
         // the sign boards up a shop block (T4): on the second and third floors (signStorey), boards of one to three bays,
@@ -937,7 +939,8 @@ function facadeColour(use, wallC, fac, x, y, r, long, c, tv = 0) {
     }
     case 'apartment':
       // a unit's balcony a bay (T4 round 2: a ribbon of pale glass read as an office): a pier of wall, a parapet a little
-      // brighter than the wall, a dark handrail, the dark glass of the expanded balcony with its middle frame, the lintel
+      // brighter than the wall, a dark handrail, the dark glass of the expanded balcony with its middle frame, the lintel.
+      // A bay is a unit's width, 7.2 m (T4 round 4: a pier every 3.6 m cut the bands into an office's window grid)
       if (row < 0.2) return slab;
       if (!long || col < fac.u[1] || row >= 2.45) return wall;
       if (row < 1.05) return wallC.map((q) => Math.min(1, q * 1.06) * t);

@@ -239,7 +239,8 @@ void makeDab(inout Dab d) {
   else if (bed) c = fract(sin(dot(floor(xz / 1.1), vec2(7.13, 31.7))) * 1731.7) > 0.75 ? paint3(vec3(0.78, 0.36, 0.2), vec3(0.6, 0.22, 0.14), vec3(0.34, 0.12, 0.1), lit, q.y)
                                                                                      : paint3(vec3(0.42, 0.56, 0.28), vec3(0.24, 0.36, 0.18), vec3(0.12, 0.2, 0.12), lit, q.y);
   // paved ground (T4, paved.js): grey stone and gravel, with no tree or litter on it
-  else if (paved) c = paint3(vec3(0.66, 0.64, 0.6), vec3(0.52, 0.5, 0.47), vec3(0.36, 0.34, 0.32), lit, q.y);
+  // (a little darker and warmer than first: in the sun the paler grey read as snow on the footways, T4 round 4)
+  else if (paved) c = paint3(vec3(0.6, 0.58, 0.53), vec3(0.47, 0.45, 0.41), vec3(0.33, 0.31, 0.29), lit, q.y);
   // a town's road (T3 round 7): dark asphalt grey, so the street reads apart from the pale pavement and the palace stone
   else if (road) c = paint3(vec3(0.44, 0.44, 0.45), vec3(0.34, 0.34, 0.35), vec3(0.23, 0.23, 0.24), lit, q.y);
   else c = paint3(vec3(0.7, 0.62, 0.52), vec3(0.52, 0.45, 0.38), vec3(0.34, 0.3, 0.26), lit, q.y);

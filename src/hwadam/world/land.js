@@ -30,6 +30,8 @@ export const CLEAR = { x: 0, z: 0, r: 0, fan: false, fx: 0, fz: -1, fanR: 40, fa
 /** The walk as dense samples (world metres, x east, z south), a Catmull-Rom curve through the control points. */
 export const way = [];
 let NEAR_N = 0, NEAR_STEP = 1, near = null, H0 = 0;
+// calm: 1 on a town's built-up ground (cover.js lowerTown mask 1), softened over a few nodes, else 0 (see prepareLand)
+let calm = null;
 // the town stream's finer ground (stream.js): its walls stand where the 2 m nodes cannot hold them
 let fine = null;
 /** Metres from (x, z) to the middle of the way. */
@@ -67,6 +69,21 @@ export function setPlace(place) {
   NEAR_STEP = place.meta.nearStep;
   near = place.near;
   fine = place.cover?.stream?.field ? streamGround(place.cover.stream.field) : null;
+  calm = null;
+  const mask = place.cover?.town?.mask;
+  if (mask && mask.length === NEAR_N * NEAR_N) {
+    calm = new Float32Array(mask.length);
+    for (let k = 0; k < mask.length; k++) calm[k] = mask[k] === 1 ? 1 : 0;
+    // two 3 by 3 passes, so the wood's small relief fades in over a few metres at a town's edge, not as a step
+    for (let pass = 0; pass < 2; pass++) {
+      const c = calm.slice();
+      for (let j = 1; j < NEAR_N - 1; j++) for (let i = 1; i < NEAR_N - 1; i++) {
+        let s = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) s += c[(j + dj) * NEAR_N + i + di];
+        calm[j * NEAR_N + i] = s / 9;
+      }
+    }
+  }
   H0 = place.way.startHeight; // the entrance is the zero of the scaled ground
   vs = place.source === 'runtime' ? TRAVEL_VS : VS;
   // the land cover of a place baked at run time (T2); the baked walk has none and keeps its look
@@ -89,6 +106,14 @@ export function setPlace(place) {
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // --- the real ground ---------------------------------------------------------------------------------------------
+/** A field over the near square's nodes at world (x, z), bilinear and clamped to its edges (as groundAt). */
+function nearAt(f, x, z) {
+  const fi = Math.min(NEAR_N - 1.001, Math.max(0, x / NEAR_STEP + NEAR_N / 2));
+  const fj = Math.min(NEAR_N - 1.001, Math.max(0, NEAR_N / 2 - z / NEAR_STEP));
+  const i = Math.floor(fi), j = Math.floor(fj), tx = fi - i, tz = fj - j;
+  const a = f[i + j * NEAR_N], b = f[i + 1 + j * NEAR_N], c = f[i + (j + 1) * NEAR_N], d = f[i + 1 + (j + 1) * NEAR_N];
+  return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+}
 /** The real ground at world (x, z): bilinear over the baked square, clamped to its edges. z is south, so row j = N/2 - z/step. */
 function groundAt(x, z) {
   const fi = Math.min(NEAR_N - 1.001, Math.max(0, x / NEAR_STEP + NEAR_N / 2));
@@ -139,8 +164,11 @@ export async function prepareLand(pause) {
       const idx = j * N + i;
       const wd = dist[idx] * TEXEL_M;
       const ground = ((fine?.(x, z) ?? groundAt(x, z)) - H0) * vs;
-      // the same small noise the autumn wood has, and the way worn a little into the ground
-      heights[idx] = ground + 0.3 * noise(x / 8.3, z / 8.3) - 0.28 * Math.exp(-(wd * wd) / 3.2);
+      // the same small noise the autumn wood has, and the way worn a little into the ground. Not on a town's built-up
+      // ground: there the noise's 0.3 m every 8 to 16 m read as snowdrifts along every street, at the walker's eye
+      // 1.6 m up (T4 round 4), and the way runs on the paving
+      const wild = 1 - (calm ? nearAt(calm, x, z) : 0);
+      heights[idx] = ground + wild * (0.3 * noise(x / 8.3, z / 8.3) - 0.28 * Math.exp(-(wd * wd) / 3.2));
       const k = idx * 4;
       const ragged = noise(x * 0.9, z * 0.9) * 0.35 + noise(x * 0.23, z * 0.23) * 0.5;
       land[k] = Math.round(255 * (1 - sstep(0.75, 1.9, wd + ragged)));
