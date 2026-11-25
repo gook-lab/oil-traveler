@@ -358,6 +358,8 @@ window.lab = {
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
+  /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
+  placeCover: travel ? place.cover ?? null : null,
   /** the figure's dabs are shown while the view is third person (first < 0.5); for the shot checks */
   figureShown: () => ({ first, shown: figure.dabs.visible, man: man.object.visible }),
   clearance: (x, z) => clearance(bld?.plans ?? [], x, z),

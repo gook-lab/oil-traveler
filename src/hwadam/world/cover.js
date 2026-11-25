@@ -130,6 +130,8 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const out = new Uint8Array(N * N);
   // the building outlines and the heritage points (T3), kept for buildings.js: metres from the centre
   const buildings = [], heritage = [], heritageKinds = [], heritageNames = [], roads = [];
+  // T4 (streets · bridges): the walkable lines (footways, pedestrian streets, steps) and every poi point of the square
+  const paths = [], pois = [];
   const m0 = mPerDegLon(lat);
   const radius = NEAR_M / 2 + 50;
   const a = tileXY(lat + radius / M_LAT, lon - radius / m0, Z), b = tileXY(lat - radius / M_LAT, lon + radius / m0, Z);
@@ -184,6 +186,10 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
       const feat = P.feature(f);
       const p = feat.properties;
       if (feat.type !== 1) continue;
+      {
+        const g = feat.loadGeometry()[0][0], m = toMetres(x, y, n, P.extent, g.x, g.y, lat, lon, m0);
+        if (g.x >= 0 && g.y >= 0 && g.x < P.extent && g.y < P.extent && Math.abs(m.x) < radius && Math.abs(m.z) < radius) pois.push({ x: m.x, z: m.z, cls: p.class ?? null, sub: p.subclass ?? null, name: p.name_ko || p.name || '' });
+      }
       // a beach point (the sand of a named beach, T2)
       if (isBeachPoi(p)) { const g = feat.loadGeometry()[0][0]; beaches.push(toNode(x, y, n, P.extent, g.x, g.y, lat, lon, m0)); }
       const heritagePoint = HERITAGE_POI.has(p.class) || (p.class === 'place_of_worship' && p.subclass === 'buddhist');
@@ -195,13 +201,19 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
       heritageKinds.push(p.class === 'castle' ? (/궁/.test(p.name_ko || p.name || '') ? 'palace' : 'castle') : 'buddhist temple');
       heritageNames.push(p.name_ko || p.name || p.name_en || '');
     }
-    // the roads (the lines of the transportation layer, with a width by class): paved ground (paved.js)
+    // the roads (the lines of the transportation layer, with a width by class): paved ground (paved.js). A tunnel is not
+    // on the ground (it painted asphalt over parks and blocks); a bridge is kept with its flag and layer for bridges (T4)
     const T = vt.layers.transportation;
     for (let f = 0; T && f < T.length; f++) {
-      const feat = T.feature(f);
-      const w = ROAD_WIDTH[feat.properties.class];
-      if (feat.type !== 2 || !w) continue;
-      for (const line of feat.loadGeometry()) roads.push({ w, pts: line.map((q) => { const m = toMetres(x, y, n, T.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; }) });
+      const feat = T.feature(f), p = feat.properties;
+      if (feat.type !== 2 || p.brunnel === 'tunnel') continue;
+      const w = ROAD_WIDTH[p.class], walk = p.class === 'path' && WALK_SUB.has(p.subclass);
+      if (!w && !walk) continue;
+      for (const line of feat.loadGeometry()) {
+        const pts = line.map((q) => { const m = toMetres(x, y, n, T.extent, q.x, q.y, lat, lon, m0); return [m.x, m.z]; });
+        if (w) roads.push({ w, pts, cls: p.class, brunnel: p.brunnel ?? null, layer: p.layer ?? 0, oneway: !!p.oneway, ramp: !!p.ramp });
+        else paths.push({ pts, sub: p.subclass, brunnel: p.brunnel ?? null, layer: p.layer ?? 0 });
+      }
     }
     done++;
     onProgress(0.1 + (0.8 * done) / tiles.length, 'cover');
@@ -277,11 +289,13 @@ export async function fetchCover({ lat, lon, near, basalt = false, onProgress = 
   const dep = new Uint8Array(N * N);
   for (let k = 0; k < N * N; k++) dep[k] = Math.round((Math.min(12, Math.max(0, -near[k])) / 12) * 255);
   // natural: the near square before the town step lowered it (place-check compares the terrain port on it)
-  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, town, natural };
+  return { grid: out, depth: dep, counts, reef, buildings, heritage, heritageKinds, heritageNames, roads, paths, pois, town, natural };
 }
 
 /** Points that mark a historic place for buildings.js: a castle, and a Buddhist temple (added below). Bus shelters and generic monuments are left out. */
 const HERITAGE_POI = new Set(['castle']);
+/** The path subclasses a walker uses in a town (T4: the crossings are footways that cut a road). */
+const WALK_SUB = new Set(['footway', 'pedestrian', 'steps', 'path', 'cycleway']);
 /** The width (m) of a road by its class, as the transportation layer names them; paths and tracks are not paved. */
 const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 10, service: 8, pedestrian: 10 };
 /** Signed area of a tile ring (tile units); the outer rings of a feature share its sign. */
