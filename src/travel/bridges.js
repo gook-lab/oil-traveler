@@ -15,6 +15,10 @@ export const DECK = {
   sidewalk: 2, pathW: 3, join: 3, railH: 1.1, depth: 1.4, depthBig: 2.4, pierEvery: 30, pierMin: 1.5, pierHalf: 0.8,
   // groundClear: the top never sinks under the ground of its own centre line (a bank rising under the approach buried the deck)
   groundClear: 0.05,
+  // climb: the steepest the top rises to clear the ground under it (0.3, 17 degrees). The ground under a span is the
+  // surface model's, which keeps the real bridge's own deck (water nodes at 11.8 m under a Hangang span, park ground
+  // 2.5 m higher in 2 m): the top followed it at 47 degrees and the walker stopped (bridges-6)
+  climb: 0.3,
   slabHalf: 0.3, railCols: 2, lampEvery: 36, lampH: 5,
 };
 const COLOR = {
@@ -163,9 +167,14 @@ function deckOf(line, ground) {
   const hw = line.road ? line.w / 2 + DECK.sidewalk : DECK.pathW / 2;
   const cover = xy.map(([x, z]) => coverAt(x, z));
   const wet = cover.some((c) => c === COVER.WATER);
-  const g = xy.map(([x, z]) => ground(x, z));
-  const gA = g[0], gB = g[n];
+  const g0 = xy.map(([x, z]) => ground(x, z));
+  const gA = g0[0], gB = g0[n];
   const step = L / n;
+  // the ground the top must clear: each point's ground, or a nearby higher one less the climb to it (a forward and a
+  // backward pass), so that the top never rises faster than the climb
+  const g = g0.slice();
+  for (let i = 1; i <= n; i++) g[i] = Math.max(g[i], g[i - 1] - DECK.climb * step);
+  for (let i = n - 1; i >= 0; i--) g[i] = Math.max(g[i], g[i + 1] - DECK.climb * step);
   const depth = wet && L > DECK.longM ? DECK.depthBig : DECK.depth;
   if (wet && L < DECK.shortM) {
     // a short span over water: a straight deck between the two bank heights. Its ends stand on the banks (no step, no lift
@@ -177,7 +186,7 @@ function deckOf(line, ground) {
       return Math.max(gA + ((gB - gA) * i) / n + Math.min(lift, DECK.ramp * s, DECK.ramp * (L - s)), g[i] + DECK.groundClear);
     });
     const plateau = Math.max(...y);
-    return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
+    return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2), groundAt0: g0 };
   }
   let plateau;
   if (wet) {
@@ -193,7 +202,13 @@ function deckOf(line, ground) {
     const s = i * step;
     return Math.max(Math.min(plateau, gA + DECK.ramp * s, gB + DECK.ramp * (L - s)), g[i] + DECK.groundClear);
   });
-  return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
+  return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2), groundAt0: g0 };
+}
+
+/** The point `len` metres on from a past b (the line from b through a, carried on). */
+function beyond(a, b, len) {
+  const L = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+  return [a[0] + ((a[0] - b[0]) / L) * len, a[1] + ((a[1] - b[1]) / L) * len];
 }
 
 /** The normal (horizontal, to the left of the line) and the tangent at sample i. */
@@ -353,7 +368,18 @@ export function createBridges(shared, cover, ground, { cap = 2500, near = null }
   const lines = bridgeLines(cover).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({ ...l, pts, cutA: edgeCut(pts[0]), cutB: edgeCut(pts[pts.length - 1]) })));
   const decks = [];
   for (const line of lines.sort((a, b) => b.w - a.w)) {
-    const d = deckOf(line, ground);
+    let d = deckOf(line, ground);
+    // an end that stands over its ground (the top climbed over a rise just inside it): the line is carried on onto the
+    // bank until the top comes down to the ground, so the walker steps onto it (bridges-6)
+    for (let k = 0; k < 3 && d; k++) {
+      const upA = !line.cutA && d.y[0] - d.groundAt0[0] > 0.25, upB = !line.cutB && d.y[d.n] - d.groundAt0[d.n] > 0.25;
+      if (!upA && !upB) break;
+      const pts = line.pts.slice();
+      if (upA) pts.unshift(beyond(pts[0], pts[1], (d.y[0] - d.groundAt0[0]) / DECK.climb + 2));
+      if (upB) pts.push(beyond(pts[pts.length - 1], pts[pts.length - 2], (d.y[d.n] - d.groundAt0[d.n]) / DECK.climb + 2));
+      line.pts = pts;
+      d = deckOf(line, ground);
+    }
     if (!d) continue;
     d.groundAt = d.xy.map(([x, z]) => ground(x, z));
     const mid = d.xy[d.n >> 1];

@@ -1,6 +1,7 @@
 // Walks every wet road deck of the place along its own polyline (both ways, from 6 m before its start), and reports where
 // he stops: the progress along the deck, his height, the deck top there, and the colliders his body touched most. A deck
-// the walk reaches the far end of counts as crossed. Edge-cut decks (the square's 240 m edge) are skipped.
+// the walk reaches the far end of counts as crossed. From an end cut by the square's 240 m edge, the walk starts on the
+// deck 4 m in (fromDeck).
 //   tools/with-gpu-lock.sh node tools/probe.mjs --query "scene=travel&place=37.5690,126.9850&clean" --eval "$(cat tools/bridges-walk.js)"
 // (needs `npm run build` first, and CHROME, see CLAUDE.md)
 const L = window.lab, P = L.player, base = L.input.read(1 / 60);
@@ -16,13 +17,14 @@ for (const d of L.bridgeDecks.filter((x) => x.road && x.wet)) {
   const nx = -tz0 / tl, nz = tx0 / tl;
   const endInfo = { y0: +d.y[0].toFixed(2), g0: +L.heightAt(p0[0], p0[1]).toFixed(2), gOut: +L.heightAt(p0[0] - tx0 / tl, p0[1] - tz0 / tl).toFixed(2), gSideL: +side(p0[0], p0[1], nx, nz).toFixed(2), gSideR: +side(p0[0], p0[1], -nx, -nz).toFixed(2) };
   for (const dir of [1, -1]) {
-    if ((dir > 0 && d.cutA) || (dir < 0 && d.cutB)) { out.push({ L: Math.round(Lt), dir, skipped: 'edge' }); continue; }
-    const startS = dir > 0 ? 0 : Lt;
+    // an end cut by the square's edge has no ground before it: that way starts on the deck, 4 m in from the cut
+    const fromDeck = (dir > 0 && d.cutA) || (dir < 0 && d.cutB);
+    const startS = dir > 0 ? (fromDeck ? 4 : 0) : (fromDeck ? Lt - 4 : Lt);
     const sp = at(d, cum, startS);
     const h = dir > 0 ? [tx0 / tl, tz0 / tl] : [-tx0 / tl, -tz0 / tl];
     // a point 6 m before the deck's start, on the outside of it
     const back = [sp[0] - h[0] * 6, sp[1] - h[1] * 6];
-    L.teleport(back[0], back[1], sp[0], sp[1]);
+    if (fromDeck) { const ahead = at(d, cum, dir > 0 ? startS + 2 : startS - 2); L.teleport(sp[0], sp[1], ahead[0], ahead[1]); } else L.teleport(back[0], back[1], sp[0], sp[1]);
     L.setInput(() => ({ ...base, move: { x: 0, y: 1 } }));
     let sMax = -Infinity, stuck = 0, far = false;
     const hits = new Map();
@@ -47,7 +49,7 @@ for (const d of L.bridgeDecks.filter((x) => x.road && x.wet)) {
     const stS = Math.max(0, sMax);
     const stP = at(d, cum, dir > 0 ? stS : Lt - stS);
     out.push({
-      L: Math.round(Lt), dir, road: d.road, layer: d.layer, wet: d.wet, plateau: d.plateau, gA: d.gA, gB: d.gB,
+      L: Math.round(Lt), dir, fromDeck, road: d.road, layer: d.layer, wet: d.wet, plateau: d.plateau, gA: d.gA, gB: d.gB,
       y0: endInfo.y0, startGround: +endInfo.g0, gOut: endInfo.gOut, gSide: [endInfo.gSideL, endInfo.gSideR],
       far, stuckAtM: +stS.toFixed(1), feetY: +P.feet.y.toFixed(2), deckTop: L.deckAt(stP[0], stP[1]) == null ? null : +L.deckAt(stP[0], stP[1]).toFixed(2), groundAtStuck: +L.heightAt(stP[0], stP[1]).toFixed(2),
       hits: [...hits.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3),

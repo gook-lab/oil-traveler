@@ -253,9 +253,12 @@ function resampleChain(f, raw, closed, every) {
 /**
  * Cuts the ground under each bridge's approach down to its ramp. A bridge piece is a line of pts (metres from the centre,
  * the node frame of cover.js) with a width w (roads) or a path. Only the ends that are not joined to another piece are
- * cut, and only the land (not water) within 30 m of such an end.
+ * cut, and only the land (not water) within 30 m of such an end. The town stream's ground (`field`) is its own: an end
+ * there (a map's bridge that stops on the promenade; bridges.js carries its deck on to the street) cuts nothing, and no
+ * node of it is cut (an end on the promenade cut the street behind the wall 1.3 m down).
  */
-export function cutBridgeApproaches(near, out, N, STEP, roads = [], paths = [], cfg = STREAM) {
+export function cutBridgeApproaches(near, out, N, STEP, roads = [], paths = [], field = null, cfg = STREAM) {
+  const ours = (k) => !!field && !Number.isNaN(field.bank[k]);
   const pieces = [];
   for (const r of roads) if (r.brunnel === 'bridge' && r.pts.length > 1) pieces.push({ pts: r.pts, hw: r.w / 2 + 2 });
   for (const p of paths) if (p.brunnel === 'bridge' && p.pts.length > 1) pieces.push({ pts: p.pts, hw: 1.5 });
@@ -269,6 +272,7 @@ export function cutBridgeApproaches(near, out, N, STEP, roads = [], paths = [], 
     const fromStart = e === pc.pts[0];
     const pts = fromStart ? pc.pts : pc.pts.slice().reverse();
     const ni = Math.round(e[0] / STEP + N / 2), nj = Math.round(N / 2 - e[1] / STEP);
+    if (ours(Math.min(N - 1, Math.max(0, nj)) * N + Math.min(N - 1, Math.max(0, ni)))) continue;
     const gA0 = nodeAt(near, N, ni, nj);
     if (!(gA0 > 0.5)) continue;
     const R = Math.ceil(30 / STEP) + Math.ceil(pc.hw / STEP) + 1;
@@ -276,7 +280,7 @@ export function cutBridgeApproaches(near, out, N, STEP, roads = [], paths = [], 
       const i = ni + di, j = nj + dj;
       if (i < 0 || j < 0 || i >= N || j >= N) continue;
       const k = j * N + i;
-      if (out[k] === COVER.WATER) continue;
+      if (out[k] === COVER.WATER || ours(k)) continue;
       const x = (i - N / 2) * STEP, z = -(j - N / 2) * STEP;
       const { dist, s } = along(pts, x, z);
       if (dist > pc.hw || s > 30) continue;
@@ -285,6 +289,55 @@ export function cutBridgeApproaches(near, out, N, STEP, roads = [], paths = [], 
     }
   }
   return { cut };
+}
+
+/**
+ * The ground under a bridge is the ground beside it. The surface model keeps the real bridge's own deck as ground (water
+ * nodes 11.8 m high under a Hangang span, park ground 2.5 m higher in 2 m under a footway), and the deck that stands on
+ * it climbed it at 47 degrees, with the ground poking through its top. Each node within a bridge's footprint (its width
+ * and 1 m) comes down to the median of the nodes of its own kind (water or land) just outside the footprints, the nearest
+ * ring that has three of them, out to 16 m. It is only lowered, never raised. The town stream's ground (`field`, from
+ * carveTownStream) is its own: its nodes are neither lowered nor read.
+ */
+export function clearUnderBridges(near, out, N, STEP, roads = [], paths = [], field = null) {
+  const ours = (k) => !!field && !Number.isNaN(field.bank[k]);
+  const pieces = [];
+  for (const r of roads) if (r.brunnel === 'bridge' && r.pts.length > 1) pieces.push({ pts: r.pts, hw: r.w / 2 + 3 });
+  for (const p of paths) if (p.brunnel === 'bridge' && p.pts.length > 1) pieces.push({ pts: p.pts, hw: 2.5 });
+  const foot = new Uint8Array(N * N);
+  for (const pc of pieces) {
+    const xs = pc.pts.map((q) => q[0]), zs = pc.pts.map((q) => q[1]);
+    const i0 = Math.max(0, Math.floor((Math.min(...xs) - pc.hw) / STEP + N / 2)), i1 = Math.min(N - 1, Math.ceil((Math.max(...xs) + pc.hw) / STEP + N / 2));
+    const j0 = Math.max(0, Math.floor(N / 2 - (Math.max(...zs) + pc.hw) / STEP)), j1 = Math.min(N - 1, Math.ceil(N / 2 - (Math.min(...zs) - pc.hw) / STEP));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const k = j * N + i;
+      if (!foot[k] && along(pc.pts, (i - N / 2) * STEP, -(j - N / 2) * STEP).dist <= pc.hw) foot[k] = 1;
+    }
+  }
+  const R = Math.round(16 / STEP);
+  const next = near.slice();
+  let lowered = 0;
+  for (let k = 0; k < N * N; k++) {
+    if (!foot[k] || ours(k)) continue;
+    const i = k % N, j = (k - i) / N, wet = out[k] === COVER.WATER;
+    for (let r = 1; r <= R; r++) {
+      const vals = [];
+      for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+        if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+        const ii = i + di, jj = j + dj;
+        if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
+        const q = jj * N + ii;
+        if (!foot[q] && !ours(q) && (out[q] === COVER.WATER) === wet) vals.push(near[q]);
+      }
+      if (vals.length < 3) continue;
+      vals.sort((a, b) => a - b);
+      const m = vals[vals.length >> 1];
+      if (m < next[k]) { next[k] = m; lowered++; }
+      break;
+    }
+  }
+  near.set(next);
+  return { footprint: foot.reduce((s, v) => s + v, 0), lowered };
 }
 
 function nodeAt(near, N, i, j) {
