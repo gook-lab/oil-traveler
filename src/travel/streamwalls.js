@@ -70,7 +70,7 @@ export function createStreamWalls(shared, cover, ground, { keepOut = () => false
         const face = {
           P00: [A[0], yAt(0, v0), A[1]], P10: [B[0], yAt(1, v0), B[1]], P01: [A[0], yAt(0, v1), A[1]], P11: [B[0], yAt(1, v1), B[1]],
           n: nW, cell: [WALL.block, WALL.course], breaks: { u, v: [0, 1] },
-          col: (uu, vv, r) => tone(mix(COLOR.granite[0], COLOR.granite[1], fract(Math.sin(seed + Math.floor(uu * u.length) * 12.9898) * 43758.5)), r),
+          col: (uu, vv, r) => tone(mix(COLOR.granite[0], COLOR.granite[1], fract(Math.sin(seed + u.findIndex((b) => b > uu) * 12.9898) * 43758.5)), r),
         };
         // the joints: a dark stroke along the course's bed and one up each block's end (near the start only)
         if (near1) {
@@ -177,12 +177,8 @@ function pickStairs(c, cum, keepOut) {
   }
   // then one every stairEvery metres where the gap between stairs is longer
   for (let s = 15; s < Lc; s += 1) {
-    const last = chosen.filter((o) => o <= s).sort((a, b) => b - a)[0] ?? -Infinity;
-    const next = chosen.filter((o) => o > s).sort((a, b) => a - b)[0] ?? Infinity;
-    if (s - last >= WALL.stairEvery || (last === -Infinity && s >= 15)) {
-      if (next - s < WALL.stairGap) continue;
-      if (fits(s) && free(s)) { chosen.push(s); s += WALL.stairGap; }
-    }
+    const last = Math.max(-Infinity, ...chosen.filter((o) => o <= s));
+    if (s - last >= WALL.stairEvery && fits(s) && free(s)) chosen.push(s);
   }
   return chosen.sort((a, b) => a - b);
 }
