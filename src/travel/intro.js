@@ -15,9 +15,15 @@ const SKIP = new URLSearchParams(location.search).get('intro') === 'skip';
 const seen = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
 const remember = () => { try { localStorage.setItem(KEY, '1'); } catch { /* blocked: the guide shows again next time */ } };
 
+// the cards' pictures, fetched and decoded once while the first screen shows; each card puts its own element in, so a
+// card never shows an empty frame while its picture decodes (r3: card 3 was caught blank)
+let cardArt = null;
+const preloadCards = () => (cardArt ??= CARDS.map((c) => { const im = new Image(); im.alt = ''; im.decoding = 'async'; im.src = c.img; im.decode?.().catch(() => {}); return im; }));
+
 /** Runs at a first visit with no place named: the first screen, then the guide. Resolves when the viewer goes on to the map. */
 export function runFirstVisit() {
   if (seen() || SKIP) return Promise.resolve();
+  preloadCards();
   return new Promise((done) => {
     const el = frame('intro-first');
     el.innerHTML = `
@@ -57,7 +63,7 @@ export function showGuide({ onDone } = {}) {
     const last = at === CARDS.length - 1;
     el.innerHTML = `
       <article class="intro-card">
-        <figure><img src="${c.img}" alt="" decoding="async" /></figure>
+        <figure></figure>
         <div class="intro-side">
           <div class="intro-text"><h2>${c.title}</h2><p>${c.body}</p></div>
           <div class="intro-foot">
@@ -67,6 +73,7 @@ export function showGuide({ onDone } = {}) {
           </div>
         </div>
       </article>`;
+    el.querySelector('.intro-card figure').append(preloadCards()[at]);
     el.querySelector('.intro-skip').addEventListener('click', finish);
     el.querySelector('.intro-next').addEventListener('click', next);
     el.querySelector('.intro-next').focus({ preventScroll: true });

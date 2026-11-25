@@ -72,13 +72,16 @@ for (const size of SIZES) {
 
   await page.click('.intro-go');
   await page.waitForSelector('.intro-guide .intro-card', { timeout: 10000 });
-  await page.waitForFunction(() => document.querySelector('.intro-card img')?.complete, null, { timeout: 10000 }).catch(() => failures.push(`${size.name}: card 1 picture did not load`));
+  await page.waitForFunction(() => { const im = document.querySelector('.intro-card img'); return im?.complete && im.naturalWidth > 0; }, null, { timeout: 10000 }).catch(() => failures.push(`${size.name}: card 1 picture did not load`));
+  await page.evaluate(() => document.querySelector('.intro-card img')?.decode?.().catch(() => {}));
   await shot(page, '2-card1', size);
   failures.push(...(await fits(page, 'card1')).map((s) => `${size.name} ${s}`));
   for (let i = 2; i <= 4; i++) {
     await page.click('.intro-next');
     await page.waitForFunction((n) => document.querySelector('.intro-dots')?.getAttribute('aria-label')?.startsWith(`${n} /`), i, { timeout: 5000 }).catch(() => failures.push(`${size.name}: card ${i} did not show`));
-    await page.waitForFunction(() => document.querySelector('.intro-card img')?.complete, null, { timeout: 10000 }).catch(() => {});
+    // a card's picture must be there and decoded (r3: card 3 was shot as an empty frame)
+    await page.waitForFunction(() => { const im = document.querySelector('.intro-card img'); return im?.complete && im.naturalWidth > 0; }, null, { timeout: 10000 }).catch(() => failures.push(`${size.name}: card ${i} picture did not load`));
+    await page.evaluate(() => document.querySelector('.intro-card img')?.decode?.().catch(() => {}));
     if (i === 3) await shot(page, '3-card3', size);
     failures.push(...(await fits(page, `card${i}`)).map((s) => `${size.name} ${s}`));
   }
