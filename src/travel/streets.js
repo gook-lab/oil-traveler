@@ -376,8 +376,9 @@ export function createStreets(shared, cover, ground, { cap = CAP } = {}) {
       const dd = Math.hypot(s.a[0] + (s.b[0] - s.a[0]) * t - x, s.a[1] + (s.b[1] - s.a[1]) * t - z);
       if (dd < bd) { bd = dd; best = s; }
     }
-    // a shelter stands on the footway: its 2.9 m frame must clear the carriageway's half width and a kerb
-    if (best && bd < best.w / 2 + 1.6) continue;
+    // a shelter stands beyond the kerb: 3 m or more from the carriageway's centre line
+    if (best && bd < best.w / 2 + 3) continue;
+    if ([[0, 0], [1.6, 0], [-1.6, 0], [0, 1.6], [0, -1.6]].some(([dx, dz]) => coverAt(x + dx, z + dz) === COVER.ROAD)) continue;
     const yaw = best ? Math.atan2(-best.d[1], best.d[0]) : 0;
     const base = ground(x, z);
     const X = [Math.cos(yaw), 0, -Math.sin(yaw)], Zv = [Math.sin(yaw), 0, Math.cos(yaw)];
