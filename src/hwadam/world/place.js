@@ -3,7 +3,16 @@
 // Either way the result has the same shape: { source, name, near, horizon, way, meta }.
 import { Terrain, PlaceError, RUNTIME_ZOOMS, RUNTIME_BANDS, RUNTIME_BAND_ZOOMS, tileUrl, decodeTerrarium, bakeNear, bakeHorizon, prefetchSkyline, findWay, waterShare, pickVantage, bakeMidground, NEAR_M, NEAR_STEP, NEAR_ZOOM, BANDS } from './bake.js';
 import { loadHorizon } from './horizon.js';
-import { planBuildings, clearGrid, clearance } from '../../travel/buildings.js';
+import { planBuildings, clearGrid, clearance, SHOP_POI } from '../../travel/buildings.js';
+
+/**
+ * A town's character and the street its start stands on (T4 round 5). flats: apartment blocks (flatH m or taller on
+ * residential land) within 250 m of the pin; the start's street has them within flatReach m of its line. lanes: shops
+ * (SHOP_POI) within 250 m and a median height of lowH m or under; the start's street has them within shopReach m of its
+ * edges, and buildings within `walled` m of both its edges. Measured: Banpo 29 blocks; Hongdae 476 shops at 14.6 m, Myeongdong 702 at 14.6 m; Gangnam 291 at 29 m, Sejongno
+ * 94 at 11.2 m (both keep the widest road).
+ */
+const TOWN_CHARACTER = { flatH: 18, flats: 12, flatReach: 45, shops: 200, lowH: 16, shopReach: 12, walled: 6 };
 import { fetchCover, fetchFarOutlines, chooseGaze, frameNear, ridgeNear, ridgeDeg, sceneGround, occludeShare, laneLayers, COVER } from './cover.js';
 /** The least occlusion within 150 m over 30 bearings from (x, z): a start with a clear bearing has a low value. */
 const minOcclusion = (ground, x, z) => {
@@ -168,9 +177,38 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
     const plansIn = plansAll.filter((b) => Math.hypot(b.c[0], b.c[1]) < 320);
     const free = (x, z, d) => { const c = clearance(plansIn, x, z); return !c.inBuilding && c.d >= d; };
     const run = (x, z, ux, uz) => { let t = 4; while (t <= 120 && free(x + ux * t, z + uz * t, 2)) t += 4; return t - 4; };
+    // the town's character (T4 round 5), from the 250 m round the pin, and the street that shows it: a town of apartment
+    // blocks starts along the blocks, a low town of shops in a narrow street lined with them; any other town on its
+    // widest clear road, as before. (Banpo started between offices and read as an office district; Hongdae on a wide road
+    // and read as a broad crossing, not its lanes)
+    const plans250 = plansIn.filter((b) => !b.trad && !b.wall && Math.hypot(b.c[0], b.c[1]) < 250);
+    const luAt = (x, z) => cover.landuse?.[Math.round(N / 2 - z / NEAR_STEP) * N + Math.round(x / NEAR_STEP + N / 2)] ?? 0;
+    const flats = plans250.filter((b) => b.h >= TOWN_CHARACTER.flatH && luAt(b.c[0], b.c[1]) === 1);
+    const shops = (cover.pois ?? []).filter((q) => SHOP_POI.has(q.cls));
+    const hs = plans250.map((b) => b.h).sort((a, b) => a - b);
+    const character = flats.length >= TOWN_CHARACTER.flats ? 'flats'
+      : shops.filter((q) => Math.hypot(q.x, q.z) < 250).length >= TOWN_CHARACTER.shops && hs.length && hs[hs.length >> 1] <= TOWN_CHARACTER.lowH ? 'lanes' : null;
+    // what lines the street ahead of (x, z) along (ux, uz): the blocks within FRONT of its line, or the shops on its edges
+    const front = (x, z, ux, uz, w) => {
+      const along = (px, pz) => (px - x) * ux + (pz - z) * uz, across = (px, pz) => Math.abs(-(px - x) * uz + (pz - z) * ux);
+      if (character === 'flats') return flats.filter((b) => along(b.c[0], b.c[1]) > -10 && along(b.c[0], b.c[1]) < 80 && across(b.c[0], b.c[1]) < w / 2 + TOWN_CHARACTER.flatReach).length;
+      return shops.filter((q) => along(q.x, q.z) > 0 && along(q.x, q.z) < 60 && across(q.x, q.z) < w / 2 + TOWN_CHARACTER.shopReach).length;
+    };
+    // a lane's walls: the share of the first 50 m (every 5 m) with a building within WALLED m of the road's edge on both
+    // sides (Hongdae's shop street with the most shops opened on one side onto a 50 m lot, and read as a square)
+    const walled = (x, z, ux, uz, w) => {
+      let n = 0, k = 0;
+      for (let t = 5; t <= 50; t += 5, k++) {
+        const cx = x + ux * t, cz = z + uz * t, o = w / 2 + TOWN_CHARACTER.walled;
+        const side = (sg) => { const c = clearance(plansIn, cx - uz * o * sg, cz + ux * o * sg); return c.inBuilding || c.d < TOWN_CHARACTER.walled; };
+        if (side(1) && side(-1)) n++;
+      }
+      return n / k;
+    };
+    stages.character = character;
     let best = null;
     for (const r of cover.roads) {
-      if (r.w < 8) continue;
+      if (r.w < (character === 'lanes' ? 6 : 8)) continue;
       for (let s = 0; s + 1 < r.pts.length; s++) {
         const [ax, az] = r.pts[s], [bx, bz] = r.pts[s + 1];
         const L = Math.hypot(bx - ax, bz - az);
@@ -185,15 +223,20 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
           // the camera of the third person stands 6.4 m behind him: the road must be clear 8 m back as well
           const dir = fwd >= back ? 1 : -1, ahead = Math.max(fwd, back), behind = Math.min(fwd, back);
           if (behind < 8) continue;
-          const score = ahead + 2 * r.w - 0.3 * d0;
-          if (!best || score > best.score) best = { x, z, h: near[j * N + i], score, ux: ux * dir, uz: uz * dir, ahead };
+          const f = character ? front(x, z, ux * dir, uz * dir, r.w) : 0;
+          // a lane is short and seldom straight: past 50 m its run counts for nothing, and the narrower the better (a
+          // straight wide road clear for 120 m outscored every lane of Hongdae)
+          const score = character === 'lanes'
+            ? Math.min(ahead, 50) - 0.3 * d0 + 8 * Math.min(10, f) - 3 * r.w + 80 * walled(x, z, ux * dir, uz * dir, r.w)
+            : ahead - 0.3 * d0 + 2 * r.w + (character === 'flats' ? 25 * Math.min(4, f) : 0);
+          if (!best || score > best.score) best = { x, z, h: near[j * N + i], score, ux: ux * dir, uz: uz * dir, ahead, front: f };
         }
       }
     }
     if (best) {
       vantage = { x: best.x, z: best.z, h: best.h, score: best.score };
       townGaze = (Math.atan2(best.ux, -best.uz) * 180) / Math.PI;
-      stages.town = { x: +best.x.toFixed(1), z: +best.z.toFixed(1), ahead: best.ahead, gaze: +townGaze.toFixed(1) };
+      stages.town = { x: +best.x.toFixed(1), z: +best.z.toFixed(1), ahead: best.ahead, gaze: +townGaze.toFixed(1), character, front: best.front };
     }
   }
   // a mountain: of the best eight starts, the one with a bearing that shows two ridge layers in its lane and has under

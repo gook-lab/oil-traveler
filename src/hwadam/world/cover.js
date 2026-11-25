@@ -361,8 +361,13 @@ export function isUrban(g) {
 const HERITAGE_POI = new Set(['castle']);
 /** The path subclasses a walker uses in a town (T4: the crossings are footways that cut a road). */
 const WALK_SUB = new Set(['footway', 'pedestrian', 'steps', 'path', 'cycleway']);
-/** The width (m) of a road by its class, as the transportation layer names them; paths and tracks are not paved. */
-const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 10, service: 8, pedestrian: 10 };
+/**
+ * The width (m) of a road's carriageway by its class, as the transportation layer names them; paths and tracks are not
+ * paved. A minor road and a service road were widened to 10 and 8 m (0f4428f) so their asphalt covered the footways too;
+ * the footways are paved on their own now (paved.js verges, streets.js kerbs), and at 10 m every lane of Hongdae read as
+ * a broad street (T4 round 5), so they are 7 and 5 m again, near Seoul's own
+ */
+const ROAD_WIDTH = { motorway: 16, trunk: 14, primary: 12, secondary: 10, tertiary: 8, minor: 7, service: 5, pedestrian: 10 };
 /** Signed area of a tile ring (tile units); the outer rings of a feature share its sign. */
 function ringArea(r) {
   let a = 0;

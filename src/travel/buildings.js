@@ -70,7 +70,7 @@ const USE_WALLS = {
 /** A glass tower's tints, low and high (it takes more of the sky up its face): blue, green-grey, bronze, silver. */
 export const GLASS = [[[0.4, 0.5, 0.58], [0.66, 0.74, 0.8]], [[0.4, 0.5, 0.48], [0.64, 0.72, 0.7]], [[0.46, 0.41, 0.35], [0.7, 0.65, 0.57]], [[0.54, 0.57, 0.6], [0.78, 0.8, 0.82]]];
 /** The poi classes of a shop on a street's ground floor (상가). */
-const SHOP_POI = new Set(['restaurant', 'cafe', 'shop', 'fast_food', 'bar', 'beer', 'pub', 'bakery', 'hairdresser', 'beauty', 'clothing_store', 'bank', 'pharmacy', 'chemist', 'grocery', 'supermarket', 'convenience', 'ice_cream', 'alcohol_shop', 'butcher', 'deli', 'confectionery', 'laundry', 'dentist', 'doctors', 'optician', 'mobile_phone', 'cosmetics', 'perfumery', 'jewelry', 'books', 'stationery', 'gift', 'shoes', 'bag', 'florist', 'toys', 'music', 'furniture', 'hardware', 'electronics', 'sports', 'variety_store', 'department_store', 'mall', 'karaoke', 'nightclub', 'tobacco']);
+export const SHOP_POI = new Set(['restaurant', 'cafe', 'shop', 'fast_food', 'bar', 'beer', 'pub', 'bakery', 'hairdresser', 'beauty', 'clothing_store', 'bank', 'pharmacy', 'chemist', 'grocery', 'supermarket', 'convenience', 'ice_cream', 'alcohol_shop', 'butcher', 'deli', 'confectionery', 'laundry', 'dentist', 'doctors', 'optician', 'mobile_phone', 'cosmetics', 'perfumery', 'jewelry', 'books', 'stationery', 'gift', 'shoes', 'bag', 'florist', 'toys', 'music', 'furniture', 'hardware', 'electronics', 'sports', 'variety_store', 'department_store', 'mall', 'karaoke', 'nightclub', 'tobacco']);
 /** A modern block within this distance (m) of a palace point is quiet: no shopfront behind a throne hall (r70). */
 const QUIET_M = 150;
 
@@ -512,10 +512,10 @@ function surfacesOf(p, ground) {
             return facadeColour(look, wallC, fac, x, yb + fy - y0, r, !(slab && Math.abs((ex * deepAxis[0] + ez * deepAxis[1]) / L) > 0.9), p.c, tv);
           },
           // a tower's glass and stone take no touches: the solid's own strokes paint it (r71: dark touches on the mullions
-          // read as black blots; T4 round 1: pale touches on the curtain wall read as stickers), nor do an apartment's
-          // balconies or an office's window rows (T4 round 4: the dense touches near the start smeared their bands into
-          // grey and black blots)
-          noDab: use === 'tower' || use === 'apartment' || use === 'office',
+          // read as black blots; T4 round 1: pale touches on the curtain wall read as stickers), nor do the upper floors
+          // of an apartment, an office or a shop block (T4 rounds 4 and 5: the dense touches near the start smeared their
+          // window rows into grey and black blots, a camouflage). A house keeps its touches
+          noDab: use !== 'house',
           jit: true,
         });
         // the sign boards up a shop block (T4): on the second and third floors (signStorey), boards of one to three bays,
