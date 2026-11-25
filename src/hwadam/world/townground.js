@@ -11,7 +11,7 @@
  * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number, force?: Uint8Array }} [opt]
  * @returns {{ lowered: number, islands: number, meanDrop: number, maxDrop: number, mask: Uint8Array }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0, 1, 5], islandR = 30, islandShare = 0.5, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0, 1, 5], islandR = 30, islandShare = 0.5, water = 9, waterShare = 0.3, waterPct = 0.05, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
   // the nodes of a palace court (force) take the same lowering whatever their class (a court is bare ground, not a town)
@@ -29,6 +29,18 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
     const n = sat[j1 * (N + 1) + i1] - sat[j0 * (N + 1) + i1] - sat[j1 * (N + 1) + i0] + sat[j0 * (N + 1) + i0];
     if (n >= islandShare * (i1 - i0) * (j1 - j0)) { isUrban[k] = 2; islands++; }
   }
+  // the water of a town (T4): a stream between built-up banks (30% or more of the nodes within 30 m) whose DSM height is
+  // the roofs or the decks over it. At 청계천 the water nodes stood at 22 to 32 m between banks of 15 to 17 m and drew
+  // as a cyan plateau with cliffs (r71). Its ground drops to the 5th percentile within 60 m (water is the lowest surface
+  // there) and it is left out of the 20 m blur, which would fill a sunken channel up to its banks
+  let waters = 0;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = j * N + i;
+    if (isUrban[k] || cls[k] !== water || near[k] <= 0.5) continue;
+    const i0 = Math.max(0, i - ri), i1 = Math.min(N, i + ri + 1), j0 = Math.max(0, j - ri), j1 = Math.min(N, j + ri + 1);
+    const n = sat[j1 * (N + 1) + i1] - sat[j0 * (N + 1) + i1] - sat[j1 * (N + 1) + i0] + sat[j0 * (N + 1) + i0];
+    if (n >= waterShare * (i1 - i0) * (j1 - j0)) { isUrban[k] = 3; waters++; }
+  }
   const target = new Float32Array(N * N).fill(NaN);
   const vals = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -44,7 +56,7 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
     }
     if (vals.length < 4) continue;
     vals.sort((a, b) => a - b);
-    const p = vals[Math.floor(pct * (vals.length - 1))];
+    const p = vals[Math.floor((isUrban[k] === 3 ? waterPct : pct) * (vals.length - 1))];
     if (p < near[k]) target[k] = p;
   }
   // apply, then smooth the dropped nodes with their 3 by 3 neighbours (from a copy, so the order does not matter)
@@ -66,6 +78,7 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
       if (ii < 0 || jj < 0 || ii >= N || jj >= N) continue;
       const q = jj * N + ii;
       if (before[q] <= 0.5) continue;
+      if ((isUrban[k] === 3) !== (isUrban[q] === 3)) continue; // water with water, ground with ground
       s += applied[q]; n++;
     }
     if (n) near[k] = s / n;
@@ -75,12 +88,13 @@ export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0
   // buildings (명동, 2026-11-25). The slope of the town as a whole stays
   if (blurR > 0) {
     const r = Math.round(blurR / STEP), w = new Float32Array(N * N), v = new Float32Array(N * N);
-    for (let k = 0; k < N * N; k++) if (isUrban[k] && before[k] > 0.5) { w[k] = 1; v[k] = near[k]; }
+    const blurred = (k) => (isUrban[k] === 1 || isUrban[k] === 2) && before[k] > 0.5;
+    for (let k = 0; k < N * N; k++) if (blurred(k)) { w[k] = 1; v[k] = near[k]; }
     for (let pass = 0; pass < 2; pass++) { boxBlur(v, N, r); boxBlur(w, N, r); }
-    for (let k = 0; k < N * N; k++) if (isUrban[k] && before[k] > 0.5 && w[k] > 1e-6) near[k] = v[k] / w[k];
+    for (let k = 0; k < N * N; k++) if (blurred(k) && w[k] > 1e-6) near[k] = v[k] / w[k];
   }
   // mask: 1 a built-up or court node, 2 an island node (cover.js judges no rock on either)
-  return { lowered, islands, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2), mask: isUrban };
+  return { lowered, islands, waters, meanDrop: lowered ? +(drop / lowered).toFixed(2) : 0, maxDrop: +maxDrop.toFixed(2), mask: isUrban };
 }
 
 /** A box blur of radius r (nodes) along the rows and then the columns, in place (sums, so the cost is per node). */

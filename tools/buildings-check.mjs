@@ -24,6 +24,7 @@ const ALL = [
   { name: 'hongdae', lat: 37.5563, lon: 126.9236, label: '홍대' },
   { name: 'gangnam', lat: 37.4979, lon: 127.0276, label: '강남역' },
   { name: 'banpo', lat: 37.505, lon: 126.997, label: '반포 아파트' },
+  { name: 'cheonggye', lat: 37.569, lon: 126.985, label: '청계천' },
 ];
 const only = flag('only', '');
 const PLACES = ALL.filter((p) => !only || only.split(',').includes(p.name));
