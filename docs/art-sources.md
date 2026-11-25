@@ -37,10 +37,19 @@
 | 파일 | 원본 → 처리 | 크기 | 쓰는 곳 |
 | --- | --- | --- | --- |
 | `public/intro/main.jpg` | 1672 × 941 → 1600 × 900, JPEG q56 | 357 KB | 첫 화면 배경(`src/travel/intro.js`) |
-| `public/intro/card1.jpg` | 1536 × 1024 → 840 × 560, JPEG q56 | 146 KB | 가이드 카드 ①(지도로 고르기) |
-| `public/intro/card2.jpg` | 같음, q48 | 118 KB | 가이드 카드 ②(땅 · 숲 · 건물) |
+| `public/intro/card1.jpg` | 1536 × 1024 → 840 × 560, JPEG q56 | 140 KB | 가이드 카드 ①(지도로 고르기, 2차에서 다시 그림) |
+| `public/intro/card2.jpg` | 같음, q48 | 138 KB | 가이드 카드 ②(땅 · 숲 · 건물, 2차에서 다시 그림) |
 | `public/intro/card3.jpg` | 같음, q48 | 139 KB | 가이드 카드 ③(걷기 조작) |
 | `public/intro/card4.jpg` | 같음, q56 | 130 KB | 가이드 카드 ④(여행 팁) |
 
 - 확인: `main.jpg` 와 `card3.jpg` 는 직접 보았습니다(여행자 뒷모습 · 옷 색 · 글자 없음). `card1`, `card2`, `card4` 는 생성 직후 파일 크기와 치수만 확인했고, 그림 비평은 리드가 맡습니다.
 - 용량 기준(첫 화면 ≤ 400 KB, 카드 각 ≤ 150 KB)을 맞추려고 해상도를 낮추고 JPEG 품질을 낮췄습니다. 임파스토 결은 이 크기에서도 남습니다.
+
+### 비평 1라운드 고침 — 카드 ① · ② 다시 그림 (2026-11-25)
+
+- 이유: 카드 ① 의 붉은 타원이 얼룩이나 렌더 오류로 읽히고, 문구("지도를 누르라")에 맞는 지도가 그림에 없었습니다. 카드 ② 는 왼쪽 아래 굵은 주황 · 빨강 띠가 덜 칠한 것처럼 보였습니다.
+- 도구: Codex 이미지 생성(`codex exec --cd <작업 폴더> --sandbox workspace-write "<프롬프트>" -i <참고 1> -i <참고 2> < /dev/null`). 그림마다 한 번씩 돌렸습니다.
+- 참고 그림: `shots/intro/ref-moss-1400.jpg`, `shots/intro/ref-ridge-1400.jpg` (앞 묶음과 같음).
+- 프롬프트 전문: `shots/intro/prompt-card1-v2.txt`, `shots/intro/prompt-card2-v2.txt`. 요지는 다음과 같습니다. 카드 ① 은 나무 탁자 위에 놓인 유화 지도 한 장(강 · 밭 · 숲 · 마을), 그 언덕에 꽂힌 붉은 갈색 지도 핀 하나(얼룩이 아닌 뚜렷한 핀). 카드 ② 는 단풍 · 자작나무 사이의 흙길과 먼 곳의 기와 건물, 아래 모서리는 같은 결의 낙엽 길 · 풀밭으로 채우고 굵은 색 띠를 두지 않음. 두 그림 모두 글자 · 로고 · 서명 · 테두리 · 얼굴 · 손 없음.
+- 생성 원본(작업 폴더 안): `shots/intro/painted-valley-map.png`(카드 ①), `shots/intro/autumn-forest-hall-v2.png`(카드 ②). 복사본은 `shots/intro/raw/card1-v2-raw.png`, `shots/intro/raw/card2-v2-raw.png` 입니다. 1536 × 1024 원본을 840 × 560 으로 줄여 `public/intro/card1.jpg`(q56), `public/intro/card2.jpg`(q48) 로 썼습니다.
+- 확인: 두 원본 전체를 직접 보았습니다. 글자 · 로고는 보이지 않았고, 카드 ① 은 핀이 지도 위에 꽂힌 것으로 읽힙니다(그림만 보고 판단, 새 비평가 관문은 리드가 맡습니다). 카드 ② 는 아래 모서리의 색 띠가 없어졌습니다.
