@@ -161,7 +161,7 @@ export async function bakePlace({ lat, lon, zooms = RUNTIME_BAND_ZOOMS, bands = 
   // highest open node, and in a town that is an untagged lot the DSM stands up over the street (the street is paved,
   // which pickVantage leaves out)
   let townGaze = null;
-  const town = palaceGaze == null && !!grid && share(COVER.BUILT) + share(COVER.PAVED) >= 0.5;
+  const town = palaceGaze == null && !!grid && share(COVER.BUILT) + share(COVER.PAVED) + share(COVER.ROAD) >= 0.5;
   if (town && cover.roads?.length) {
     const plansIn = plansAll.filter((b) => Math.hypot(b.c[0], b.c[1]) < 320);
     const free = (x, z, d) => { const c = clearance(plansIn, x, z); return !c.inBuilding && c.d >= d; };

@@ -266,6 +266,9 @@ export function createLand(shared) {
         } else if (abs(cls - 10.0) < 0.5) {
           // paved ground (paved.js): the stone's own grey under the dabs, so no autumn red shows between the stones
           c = mix(vec3(0.52, 0.5, 0.47), vec3(0.66, 0.64, 0.6), strokeV) * (0.9 + 0.15 * sqn);
+        } else if (abs(cls - 12.0) < 0.5) {
+          // a town's road: asphalt under the dabs
+          c = mix(vec3(0.28, 0.28, 0.29), vec3(0.38, 0.38, 0.39), strokeV) * (0.9 + 0.15 * sqn);
         }
         outC = vec4(hazed(c, vWorld), 1.0);
       }`,

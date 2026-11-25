@@ -9,9 +9,9 @@ import { NEAR_M, NEAR_STEP, tileXY } from './bake.js';
 import { applyPaving } from './paved.js';
 import { lowerTown } from './townground.js';
 
-// PAVED (10): a town's paved ground (paved.js). BASALT (11): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
-export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10, BASALT: 11 };
-export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved', 'basalt'];
+// PAVED (10): a town's paved ground, ROAD (12): its roads, asphalt (paved.js). BASALT (11): the dark lava shore of Jeju, 6 to 12 m inland from the sea (a rule of its own, not rock: it is not a mountain)
+export const COVER = { NONE: 0, GRASS: 1, FARM: 2, WETLAND: 3, WOOD: 4, ROCK: 5, SAND: 6, ICE: 7, BUILT: 8, WATER: 9, PAVED: 10, BASALT: 11, ROAD: 12 };
+export const COVER_NAMES = ['none', 'grass', 'farm', 'wetland', 'wood', 'rock', 'sand', 'ice', 'built', 'water', 'paved', 'basalt', 'road'];
 /** Higher wins where two features overlap (water over everything, buildings over the land under them). */
 const LANDCOVER = { wood: COVER.WOOD, forest: COVER.WOOD, grass: COVER.GRASS, farmland: COVER.FARM, wetland: COVER.WETLAND, rock: COVER.ROCK, sand: COVER.SAND, ice: COVER.ICE };
 const LANDUSE = { residential: COVER.BUILT, commercial: COVER.BUILT, industrial: COVER.BUILT, retail: COVER.BUILT, school: COVER.BUILT, hospital: COVER.BUILT, park: COVER.GRASS, cemetery: COVER.GRASS, pitch: COVER.GRASS, garden: COVER.GRASS };
@@ -31,7 +31,7 @@ export function hasCover() { return grid !== null; }
 /** Share of the trees (not birch) drawn as conifers at this place; 0 for the baked walk. */
 export function coniferChance() { return conifer; }
 /** Classes where no tree stands: water, sand, rock and built-up ground. */
-export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED, COVER.BASALT]);
+export const NO_TREE = new Set([COVER.WATER, COVER.SAND, COVER.ROCK, COVER.BUILT, COVER.PAVED, COVER.BASALT, COVER.ROAD]);
 /** The class grid as a one-byte texture (node order of near.bin). With no place: a single NONE texel. */
 export function coverTexture() {
   // two bytes a node: the class (r) and the depth under the sea, 0 to 12 m (g)
@@ -67,7 +67,7 @@ bool wetCover(vec2 xz) {
   return false;
 }
 bool bareCover(float c) {
-  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5 || abs(c - 11.0) < 0.5;
+  return abs(c - 5.0) < 0.5 || abs(c - 6.0) < 0.5 || abs(c - 8.0) < 0.5 || abs(c - 9.0) < 0.5 || abs(c - 10.0) < 0.5 || abs(c - 11.0) < 0.5 || abs(c - 12.0) < 0.5;
 }
 `;
 /** Class at world (x, z), nearest node (x east, z south as in land.js). NONE when no place is set. */

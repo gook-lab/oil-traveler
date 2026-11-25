@@ -5,6 +5,8 @@
 // point. Only ground that is plain (none, grass, farm, wood) is paved, and sand inside a court; water, rock and built-up ground keep theirs.
 // The node layout is cover.js's (node (i, j) east (i - N/2) * STEP, north (j - N/2) * STEP).
 export const PAVED = 10;
+/** A road's own ground in a town (asphalt), so the street and the pavement differ (T3 round 7). */
+export const ROAD = 12;
 export const PAVING = { dense: 0.1, half: 15, courtM: 120, noneNear: 0.02 };
 const PLAIN = new Set([0, 1, 2, 4]); // none, grass, farm, wood
 
@@ -75,6 +77,8 @@ export function applyPaving(out, { buildings, heritage, roads, N, STEP }) {
   for (let k = 0; k < N * N; k++) {
     // a palace or temple court is stone even where the sea strip (sand) lies by its pond
     const sandCourt = out[k] === 6 && court[k] === 1;
+    // a road (outside a palace or temple court) is asphalt, over bare, green or built-up ground alike
+    if (road[k] && !bld[k] && !court[k] && (PLAIN.has(out[k]) || out[k] === 8)) { out[k] = ROAD; counts.road++; counts.asphalt = (counts.asphalt ?? 0) + 1; continue; }
     if (!PLAIN.has(out[k]) && !sandCourt) continue;
     hist[Math.min(9, Math.floor(densityAt(S, N, k, h) * 10))]++;
     if (bld[k]) continue;

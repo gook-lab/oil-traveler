@@ -1,5 +1,5 @@
 // The town ground (T3): the AWS Terrain heights are SRTM's surface model (DSM), so a town's roofs and trees are read as
-// ground, and the ground of a built-up node stands on them as a mound. For each built-up node (BUILT or PAVED) the ground
+// ground, and the ground of a built-up node stands on them as a mound. For each built-up node (BUILT, PAVED or ROAD) the ground
 // drops to the 15th percentile of the heights within 60 m (a sample every 8 m), where that is lower, and the dropped
 // nodes are then smoothed with their neighbours. (60 m, not 30: a dense block is roof all round within 30 m.) The near
 // square is changed in place, so the scene's ground, the
@@ -11,7 +11,7 @@
  * @param {{ urban?: number[], radius?: number, pct?: number, stride?: number, force?: Uint8Array }} [opt]
  * @returns {{ lowered: number, islands: number, meanDrop: number, maxDrop: number, mask: Uint8Array }}
  */
-export function lowerTown(near, cls, N, STEP, { urban = [8, 10], island = [0, 1, 5], islandR = 30, islandShare = 0.5, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
+export function lowerTown(near, cls, N, STEP, { urban = [8, 10, 12], island = [0, 1, 5], islandR = 30, islandShare = 0.5, radius = 60, pct = 0.15, stride = 4, blurR = 20, force = null } = {}) {
   const R = Math.round(radius / STEP), R2 = R * R;
   const isUrban = new Uint8Array(N * N);
   // the nodes of a palace court (force) take the same lowering whatever their class (a court is bare ground, not a town)
