@@ -9,11 +9,14 @@ import { COVER, coverAt } from '../hwadam/world/cover.js';
 
 export const DECK = {
   seg: 2, ramp: 0.12, wetLong: 8, wetShort: 4, longM: 200, layerLift: 4, landClear: 4.5, dryClear: 1.5,
-  sidewalk: 2, pathW: 3, join: 3, railH: 1.1, depth: 1.4, pierEvery: 30, pierMin: 1.5, pierHalf: 0.8,
-  slabHalf: 0.3, railCols: 2,
+  // a span over water shorter than shortM is a straight deck from one bank's height to the other's (shortLift above them)
+  shortM: 100, shortLift: 0.2,
+  sidewalk: 2, pathW: 3, join: 3, railH: 1.1, depth: 1.4, depthBig: 2.4, pierEvery: 30, pierMin: 1.5, pierHalf: 0.8,
+  slabHalf: 0.3, railCols: 2, lampEvery: 36, lampH: 5,
 };
 const COLOR = {
-  asphalt: [0.2, 0.2, 0.21], walk: [0.55, 0.54, 0.5], girder: [0.66, 0.64, 0.6], pier: [0.6, 0.58, 0.54], rail: [0.84, 0.85, 0.83],
+  asphalt: [0.34, 0.34, 0.35], walk: [0.74, 0.73, 0.7], girder: [0.56, 0.55, 0.52], pier: [0.6, 0.58, 0.54], rail: [0.84, 0.85, 0.83],
+  lamp: [0.96, 0.93, 0.8],
 };
 
 /** The half side (m) of the square the decks are kept in: inside the land map (common.js EXTENT 256), off its clamped edge. */
@@ -133,6 +136,14 @@ function deckOf(line, ground) {
   const wet = cover.some((c) => c === COVER.WATER);
   const g = xy.map(([x, z]) => ground(x, z));
   const gA = g[0], gB = g[n];
+  const step = L / n;
+  const depth = wet && L > DECK.longM ? DECK.depthBig : DECK.depth;
+  if (wet && L < DECK.shortM) {
+    // a short span over water: a straight deck between the two bank heights, no plateau and no water clearance (the banks stand above the water)
+    const y = xy.map((_, i) => gA + ((gB - gA) * i) / n + DECK.shortLift + DECK.layerLift * line.layer);
+    const plateau = Math.max(...y);
+    return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
+  }
   let plateau;
   if (wet) {
     const W = waterLevel(xy, ground);
@@ -141,14 +152,13 @@ function deckOf(line, ground) {
     plateau = Math.max(...g) + (line.layer >= 1 ? DECK.landClear + DECK.layerLift * (line.layer - 1) : DECK.dryClear);
   }
   plateau = Math.max(plateau, gA + 1, gB + 1);
-  const step = L / n;
   // the top only ramps from the two abutments and never follows the ground: a ground rise under a short span would
   // otherwise lift the deck into a wall
   const y = xy.map((_, i) => {
     const s = i * step;
     return Math.min(plateau, gA + DECK.ramp * s, gB + DECK.ramp * (L - s));
   });
-  return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
+  return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
 }
 
 /** The normal (horizontal, to the left of the line) and the tangent at sample i. */
@@ -170,26 +180,53 @@ function wallQuad(A, B, y0, y1, n, cell, col, extra = {}) {
 }
 
 /** Faces of one deck: the top bands, the girders, the rails, and the piers. Collected into `out` and `boxes`. */
+/** A wall face from sample point A to B (both [x, y, z] tops), `lo` to `hi` metres above each top, facing n. */
+function wallOf(A, B, lo, hi, n, cell, col) {
+  const up = (p, dy) => [p[0], p[1] + dy, p[2]];
+  return { P00: up(A, lo), P10: up(B, lo), P01: up(A, hi), P11: up(B, hi), n, cell, col };
+}
+
+/** A thin upright post at `off` from the centre line, `half` wide along the deck, rising from the top to `h`. */
+function postOf(d, i, off, half, h, n, col) {
+  const f = frameAt(d, i), c = at(d, i, off, 0);
+  const A = [c[0] - f.tx * half, c[1], c[2] - f.tz * half], B = [c[0] + f.tx * half, c[1], c[2] + f.tz * half];
+  return wallOf(A, B, 0, h, n, [1.5, 0.3], col);
+}
+
+/** Faces of one deck: the top bands, the girders, the rails, the lamps, and the piers. Collected into `out` and `boxes`. */
 function geometryOf(d, out, boxes) {
   const hw = d.hw, sw = d.road ? DECK.sidewalk : 0;
   const bands = sw ? [[-hw, -hw + sw, COLOR.walk], [-hw + sw, hw - sw, COLOR.asphalt], [hw - sw, hw, COLOR.walk]] : [[-hw, hw, COLOR.walk]];
-  const dyBase = 0;
+  // the asphalt and the walk take long strokes along the deck (rows), not round touches: a road reads as a road
+  const rowsOf = (base) => (base === COLOR.asphalt ? [0.3, 0.7] : [0.5]).map((v) => ({ v, across: 0.35, every: 3, along: 1.9, col: (u, vv, r) => shade(base, r) }));
   for (let i = 0; i < d.n; i++) {
-    const f0 = frameAt(d, i), f1 = frameAt(d, i + 1);
+    const f0 = frameAt(d, i);
     const nUp = norm(cross([f0.nx, 0, f0.nz], [f0.tx, (d.y[i + 1] - d.y[i]) / (d.L / d.n), f0.tz]));
     const up = nUp[1] < 0 ? nUp.map((v) => -v) : nUp;
     for (const [a0, a1, base] of bands) {
-      const q = (i0, off) => at(d, i0, off, dyBase);
-      out.push({ P00: q(i, a0), P10: q(i + 1, a0), P01: q(i, a1), P11: q(i + 1, a1), n: up, cell: [2, 1], col: (u, v, r) => shade(base, r) });
+      out.push({ P00: at(d, i, a0), P10: at(d, i + 1, a0), P01: at(d, i, a1), P11: at(d, i + 1, a1), n: up, cell: [2, 1], col: (u, v, r) => shade(base, r), rows: rowsOf(base) });
     }
     for (const side of [-1, 1]) {
       const off = side * hw;
       const nOut = [f0.nx * side, 0, f0.nz * side];
-      out.push(wallQuad(at(d, i, off, 0), at(d, i + 1, off, 0), d.y[i + 1] - DECK.depth, d.y[i] - DECK.depth, nOut, [2, 0.7], (u, v, r) => shade(COLOR.girder, r)));
+      out.push(wallOf(at(d, i, off), at(d, i + 1, off), -d.depth, 0, nOut, [2, 0.7], (u, v, r) => shade(COLOR.girder, r)));
       if (i % DECK.railCols === 0) {
         const j = Math.min(d.n, i + DECK.railCols);
         const ro = off - side * 0.1;
-        out.push(wallQuad(at(d, i, ro, 0), at(d, j, ro, 0), d.y[j], d.y[i] + DECK.railH, nOut, [1.5, 0.3], (u, v, r) => shade(COLOR.rail, r)));
+        // a rail is two bars (at the waist and the top) and a post every span, not a solid wall
+        out.push(wallOf(at(d, i, ro), at(d, j, ro), 0.5 - 0.03, 0.5 + 0.03, nOut, [2, 0.3], (u, v, r) => shade(COLOR.rail, r)));
+        out.push(wallOf(at(d, i, ro), at(d, j, ro), DECK.railH - 0.05, DECK.railH, nOut, [2, 0.3], (u, v, r) => shade(COLOR.rail, r)));
+        out.push(postOf(d, i, ro, 0.06, DECK.railH, nOut, (u, v, r) => shade(COLOR.rail, r)));
+      }
+    }
+    // a street lamp on each side of a road deck, every lampEvery metres
+    if (d.road && d.L >= 40 && i % Math.max(1, Math.round(DECK.lampEvery / (d.L / d.n))) === 0) {
+      for (const side of [-1, 1]) {
+        const off = side * (hw - 0.4), nOut = [f0.nx * side, 0, f0.nz * side];
+        out.push(postOf(d, i, off, 0.07, DECK.lampH, nOut, (u, v, r) => shade(COLOR.rail, r)));
+        const f = frameAt(d, i), c = at(d, i, off - side * 0.6, DECK.lampH);
+        const A = [c[0] - f.tx * 0.3, c[1], c[2] - f.tz * 0.3], B = [c[0] + f.tx * 0.3, c[1], c[2] + f.tz * 0.3];
+        out.push(wallOf(A, B, -0.12, 0.12, nOut, [0.8, 0.5], (u, v, r) => shade(COLOR.lamp, r)));
       }
     }
   }
@@ -214,7 +251,7 @@ function geometryOf(d, out, boxes) {
   let piers = 0;
   const every =Math.max(1, Math.round(DECK.pierEvery / (d.L / d.n)));
   for (let i = every; i < d.n; i += every) {
-    const top = d.y[i] - DECK.depth;
+    const top = d.y[i] - d.depth;
     const wet = coverAt(d.xy[i][0], d.xy[i][1]) === COVER.WATER;
     if (!wet && d.y[i] - heightAtSample(d, i) < DECK.pierMin) continue;
     for (const side of [-0.6, 0.6]) {

@@ -41,7 +41,8 @@ for (const d of decks.filter((x) => x.wet)) {
   for (let i = 0; i < 60 * 45; i++) {
     L.step(1 / 60, 1);
     const along = (P.feet.x - ax) * ux + (P.feet.z - az) * uz;
-    if (!climbed && along > 0 && P.feet.y > d.plateau - 2) climbed = +along.toFixed(1);
+    const top = L.deckAt(P.feet.x, P.feet.z);
+    if (!climbed && along > 0 && top != null && P.feet.y > top - 0.5) climbed = +along.toFixed(1);
     if (along >= Ln - 2) { reachedFar = true; break; }
   }
   L.setInput(null);
