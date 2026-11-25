@@ -5,6 +5,7 @@
 import './travel.css';
 import { geocodeMany, reverseName, highestSpot, PlaceError } from '../hwadam/world/place.js';
 import { playMusic } from '../music.js';
+import { runFirstVisit, showGuide } from './intro.js';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
@@ -118,7 +119,7 @@ async function ensureMap() {
   overlay.innerHTML = `
     <div class="tm-canvas" id="tm-canvas"></div>
     <div class="tm-top">
-    <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span></div>
+    <div class="tm-head"><b>유화 여행자</b><span>${HEAD}</span><button type="button" class="tm-guide">가이드</button></div>
     <form class="tm-search" novalidate>
       <div class="tm-field">
         <input id="tm-q" type="text" autocomplete="off" placeholder="예: 북한산, 협재해변, 화담숲" aria-label="주소나 장소 이름" />
@@ -286,6 +287,7 @@ function wire() {
     const next = new URLSearchParams({ scene: 'travel', place: 'hwadam', name: '화담숲' });
     location.href = `${location.pathname}?${next.toString()}`;
   });
+  overlay.querySelector('.tm-guide').addEventListener('click', () => showGuide());
   overlay.querySelector('.tm-back').addEventListener('click', () => {
     overlay.hidden = true;
     onBack?.();
@@ -300,6 +302,7 @@ export async function startMap({ err = '', place = '', name = '' } = {}) {
   playMusic('map');
   document.getElementById('loading')?.remove();
   document.documentElement.dataset.scene = 'travel';
+  if (!err && !place) await runFirstVisit(); // the first screen and the guide, before the map (a returning viewer goes on at once)
   await ensureMap();
   overlay.hidden = false;
   map.resize();

@@ -171,3 +171,69 @@
   background: rgba(28, 20, 18, 0.55); border: 0; border-radius: 3px; padding: 8px 12px;
 }
 .walk-view:hover { background: rgba(28, 20, 18, 0.72); }
+
+/* the first screen and the guide (src/travel/intro.js): the painting full bleed, the title on the calm sky at the top left,
+   the cards as paper. The short landscape phone (height 390) puts the card's picture beside its text. */
+.intro { position: fixed; inset: 0; z-index: 30; overflow: hidden; background: #2a211b; color: #fdf8ec; font: 15px/1.6 Georgia, serif; }
+.intro[hidden] { display: none; }
+.intro-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 55%; }
+.intro-first::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(42, 33, 27, 0.5) 0%, rgba(42, 33, 27, 0) 42%, rgba(42, 33, 27, 0) 62%, rgba(42, 33, 27, 0.55) 100%);
+}
+.intro-head {
+  position: absolute; left: clamp(20px, 5vw, 64px); top: clamp(56px, 16vh, 150px); z-index: 1; max-width: min(520px, calc(100vw - 40px));
+  text-shadow: 0 1px 10px rgba(28, 20, 18, 0.45);
+}
+.intro-head h1 { margin: 0 0 10px; font: normal clamp(34px, 6vw, 60px)/1.1 Georgia, serif; letter-spacing: 0.04em; }
+.intro-head p { margin: 0 0 22px; font-size: clamp(15px, 2vw, 18px); }
+.intro-go, .intro-next {
+  font: 16px/1 Georgia, serif; letter-spacing: 0.04em; cursor: pointer; color: #fdf8ec; background: #8a3a1c; border: 0; border-radius: 3px; padding: 13px 22px;
+  box-shadow: 0 2px 8px rgba(28, 20, 18, 0.35);
+}
+.intro-go:hover, .intro-next:hover { background: #9e4522; }
+.intro-go:focus-visible, .intro-next:focus-visible, .intro-skip:focus-visible { outline: 2px solid #fdf8ec; outline-offset: 2px; }
+
+.intro-guide { display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: rgba(42, 33, 27, 0.86); }
+.intro-card {
+  margin: 0; width: min(640px, 100%); box-sizing: border-box; display: flex; flex-direction: column; color: #2a211b;
+  background: #efe7d2; border-radius: 4px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background-image: repeating-linear-gradient(97deg, rgba(70, 52, 40, 0.035) 0 2px, transparent 2px 7px);
+}
+.intro-card figure { margin: 0; }
+.intro-card img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
+.intro-side { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.intro-text { padding: 16px 20px 0; }
+.intro-text h2 { margin: 0 0 6px; font: normal 20px/1.4 Georgia, serif; color: #2a211b; }
+.intro-text p { margin: 0; font-size: 15px; color: #4a3d33; }
+.intro-foot { display: flex; align-items: center; gap: 10px; padding: 14px 20px 18px; margin-top: auto; flex-wrap: wrap; }
+.intro-dots { display: flex; gap: 6px; margin: 0 auto 0 0; padding: 0; list-style: none; }
+.intro-dots li { width: 8px; height: 8px; border-radius: 50%; background: rgba(70, 52, 40, 0.25); }
+.intro-dots li[aria-current='step'] { background: #8a3a1c; }
+.intro-skip { font: 14px/1 Georgia, serif; cursor: pointer; color: #5b4636; background: none; border: 0; padding: 10px 6px; }
+.intro-next { font-size: 14px; padding: 11px 16px; }
+
+@media (max-width: 600px) {
+  /* the phone's picture is the maples: the text gets a dark paper to stand on */
+  .intro-head { left: 16px; right: 16px; max-width: none; padding: 14px 16px; background: rgba(42, 33, 27, 0.5); border-radius: 4px; }
+  .intro-card { width: 100%; }
+}
+/* a short landscape screen (a phone on its side): the picture beside the text, the whole card in the height */
+@media (max-height: 520px) and (orientation: landscape) {
+  .intro-guide { padding: 12px; }
+  .intro-card { flex-direction: row; width: min(760px, 100%); max-height: 100%; }
+  .intro-card figure { position: relative; width: 46%; flex: none; }
+  .intro-card img { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; }
+  .intro-text { padding-top: 12px; }
+  .intro-text h2 { font-size: 17px; }
+  .intro-text p { font-size: 14px; }
+  .intro-foot { padding-bottom: 12px; }
+  .intro-head { top: 28px; }
+  .intro-head h1 { font-size: 32px; margin-bottom: 6px; }
+  .intro-head p { font-size: 14px; margin-bottom: 14px; }
+  .intro-go { padding: 10px 18px; font-size: 15px; }
+}
+/* the old key hint of the first page stays under the cards and the first screen */
+body:has(.intro) #hint { display: none; }
+/* the guide button on the map head */
+.tm-head .tm-guide { margin-left: auto; padding: 5px 10px; font-size: 12px; background: #5b4636; }
