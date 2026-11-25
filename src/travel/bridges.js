@@ -12,6 +12,8 @@ export const DECK = {
   // a span over water shorter than shortM is a straight deck from one bank's height to the other's (shortLift above them)
   shortM: 100, shortLift: 0.2,
   sidewalk: 2, pathW: 3, join: 3, railH: 1.1, depth: 1.4, depthBig: 2.4, pierEvery: 30, pierMin: 1.5, pierHalf: 0.8,
+  // groundClear: the top never sinks under the ground of its own centre line (a bank rising under the approach buried the deck)
+  groundClear: 0.05,
   slabHalf: 0.3, railCols: 2, lampEvery: 36, lampH: 5,
 };
 const COLOR = {
@@ -139,8 +141,14 @@ function deckOf(line, ground) {
   const step = L / n;
   const depth = wet && L > DECK.longM ? DECK.depthBig : DECK.depth;
   if (wet && L < DECK.shortM) {
-    // a short span over water: a straight deck between the two bank heights, no plateau and no water clearance (the banks stand above the water)
-    const y = xy.map((_, i) => gA + ((gB - gA) * i) / n + DECK.shortLift + DECK.layerLift * line.layer);
+    // a short span over water: a straight deck between the two bank heights. Its ends stand on the banks (no step, no lift
+    // there); the lift of a layer rises at the ramp's slope from each end, so a walker climbs it (Cheonggye layer-1 spans
+    // stood 4.2 m above both banks and nobody got on)
+    const lift = DECK.shortLift + DECK.layerLift * line.layer;
+    const y = xy.map((_, i) => {
+      const s = i * (L / n);
+      return Math.max(gA + ((gB - gA) * i) / n + Math.min(lift, DECK.ramp * s, DECK.ramp * (L - s)), g[i] + DECK.groundClear);
+    });
     const plateau = Math.max(...y);
     return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
   }
@@ -156,7 +164,7 @@ function deckOf(line, ground) {
   // otherwise lift the deck into a wall
   const y = xy.map((_, i) => {
     const s = i * step;
-    return Math.min(plateau, gA + DECK.ramp * s, gB + DECK.ramp * (L - s));
+    return Math.max(Math.min(plateau, gA + DECK.ramp * s, gB + DECK.ramp * (L - s)), g[i] + DECK.groundClear);
   });
   return { xy, y, n, L, hw, road: line.road, layer: line.layer, wet, cutA: line.cutA, cutB: line.cutB, depth, plateau: +plateau.toFixed(2), gA: +gA.toFixed(2), gB: +gB.toFixed(2) };
 }
@@ -362,4 +370,21 @@ function distSegMin(d, x, z) {
   let best = Infinity;
   for (let i = 0; i < d.n; i++) best = Math.min(best, distSeg(x, z, d.xy[i], d.xy[i + 1]).d);
   return best;
+}
+
+/**
+ * A predicate over (x, z): true within the footprint of a bridge line (its width plus `margin`). The wood keeps trees out of
+ * it: a trunk under a deck stood through the slab, and the walker stopped against it (T4, Hangang span 153 m).
+ */
+export function deckKeepOut(cover, margin = 1.5) {
+  const lines = linesOf(piecesOf(cover)).flatMap((l) => clipRuns(l.pts, SQUARE_M).map((pts) => ({
+    pts, hw: (l.road ? l.w / 2 + DECK.sidewalk : DECK.pathW / 2) + margin,
+    x0: Math.min(...pts.map((p) => p[0])), x1: Math.max(...pts.map((p) => p[0])),
+    z0: Math.min(...pts.map((p) => p[1])), z1: Math.max(...pts.map((p) => p[1])),
+  })));
+  return (x, z) => lines.some((l) => {
+    if (x < l.x0 - l.hw || x > l.x1 + l.hw || z < l.z0 - l.hw || z > l.z1 + l.hw) return false;
+    for (let i = 0; i + 1 < l.pts.length; i++) if (distSeg(x, z, l.pts[i], l.pts[i + 1]).d < l.hw) return true;
+    return false;
+  });
 }

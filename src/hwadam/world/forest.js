@@ -79,7 +79,7 @@ const inFan = (x, z) => FANS.some(({ a, d }) => {
   return r > 0.01 && r < 30 && (dx * d[0] + dz * d[1]) / r > 0.9063;
 });
 
-function plant() {
+function plant(keepOut = null) {
   const rand = rng(4471);
   const trees = [];
   const add = (x, z, type, tier, scale = 1) => {
@@ -214,14 +214,14 @@ function plant() {
     const dx = t.x - CLEAR.x, dz = t.z - CLEAR.z, d = Math.hypot(dx, dz);
     return CLEAR.fan && d > 0 && d <= CLEAR.laneR && (dx * CLEAR.fx + dz * CLEAR.fz) / d >= cosMin;
   };
-  const kept = trees.filter((t) => !blocks(t) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
+  const kept = trees.filter((t) => !blocks(t) && !(keepOut && keepOut(t.x, t.z)) && (CLEAR.r <= 0 || (Math.hypot(t.x - CLEAR.x, t.z - CLEAR.z) > CLEAR.r && !(CLEAR.fan && inFirstFan(t)) && !inSight(t, CLEAR.laneCos))));
   for (const t of kept) if (!t.nearPine && inSight(t, CLEAR.sightCos)) { t.h *= CLEAR.lowH; t.r *= CLEAR.lowH; }
   return kept;
 }
 
-export function createForest(shared) {
+export function createForest(shared, { keepOut = null } = {}) {
   shared.uForestHaze = shared.uForestHaze ?? { value: CLEAR.fan ? 0.5 : 1.0 };
-  const trees = plant();
+  const trees = plant(keepOut);
   const rand = rng(99173);
   const wood = { position: [], normal: [], data: [], index: [] };
   const barkDabs = []; // pos 3, dir 3, nrm 3, data 4 (seed, across, kind, along)

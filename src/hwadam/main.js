@@ -22,7 +22,7 @@ import { walkSong } from '../travel/walk-song.js';
 import { createMidground } from '../travel/midground.js';
 import { createFloor } from './world/floor.js';
 import { createBuildings, clearance } from '../travel/buildings.js';
-import { createBridges } from '../travel/bridges.js';
+import { createBridges, deckKeepOut } from '../travel/bridges.js';
 import { createForest } from './world/forest.js';
 import { createSky } from './world/sky.js';
 import { createLeaves } from '../world/leaves.js';
@@ -145,7 +145,8 @@ Object.assign(CLEAR, {
   x: vantage.x, z: vantage.z, r: travel ? (place.cover ? 30 : 15) : 0, fan: travel, fx: Math.sin(gazeRad), fz: -Math.cos(gazeRad), fanR: 40, fanCos: Math.cos((25 * Math.PI) / 180),
   laneR: 300, laneCos: Math.cos((20 * Math.PI) / 180), sightCos: Math.cos((35 * Math.PI) / 180), lowH: 0.35,
 });
-const forest = createForest(shared);
+// travel: no tree in a bridge's footprint (its trunk would stand through the deck, T4)
+const forest = createForest(shared, { keepOut: travel && place.cover ? deckKeepOut(place.cover) : null });
 lap('forest');
 const floor = createFloor(shared);
 const sky = createSky(shared);
@@ -365,7 +366,7 @@ window.lab = {
   /** T3: the buildings of the place (counts, dabs, spacing) and the clearance of a point from the walls. */
   buildings: bld?.stats ?? null,
   /** T4: the bridges of the place (decks, wet, piers, boxes, tops) and deckAt(x, z) for the top of a deck. */
-  bridges: bridges?.stats ?? null, deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
+  bridges: bridges?.stats ?? null, bridgeDecks: bridges?.decks ?? [], deckAt: (x, z) => bridges?.deckAt(x, z) ?? null,
   buildingPlans: bld?.plans ?? [], coverAt, physics,
   /** T4: what fetchCover returned (roads with class · brunnel · layer, paths, pois, buildings) for the street checks. */
   placeCover: travel ? place.cover ?? null : null,
